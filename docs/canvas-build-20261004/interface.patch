@@ -1,0 +1,2791 @@
+--- before/index.html
++++ src/frameseek/static/index.html
+@@ -3,8 +3,8 @@
+   <head>
+     <meta charset="utf-8" />
+     <meta name="viewport" content="width=device-width, initial-scale=1" />
+-    <meta name="theme-color" content="#142330" />
+-    <title>FrameSeek · 影像控制台</title>
++    <meta name="theme-color" content="#111f2b" />
++    <title>FrameSeek · 调查画布</title>
+     <link rel="icon" href="/static/icons/play.svg" type="image/svg+xml" />
+     <link
+       rel="preload"
+@@ -13,17 +13,25 @@
+       type="font/ttf"
+       crossorigin
+     />
+-    <link rel="stylesheet" href="/static/styles.css?v=83261f08384c" />
++    <link rel="stylesheet" href="/static/styles.css?v=94f7c4418d9b" />
+     <script src="/static/demo-conversation.js" defer></script>
+-    <script src="/static/app.js?v=38d7eb1af0d7" defer></script>
++    <script src="/static/investigation-canvas.js?v=86985f500e21" defer></script>
++    <script src="/static/app.js?v=2dbb298c9b57" defer></script>
+   </head>
+   <body>
+     <a href="#question" class="skip-link">跳到对话输入</a>
++    <div class="desktop-message">
++      <h1>FrameSeek</h1>
++      <p>调查画布需要桌面空间。请在电脑浏览器中打开。</p>
++    </div>
+     <div class="agent-shell">
+       <header class="studio-header">
+         <a class="brand" href="/" aria-label="FrameSeek 首页">FrameSeek</a>
+-        <span class="studio-title">影像控制台</span>
+-        <p>用自然语言，在视频中找到关键画面</p>
++        <span class="studio-title">调查画布</span>
++        <p>把问题、画面和发现连起来</p>
++        <span id="composer-mode-text" class="header-mode"
++          >预设演示 · 未调用模型</span
++        >
+         <button id="open-local" class="open-source" type="button">
+           <img
+             class="icon"
+@@ -34,12 +42,12 @@
+       </header>
+       <nav class="studio-rail" aria-label="工作区导航">
+         <button
+-          id="rail-video"
++          id="rail-canvas"
+           class="rail-button active"
+-          aria-label="查看视频工作区"
++          aria-label="回到调查画布"
+         >
+-          <img class="icon" src="/static/icons/play.svg" alt="" /><span
+-            >视频</span
++          <img class="icon" src="/static/icons/chats-circle.svg" alt="" /><span
++            >调查</span
+           >
+         </button>
+         <button id="rail-source" class="rail-button" aria-label="打开素材">
+@@ -59,244 +67,221 @@
+         >
+       </nav>
+       <main
++        id="chat-content"
++        class="canvas-viewport"
++        aria-label="调查画布"
++        tabindex="0"
++      >
++        <canvas id="canvas-links" aria-hidden="true"></canvas>
++        <div id="canvas-plane"><div id="messages"></div></div>
++        <div id="empty-state" class="empty-state">
++          <div class="task-intro">
++            <span id="empty-eyebrow" class="eyebrow">已加载演示视频</span>
++            <h1>从一个问题，展开调查。</h1>
++            <p>找到的画面会留在这里。继续追问，把发现连起来。</p>
++            <div id="suggestions" class="suggestions" aria-label="演示问题">
++              <button data-query="center">
++                包裹何时在中央？<img
++                  class="icon"
++                  src="/static/icons/arrow-right.svg"
++                  alt=""
++                />
++              </button>
++              <button data-query="person">能确认搬运者吗？</button>
++              <button data-query="forklift">有叉车吗？</button>
++            </div>
++          </div>
++        </div>
++      </main>
++      <section class="canvas-topbar" aria-label="画布操作">
++        <button id="rail-video" class="source-tile" aria-label="查看当前视频">
++          <img
++            id="source-thumbnail"
++            src="/media/demo_parcel/frames/0.jpg"
++            alt="合成仓库视频"
++          />
++          <span class="source-item"
++            ><strong id="attached-source-name">包裹移动 · 合成演示</strong
++            ><span id="attached-source-state">正在加载</span></span
++          >
++          <img class="icon" src="/static/icons/play.svg" alt="" />
++        </button>
++        <div class="canvas-actions">
++          <label class="sr-only" for="arrange-mode">自动整理方式</label>
++          <select id="arrange-mode">
++            <option value="threads">追问关系</option>
++            <option value="time">视频时间</option>
++            <option value="status">结果状态</option>
++          </select>
++          <button id="arrange-canvas" class="outline-button">自动整理</button>
++          <button id="reset-chat" class="outline-button">
++            <img class="icon" src="/static/icons/plus.svg" alt="" />新调查
++          </button>
++        </div>
++      </section>
++      <aside
+         id="evidence-canvas"
+-        class="evidence-canvas"
+-        aria-labelledby="video-heading"
++        class="evidence-viewer"
++        aria-labelledby="evidence-question"
++        hidden
+       >
+-        <div class="canvas-content">
+-          <div class="source-heading">
+-            <h1 id="video-heading">包裹移动 · 合成演示</h1>
+-            <span id="video-state" class="video-state">演示素材</span
+-            ><span class="workspace-caption">视频工作区</span>
+-          </div>
+-          <div class="player-wrap">
+-            <video
+-              id="player"
+-              controls
+-              playsinline
+-              preload="auto"
+-              poster="/media/demo_parcel/frames/0.jpg"
+-              aria-label="当前视频播放器"
+-            >
+-              <source src="/demo/video" type="video/mp4" /></video
+-            ><span id="video-watermark" class="video-watermark">合成演示</span>
+-          </div>
+-          <div class="player-footer">
+-            <span id="seek-status">选择时间或画面，回到证据</span
+-            ><button id="reload-video" class="text-button" hidden>
+-              重新加载视频</button
+-            ><span id="video-meta">18 秒 · 1600 × 900 · 无音轨</span>
+-          </div>
+-          <div id="demo-timeline" class="timeline-section">
+-            <div class="section-label">
+-              <h2>素材时间线</h2>
+-              <span id="playback-time" class="timecode">00:00 / 00:18</span>
+-            </div>
+-            <div class="timeline">
+-              <div id="playhead" class="playhead" aria-hidden="true"></div>
+-              <button
+-                class="chapter"
+-                data-time="0"
+-                aria-label="定位左侧片段 00:00"
+-              >
+-                <span>00:00</span><span>左侧</span></button
+-              ><button
+-                class="chapter"
+-                data-time="5"
+-                aria-label="定位中央片段 00:05"
+-              >
+-                <span>00:05</span><span>中央</span></button
+-              ><button
+-                class="chapter"
+-                data-time="11"
+-                aria-label="定位右侧片段 00:11"
+-              >
+-                <span>00:11</span><span>右侧</span>
+-              </button>
+-            </div>
+-          </div>
+-          <div id="frame-heading" class="section-label frame-heading">
+-            <h2>素材关键帧</h2>
+-            <span>点击回看</span>
+-          </div>
+-          <div id="segments" class="frame-strip" aria-label="素材关键帧">
+-            <button
+-              class="segment"
+-              data-time="0"
+-              aria-label="查看左侧画面 00:00"
+-            >
+-              <img
+-                src="/media/demo_parcel/frames/0.jpg"
+-                alt="包裹位于工作台左侧"
+-              /><span>00:00 <span>左侧</span></span>
+-            </button>
+-            <button
+-              class="segment"
+-              data-time="6"
+-              aria-label="查看中央画面 00:06"
+-            >
+-              <img
+-                src="/media/demo_parcel/frames/6.jpg"
+-                alt="包裹位于工作台中央"
+-              /><span>00:06 <span>中央</span></span>
+-            </button>
+-            <button
+-              class="segment"
+-              data-time="13"
+-              aria-label="查看右侧画面 00:13"
+-            >
+-              <img
+-                src="/media/demo_parcel/frames/13.jpg"
+-                alt="包裹位于工作台右侧"
+-              /><span>00:13 <span>右侧</span></span>
+-            </button>
+-          </div>
+-          <p id="local-note" class="local-note" hidden>
+-            文件仅在浏览器播放。尚未上传、建立索引或交给模型。
+-          </p>
+-          <details class="demo-details">
+-            <summary>演示说明与结果来源</summary>
+-            <p id="demo-notice-text">
+-              合成素材与预设回答。支持固定的上下文追问，不上传文件，不调用模型。
+-            </p>
+-            <section class="run-context" aria-labelledby="run-heading">
+-              <div class="section-label">
+-                <h2 id="run-heading">当前结果</h2>
+-                <span id="run-state">等待提问</span>
+-              </div>
+-              <ol class="run-steps">
+-                <li>
+-                  <div>
+-                    <strong>素材</strong>
+-                    <p id="source-step">正在加载视频</p>
+-                  </div>
+-                  <span id="source-step-state">加载中</span>
+-                </li>
+-                <li>
+-                  <div>
+-                    <strong>结果来源</strong>
+-                    <p id="result-step">从固定样例中匹配</p>
+-                  </div>
+-                  <span id="result-step-state">待匹配</span>
+-                </li>
+-                <li>
+-                  <div>
+-                    <strong>证据定位</strong>
+-                    <p id="evidence-step">时间与画面关联</p>
+-                  </div>
+-                  <span id="evidence-step-state">待选择</span>
+-                </li>
+-              </ol>
+-            </section>
+-            <button data-query="right" class="text-button">查看右侧样例</button
+-            ><button data-query="failure" class="text-button">
+-              查看失败样例
+-            </button>
+-          </details>
+-        </div>
+-      </main>
+-      <aside class="conversation" aria-labelledby="chat-heading">
+-        <header class="conversation-header">
+-          <h2 id="chat-heading">视频对话</h2>
+-          <button id="reset-chat" class="new-task">
+-            <img
+-              class="icon"
+-              src="/static/icons/plus.svg"
+-              alt=""
+-            />新对话</button
+-          ><button id="mobile-reset" hidden aria-label="新对话">新对话</button>
+-        </header>
+-        <div class="conversation-context">
+-          <div class="source-item">
+-            <span id="attached-source-name">包裹移动演示.mp4</span>
+-          </div>
+-          <span id="mode-label" class="mode-label">演示模式</span
+-          ><span id="attached-source-state" class="sr-only">正在加载</span
+-          ><button
++        <header class="viewer-heading">
++          <h2 id="evidence-question">素材预览</h2>
++          <button
+             id="toggle-evidence"
+-            class="context-toggle"
++            class="icon-button"
++            aria-label="关闭证据播放器"
+             aria-expanded="false"
+             aria-controls="evidence-canvas"
+           >
+-            查看视频
++            <img class="icon" src="/static/icons/x.svg" alt="" />
+           </button>
+-        </div>
+-        <div id="chat-content" class="chat-content">
+-          <div id="empty-state" class="empty-state">
+-            <div class="task-intro">
+-              <span id="empty-eyebrow" class="eyebrow">已加载演示视频</span>
+-              <h2>想找哪个画面？</h2>
+-              <p>
+-                先问包裹的位置，再继续追问。
+-              </p>
+-          <div id="suggestions" class="suggestions" aria-label="演示问题">
+-            <button data-query="center">包裹何时在中央？</button
+-            ><button data-query="person">能确认搬运者吗？</button
+-            ><button data-query="forklift">有叉车吗？</button>
+-          </div>
+-            </div>
+-          </div>
+-          <div id="messages"></div>
+-        </div>
+-        <div class="composer-area">
+-          <p id="form-notice" class="form-notice" role="status" hidden></p>
+-          <form id="question-form">
+-            <div class="composer">
+-              <label for="question">继续聊这段视频</label
+-              ><textarea
+-                id="question"
+-                rows="2"
+-                maxlength="1000"
+-                placeholder="继续追问，或提出新的问题…"
+-              ></textarea>
+-              <div class="composer-tools">
+-                <button
+-                  id="attach-local"
+-                  class="attach-button"
+-                  type="button"
+-                  aria-label="打开本地视频文件"
+-                >
+-                  <img
+-                    class="icon"
+-                    src="/static/icons/paperclip.svg"
+-                    alt=""
+-                  /></button
+-                ><button
+-                  id="send-question"
+-                  class="send-button"
+-                  type="submit"
+-                  aria-label="发送消息"
+-                  disabled
+-                >
+-                  <img
+-                    class="icon"
+-                    src="/static/icons/arrow-right.svg"
+-                    alt=""
+-                  />
+-                </button>
+-              </div>
+-            </div>
+-            <p class="composer-hint">
+-              <span>Enter 发送 · Shift + Enter 换行</span
+-              ><span id="composer-mode-text">预设演示 · 未调用模型</span>
+-            </p>
+-          </form>
+-          <input id="file-input" type="file" accept="video/*" hidden /><button
+-            id="restore-demo"
+-            class="restore-button"
+-            hidden
+-          >
+-            返回演示，体验证据检索
++        </header>
++        <div class="viewer-source">
++          <span id="video-heading">包裹移动 · 合成演示</span
++          ><span id="video-state">演示素材</span>
++        </div>
++        <div class="player-wrap">
++          <video
++            id="player"
++            controls
++            playsinline
++            preload="auto"
++            poster="/media/demo_parcel/frames/0.jpg"
++            aria-label="当前视频播放器"
++          >
++            <source src="/demo/video" type="video/mp4" /></video
++          ><span id="video-watermark">合成演示</span>
++        </div>
++        <div class="player-footer">
++          <span id="seek-status">选择证据，回看对应画面</span
++          ><button id="reload-video" class="text-button" hidden>
++            重新加载视频
+           </button>
+-          <details class="conversation-history">
+-            <summary>
+-              当前会话 <span id="task-count">0</span> 轮 <span>最近 12 轮</span>
+-            </summary>
+-            <p id="history-empty">提问后可在这里切换轮次</p>
+-            <nav id="task-list" aria-label="本次会话任务"></nav>
+-          </details>
+-        </div>
++        </div>
++        <p id="video-meta">18 秒 · 1600 × 900 · 无音轨</p>
++        <div id="demo-timeline" class="timeline-section">
++          <span id="playback-time">00:00 / 00:18</span>
++          <div class="timeline">
++            <div id="playhead" aria-hidden="true"></div>
++            <button
++              class="chapter"
++              data-time="0"
++              aria-label="定位左侧片段 00:00"
++            >
++              左侧</button
++            ><button
++              class="chapter"
++              data-time="5"
++              aria-label="定位中央片段 00:05"
++            >
++              中央</button
++            ><button
++              class="chapter"
++              data-time="11"
++              aria-label="定位右侧片段 00:11"
++            >
++              右侧
++            </button>
++          </div>
++        </div>
++        <p id="local-note" class="local-note" hidden>
++          文件仅在浏览器播放。尚未上传、建立索引或交给模型。
++        </p>
++        <button id="restore-demo" class="restore-button" hidden>
++          返回演示，体验证据检索
++        </button>
++        <details class="demo-details">
++          <summary>演示说明与结果来源</summary>
++          <p id="demo-notice-text">
++            合成素材与预设回答。支持固定的上下文追问，不上传文件，不调用模型。
++          </p>
++          <button data-query="failure" class="text-button">查看失败样例</button>
++        </details>
+       </aside>
++      <section class="composer-area" aria-label="与 FrameSeek 对话">
++        <p id="form-notice" class="form-notice" role="status" hidden></p>
++        <form id="question-form">
++          <div class="composer-context">
++            <label id="composer-label" for="question">向 FrameSeek 提问</label
++            ><button
++              id="clear-context"
++              class="text-button"
++              type="button"
++              hidden
++            >
++              另起问题
++            </button>
++          </div>
++          <textarea
++            id="question"
++            rows="2"
++            maxlength="1000"
++            placeholder="问问这段视频，或继续追问…"
++          ></textarea>
++          <div class="composer-tools">
++            <button
++              id="attach-local"
++              class="icon-button"
++              type="button"
++              aria-label="打开本地视频文件"
++            >
++              <img
++                class="icon"
++                src="/static/icons/paperclip.svg"
++                alt=""
++              /></button
++            ><span>Enter 发送 · Shift + Enter 换行</span
++            ><button
++              id="send-question"
++              class="send-button"
++              type="submit"
++              aria-label="发送消息"
++              disabled
++            >
++              <img class="icon" src="/static/icons/arrow-right.svg" alt="" />
++            </button>
++          </div>
++        </form>
++      </section>
++      <section class="canvas-footer" aria-label="画布视图">
++        <p id="canvas-hint">拖动卡片整理 · 拖动空白处平移</p>
++        <div class="view-controls">
++          <button id="zoom-out" aria-label="缩小画布">−</button
++          ><button id="zoom-reset" aria-label="恢复百分之百缩放">100%</button
++          ><button id="zoom-in" aria-label="放大画布">
++            <img class="icon" src="/static/icons/plus.svg" alt="" /></button
++          ><button id="fit-canvas">适应视图</button>
++        </div>
++      </section>
++      <details class="conversation-history">
++        <summary>本次调查 <span id="task-count">0</span> 轮</summary>
++        <p id="history-empty">提问后可在这里切换轮次</p>
++        <nav id="task-list" aria-label="本次会话任务"></nav>
++        <span>最近 12 轮 · 本次页面会话</span>
++      </details>
++      <input id="file-input" type="file" accept="video/*" hidden />
++      <div hidden>
++        <button id="mobile-reset">新对话</button
++        ><span id="mode-label">演示模式</span>
++        <h2 id="frame-heading">素材关键帧</h2>
++        <div id="segments"></div>
++        <div class="run-context">
++          <span id="run-state"></span>
++          <ol class="run-steps">
++            <li>
++              <span id="source-step"></span><span id="source-step-state"></span>
++            </li>
++            <li>
++              <span id="result-step"></span><span id="result-step-state"></span>
++            </li>
++            <li>
++              <span id="evidence-step"></span
++              ><span id="evidence-step-state"></span>
++            </li>
++          </ol>
++        </div>
++      </div>
+     </div>
+     <div
+       id="announcement"
+--- before/app.js
++++ src/frameseek/static/app.js
+@@ -12,8 +12,19 @@
+ let taskSequence = 0;
+ let lastQueryId = null;
+ let evidenceReturnFocus = null;
++let investigation = null;
+
+ function showEvidence(open, trigger = document.activeElement) {
++  if (investigation) {
++    const viewer = $("evidence-canvas");
++    const wasOpen = !viewer.hidden;
++    if (open && trigger?.isConnected) evidenceReturnFocus = trigger;
++    viewer.hidden = !open;
++    $("toggle-evidence").setAttribute("aria-expanded", String(open));
++    if (!open && wasOpen && evidenceReturnFocus?.isConnected)
++      evidenceReturnFocus.focus({ preventScroll: true });
++    return;
++  }
+   const shell = document.querySelector(".agent-shell");
+   const wasOpen = shell.classList.contains("evidence-open");
+   const mobile = window.innerWidth < 900;
+@@ -31,7 +42,9 @@
+     if (target?.isConnected !== false && target?.focus && !target.disabled) {
+       target.focus({ preventScroll: true });
+     } else {
+-      (localMode ? $("toggle-evidence") : $("question")).focus({ preventScroll: true });
++      (localMode ? $("toggle-evidence") : $("question")).focus({
++        preventScroll: true,
++      });
+     }
+   }
+ }
+@@ -152,7 +165,11 @@
+   const wasPaused = player.paused;
+   player.currentTime = seconds;
+   if (wasPaused) player.pause();
+-  if (window.innerWidth < 900) {
++  if (investigation) {
++    if (!trigger?.closest?.(".turn")) investigation.evidence(null);
++    showEvidence(true, trigger);
++  }
++  if (!investigation && window.innerWidth < 900) {
+     showEvidence(true, trigger);
+     player.scrollIntoView({
+       block: "center",
+@@ -169,6 +186,9 @@
+   document.querySelector(".run-steps li:last-child").classList.add("complete");
+ }
+ function updateTime() {
++  if (investigation && mediaReady)
++    $("seek-status").textContent =
++      `当前 ${clock(player.currentTime)} · ${player.paused ? "已暂停" : "播放中"}`;
+   $("playback-time").textContent =
+     `${clock(player.currentTime)} / ${clock(player.duration)}`;
+   const percent = player.duration
+@@ -220,10 +240,16 @@
+     row.append(node("h3", "event-heading", event.action));
+     const toolbar = node("div", "event-toolbar");
+     toolbar.append(
+-      button(`${clock(event.start)}–${clock(event.end)}`, "seek-button", (clickEvent) => {
+-        selectTask(data, historyButton);
+-        seek(event.start, clickEvent.currentTarget);
+-      }),
++      button(
++        `${clock(event.start)}–${clock(event.end)}`,
++        "seek-button",
++        (clickEvent) => {
++          selectTask(data, historyButton);
++          investigation?.choose(turn.id);
++          investigation?.evidence(query);
++          seek(event.start, clickEvent.currentTarget);
++        },
++      ),
+       node("span", "support-label", "固定样例 · 画面直接支持"),
+     );
+     row.append(toolbar);
+@@ -231,6 +257,8 @@
+     event.evidence.forEach((frame, index) => {
+       const frameButton = button("", "evidence-button", () => {
+         selectTask(data, historyButton);
++        investigation?.choose(turn.id);
++        investigation?.evidence(query);
+         document.querySelectorAll(".evidence-button").forEach((item) => {
+           const selected = item === frameButton;
+           item.classList.toggle("selected", selected);
+@@ -271,7 +299,7 @@
+     const unresolved = node("div", "unresolved");
+     unresolved.append(node("strong", "", "仍未确认"));
+     data.unresolved.forEach((text) => unresolved.append(node("p", "", text)));
+-    turn.append(unresolved);
++    (investigation ? more : turn).append(unresolved);
+   }
+   if (data.errors.length) {
+     turn.append(
+@@ -298,19 +326,25 @@
+   more.append(details);
+   const actions = node("div", "response-actions");
+   data.followups.forEach((question) =>
+-    actions.append(button(question, "text-button", () => ask(question))),
++    actions.append(
++      button(question, "text-button", () => {
++        investigation?.choose(turn.id);
++        ask(question);
++      }),
++    ),
+   );
+   more.append(actions);
+   turn.append(more);
+   $("empty-state").hidden = true;
+   $("messages").append(turn);
+   const historyButton = button(query.question, "history-task", () => {
+-    turn.scrollIntoView({
+-      block: "start",
+-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+-        ? "auto"
+-        : "smooth",
+-    });
++    if (!investigation)
++      turn.scrollIntoView({
++        block: "start",
++        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
++          ? "auto"
++          : "smooth",
++      });
+     selectTask(data, historyButton);
+   });
+   historyButton.dataset.turn = turn.id;
+@@ -320,17 +354,20 @@
+   $("task-count").textContent = $("messages").children.length;
+   selectTask(data, historyButton);
+   const chatContent = $("chat-content");
+-  chatContent.scrollTop = chatContent.scrollHeight;
++  if (!investigation) chatContent.scrollTop = chatContent.scrollHeight;
++  investigation?.register(turn, query, historyButton);
+   announce(`演示回答：${stateLabels[data.status]}。${data.answer}`);
+ }
+ function ask(question) {
+   if (localMode) return;
++  const scoped = investigation?.context();
++  const contextId = investigation ? scoped?.query.id || null : lastQueryId;
+   const normalized = (value) => value.replace(/[\s？?。！!]/g, "");
+   const resolved = window.FrameSeekDemoConversation
+     ? window.FrameSeekDemoConversation.resolve(
+         question,
+         demo?.queries || [],
+-        lastQueryId,
++        contextId,
+       )
+     : {
+         query: demo?.queries.find(
+@@ -339,11 +376,11 @@
+         usedContext: false,
+       };
+   if (!resolved.query) {
+-    const parcelContext = ["center", "right", "person"].includes(lastQueryId);
++    const parcelContext = ["center", "right", "person"].includes(contextId);
+     notice(
+       parcelContext
+         ? "这个追问暂未接入。演示支持「那后来呢？」「谁搬的？」或完整示例问题；输入已保留。"
+-        : lastQueryId
++        : contextId
+           ? "当前话题不支持这个追问。请改问完整示例问题，例如「包裹什么时候出现在中央？」。输入已保留。"
+           : "先从完整示例问题开始，例如「包裹什么时候出现在中央？」。回答后可继续追问。输入已保留。",
+     );
+@@ -356,6 +393,7 @@
+     ...resolved.query,
+     question,
+     usedContext: resolved.usedContext,
++    parentTurn: scoped?.turn.id || null,
+   });
+   $("question").value = "";
+   updateSend();
+@@ -363,6 +401,7 @@
+ }
+ function clearChat() {
+   evidenceReturnFocus = null;
++  investigation?.clear();
+   $("messages").replaceChildren();
+   $("empty-state").hidden = false;
+   $("question").value = "";
+@@ -378,6 +417,7 @@
+ }
+ function setLocalMode(enabled) {
+   localMode = enabled;
++  investigation?.source(enabled);
+   $("mode-label").textContent = enabled ? "本地播放" : "演示模式";
+   $("demo-notice-text").textContent = enabled
+     ? "本地播放模式。文件只在此浏览器中打开，未上传、未建立索引，也未发送给模型。"
+@@ -407,12 +447,17 @@
+   $("attached-source-state").textContent = enabled
+     ? "仅本地播放 · 未索引"
+     : "已加载 · 18 秒";
+-  $("empty-state").querySelector("h2").textContent = enabled
+-    ? "素材已打开，尚未建立索引。"
+-    : "想找哪个画面？";
++  $("empty-state").querySelector(investigation ? "h1" : "h2").textContent =
++    enabled
++      ? "素材已打开，尚未建立索引。"
++      : investigation
++        ? "从一个问题，展开调查。"
++        : "想找哪个画面？";
+   $("empty-state").querySelector(".task-intro > p").textContent = enabled
+     ? "你可以在视频工作区中播放文件，或返回演示体验预设对话。"
+-    : "先问包裹的位置，再继续追问。";
++    : investigation
++      ? "找到的画面会留在这里。继续追问，把发现连起来。"
++      : "先问包裹的位置，再继续追问。";
+   $("video-state").title = enabled ? "未上传、未分析" : "公开合成素材";
+   $("seek-status").textContent = enabled
+     ? "未上传 · 未分析 · 文件只在浏览器内播放"
+@@ -466,6 +511,7 @@
+   $(id).addEventListener("click", () => $("file-input").click());
+ });
+ $("rail-video").addEventListener("click", () => {
++  investigation?.evidence(null);
+   showEvidence(true);
+   player.focus();
+ });
+@@ -491,7 +537,9 @@
+   $("video-heading").textContent = file.name;
+   $("attached-source-name").textContent = file.name;
+   $("video-meta").textContent = "正在读取本地视频信息…";
+-  if (window.innerWidth < 900) showEvidence(true, $("attach-local"));
++  if (investigation || window.innerWidth < 900)
++    showEvidence(true, $("attach-local"));
++  investigation?.evidence(null);
+   announce("本地视频已打开，未上传、未建立索引。");
+ });
+ $("restore-demo").addEventListener("click", () => {
+@@ -551,12 +599,21 @@
+   $("seek-status").textContent = "正在重新加载视频…";
+ });
+ player.addEventListener("timeupdate", updateTime);
++player.addEventListener("play", updateTime);
++player.addEventListener("pause", updateTime);
+ window.addEventListener("beforeunload", () => {
+   if (localUrl) URL.revokeObjectURL(localUrl);
+ });
+ document.querySelectorAll("[data-query]").forEach((element) => {
+   element.disabled = true;
+ });
++if (window.FrameSeekCanvas)
++  investigation = window.FrameSeekCanvas.start({
++    select: selectTask,
++    ask,
++    announce,
++    close: () => showEvidence(false),
++  });
+ fetch("/demo/catalog")
+   .then((response) => {
+     if (!response.ok) throw new Error("catalog");
+--- before/styles.css
++++ src/frameseek/static/styles.css
+@@ -7,7 +7,6 @@
+ :root {
+   color-scheme: dark;
+   --bg: #111f2b;
+-  --panel: #182936;
+   --raised: #1c2d3b;
+   --line: #344a5d;
+   --text: #f1f4f7;
+@@ -23,9 +22,11 @@
+   margin: 0;
+   background: var(--bg);
+   color: var(--text);
++  overflow: hidden;
+ }
+ button,
+-textarea {
++textarea,
++select {
+   font: inherit;
+ }
+ button,
+@@ -40,21 +41,12 @@
+   cursor: pointer;
+ }
+ button:disabled {
++  opacity: 0.4;
+   cursor: not-allowed;
+-  opacity: 0.4;
+ }
+ a {
+   color: inherit;
+   text-decoration: none;
+-}
+-button:focus-visible,
+-a:focus-visible,
+-summary:focus-visible {
+-  outline: 2px solid var(--orange);
+-  outline-offset: 4px;
+-}
+-textarea:focus-visible {
+-  outline: 0;
+ }
+ h1,
+ h2,
+@@ -65,12 +57,21 @@
+ button img {
+   pointer-events: none;
+ }
++button:focus-visible,
++a:focus-visible,
++summary:focus-visible,
++select:focus-visible,
++textarea:focus-visible,
++[tabindex]:focus-visible {
++  outline: 2px solid var(--orange);
++  outline-offset: 4px;
++}
+ [hidden] {
+   display: none !important;
+ }
+ .icon {
+-  width: 24px;
+-  height: 24px;
++  width: 22px;
++  height: 22px;
+   filter: invert(1);
+   flex-shrink: 0;
+ }
+@@ -84,1176 +85,876 @@
+ }
+ .skip-link:focus {
+   position: fixed;
+-  z-index: 20;
++  z-index: 30;
++  background: var(--raised);
+   padding: 12px;
+-  background: var(--panel);
++}
++.desktop-message {
++  display: none;
+ }
+ .agent-shell {
+-  display: grid;
+-  grid-template-columns: 72px minmax(0, 1fr) clamp(390px, 32.4vw, 510px);
+-  grid-template-rows: 84px minmax(0, 1fr);
++  position: relative;
+   height: 100dvh;
+-  min-height: 640px;
+-  background:
+-    radial-gradient(ellipse at 25% 95%, #192d3d 0, transparent 70%), var(--bg);
++  min-height: 600px;
+ }
+ .studio-header {
+-  grid-column: 1/-1;
++  position: absolute;
++  inset: 0 0 auto;
++  height: 60px;
+   display: flex;
+   align-items: center;
+   gap: 24px;
+-  padding: 0 32px 0 100px;
+-  background: #1a2b39;
+-  border-bottom: 1px solid #263a4a;
++  padding: 0 26px 0 30px;
++  border-bottom: 1px solid var(--line);
++  background: #162632;
++  z-index: 10;
+ }
+ .brand {
+-  font-size: 38px;
+-  font-weight: 750;
+-  letter-spacing: -1.4px;
+-  line-height: 1;
++  font-size: 28px;
++  font-weight: 760;
++  letter-spacing: -1.5px;
+ }
+ .studio-title {
+-  font-size: 22px;
+-  font-weight: 600;
+-  border-left: 1px solid #698093;
+   padding-left: 24px;
++  border-left: 1px solid var(--line);
++  font-size: 17px;
++  font-weight: 650;
+   white-space: nowrap;
+ }
+ .studio-header > p {
+-  font-size: 15px;
+-  color: var(--muted);
++  font-size: 13px;
++  color: var(--muted);
++}
++.header-mode {
++  margin-left: auto;
++  font-size: 12px;
++  color: var(--muted);
++  white-space: nowrap;
+ }
+ .open-source {
+   display: flex;
+-  gap: 12px;
+-  align-items: center;
+-  margin-left: auto;
++  gap: 9px;
++  align-items: center;
++  min-height: 44px;
++  font-size: 13px;
+   white-space: nowrap;
+-  padding: 12px;
+-  font-size: 16px;
+-}
+-.open-source:hover {
+-  background: #253b4c;
+-  border-radius: 6px;
+ }
+ .studio-rail {
+-  grid-column: 1;
+-  grid-row: 2;
++  position: absolute;
++  top: 60px;
++  bottom: 0;
++  left: 0;
++  width: 64px;
++  background: #172734;
++  border-right: 1px solid var(--line);
++  z-index: 10;
+   display: flex;
+   flex-direction: column;
+-  background: #203342;
+ }
+ .rail-button {
+-  height: 102px;
+-  display: flex;
++  width: 64px;
++  height: 84px;
++  display: flex;
++  flex-direction: column;
++  gap: 8px;
+   align-items: center;
+   justify-content: center;
+-  flex-direction: column;
+-  gap: 12px;
+-  color: #bdcbd7;
+-  font-size: 14px;
+-  border-left: 4px solid transparent;
++  border-left: 3px solid transparent;
++  font-size: 12px;
++  color: var(--muted);
+ }
+ .rail-button.active {
+-  border-left-color: var(--orange);
+-  background: #263b4d;
++  border-color: var(--orange);
++  background: var(--raised);
+   color: var(--text);
+-}
+-.rail-button.active .icon {
+-  filter: invert(57%) sepia(99%) saturate(2111%) hue-rotate(337deg)
+-    brightness(102%);
+-}
+-.rail-button:hover {
+-  background: #2d4355;
+ }
+ .rail-docs {
+   margin-top: auto;
+ }
+-.evidence-canvas {
+-  grid-column: 2;
+-  grid-row: 2;
+-  overflow-y: auto;
++.rail-button:hover {
++  background: var(--raised);
++}
++.canvas-viewport {
++  position: absolute;
++  left: 64px;
++  top: 60px;
++  right: 0;
++  bottom: 0;
++  overflow: hidden;
++  touch-action: none;
++  cursor: grab;
++  outline-offset: -3px !important;
++}
++.canvas-viewport.panning {
++  cursor: grabbing;
++}
++#canvas-links {
++  position: absolute;
++  inset: 0;
++  width: 100%;
++  height: 100%;
++  pointer-events: none;
++}
++#canvas-plane {
++  position: absolute;
++  inset: 0;
++  transform-origin: 0 0;
++  pointer-events: none;
++}
++#messages {
++  position: relative;
++  pointer-events: none;
++}
++.canvas-topbar {
++  position: absolute;
++  left: 88px;
++  right: 24px;
++  top: 82px;
++  display: flex;
++  justify-content: space-between;
++  align-items: flex-start;
++  gap: 20px;
++  z-index: 5;
++  pointer-events: none;
++}
++.canvas-topbar > * {
++  pointer-events: auto;
++}
++.source-tile {
++  display: flex;
++  align-items: center;
++  gap: 14px;
++  width: 310px;
++  min-height: 76px;
++  padding: 12px;
++  background: var(--raised);
++  border: 1px solid var(--line);
++  border-radius: 7px;
++  text-align: left;
++}
++.source-tile > img:first-child {
++  width: 84px;
++  height: 48px;
++  object-fit: cover;
++  border-radius: 3px;
++}
++.source-tile .source-item {
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
+   min-width: 0;
+-  scrollbar-width: thin;
+-  scrollbar-color: #3a5266 transparent;
+-}
+-.canvas-content {
+-  padding: 24px 24px 28px;
+-}
+-.source-heading {
+-  display: flex;
+-  gap: 18px;
+-  align-items: center;
++  flex: 1;
++}
++.source-item strong {
++  font-size: 14px;
++  font-weight: 600;
++  white-space: nowrap;
++  overflow: hidden;
++  text-overflow: ellipsis;
++}
++.source-item span {
++  font-size: 12px;
++  color: var(--muted);
++}
++.source-tile > .icon {
++  width: 19px;
++}
++.canvas-actions {
++  display: flex;
++  gap: 8px;
++  align-items: center;
++}
++.outline-button,
++select {
++  min-height: 44px;
++  border: 1px solid var(--line);
++  border-radius: 6px;
++  background: var(--bg);
++  padding: 0 14px;
++  font-size: 13px;
++  display: inline-flex;
++  align-items: center;
++  gap: 7px;
++}
++.outline-button:hover,
++select:hover {
++  background: var(--raised);
++}
++select {
++  max-width: 132px;
++}
++.outline-button .icon {
++  width: 18px;
++}
++.empty-state {
++  position: absolute;
++  left: 12%;
++  top: 30%;
++  max-width: 660px;
++  cursor: auto;
++}
++.eyebrow {
++  font-size: 13px;
++  color: var(--muted);
++}
++.task-intro h1 {
++  font-size: 38px;
++  letter-spacing: -1px;
++  line-height: 1.3;
++  margin: 16px 0;
++}
++.task-intro > p {
++  font-size: 16px;
++  color: var(--muted);
++  line-height: 1.8;
++}
++.suggestions {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 10px;
++  margin-top: 30px;
++}
++.suggestions button {
++  min-height: 46px;
++  padding: 0 16px;
++  border: 1px solid var(--line);
++  border-radius: 6px;
++  font-size: 14px;
++  display: flex;
++  align-items: center;
++  gap: 12px;
++}
++.suggestions button:first-child {
++  border-color: var(--orange);
++}
++.suggestions button:hover {
++  background: var(--raised);
++}
++.turn {
++  position: absolute;
++  width: 330px;
++  background: #192a37;
++  border: 1px solid #516b80;
++  border-radius: 7px;
++  padding: 18px;
++  pointer-events: auto;
++  cursor: default;
++}
++.turn.selected {
++  border: 2px solid var(--orange);
++  padding: 17px;
++}
++.card-heading {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  margin: -6px -6px 6px;
++  gap: 6px;
++}
++.card-drag {
++  flex: 1;
++  min-width: 0;
++  text-align: left;
++  color: var(--muted);
++  font-size: 12px;
++  min-height: 38px;
++  cursor: grab;
++  touch-action: none;
++}
++.card-drag:active {
++  cursor: grabbing;
++}
++.card-select {
++  min-height: 38px;
++  font-size: 12px;
++  color: var(--muted);
++}
++.card-select:hover {
++  color: var(--orange);
++}
++.question-bubble {
++  font-size: 19px;
++  font-weight: 650;
++  line-height: 1.5;
++  overflow-wrap: anywhere;
+   margin-bottom: 18px;
+-  min-height: 28px;
+-}
+-.source-heading h1 {
+-  font-size: 27px;
+-  font-weight: 650;
+-  letter-spacing: 0.2px;
+-}
+-.video-state,
+-.mode-label {
+-  color: #c2d0dc;
+-  font-size: 13px;
++}
++.answer-label {
++  font-size: 12px;
++  color: var(--muted);
++  display: flex;
++  justify-content: space-between;
++  gap: 8px;
++  margin-bottom: 5px;
++}
++.fixture-tag {
++  font-size: 11px;
++}
++.answer-text {
++  font-size: 16px;
++  line-height: 1.65;
++  overflow-wrap: anywhere;
++  margin-bottom: 16px;
++}
++.answer-status {
++  display: none;
++}
++.answer-status.partial,
++.answer-status.no_result,
++.answer-status.error {
++  display: inline-block;
++  color: var(--muted);
++  font-size: 12px;
++  margin-bottom: 14px;
++}
++.answer-status.partial {
++  color: var(--orange);
++}
++.event {
++  display: flex;
++  flex-direction: column;
++}
++.event-heading,
++.support-label,
++.event-summary {
++  display: none;
++}
++.event-toolbar {
++  order: 2;
++}
++.seek-button {
++  color: var(--orange);
++  font-size: 13px;
++  min-height: 38px;
++  text-align: left;
++  padding: 6px 0;
++}
++.evidence-grid {
++  width: 100%;
++}
++.evidence-button {
++  position: relative;
++  display: block;
++  width: 100%;
++  padding: 0;
+   border: 1px solid var(--line);
+-  border-radius: 20px;
+-  padding: 5px 12px;
+-  white-space: nowrap;
+-}
+-.workspace-caption {
+-  margin-left: auto;
+-  font-size: 12px;
+-  color: var(--muted);
+-}
+-.player-wrap {
+-  position: relative;
+-  background: #090f14;
+-  border-radius: 6px;
+-  overflow: hidden;
+-}
+-.player-wrap video {
+-  width: 100%;
+-  aspect-ratio: 16/9;
+-  display: block;
+-  object-fit: contain;
+-  background: #090f14;
+-}
+-.video-watermark {
+-  position: absolute;
+-  top: 16px;
+-  left: 16px;
+-  background: #0c151bcc;
+-  padding: 6px 10px;
+   border-radius: 4px;
+-  font-size: 14px;
+-  pointer-events: none;
+-}
+-.player-footer {
+-  display: flex;
+-  align-items: center;
+-  justify-content: space-between;
+-  gap: 12px;
+-  color: var(--muted);
+-  font-size: 12px;
+-  min-height: 37px;
+-}
+-.player-footer #video-meta {
+-  white-space: nowrap;
+-}
+-.section-label {
+-  display: flex;
+-  align-items: center;
+-  justify-content: space-between;
+-  gap: 10px;
+-  color: var(--muted);
+-}
+-.section-label h2 {
+-  font-size: 15px;
+-  font-weight: 500;
+-  color: var(--text);
+-}
+-.timecode {
+-  font-variant-numeric: tabular-nums;
+-  letter-spacing: 0.4px;
+-}
+-.timeline-section {
+-  margin: 12px 0 24px;
+-}
+-.timeline {
+-  display: grid;
+-  grid-template-columns: 5fr 6fr 7fr;
+-  position: relative;
+-  margin-top: 14px;
+-  border-top: 3px solid #536879;
+-}
+-.playhead {
+-  height: 3px;
+-  position: absolute;
+-  left: 0;
+-  right: 0;
+-  top: -3px;
+-  background: var(--orange);
+-  transform: scaleX(0);
+-  transform-origin: left;
+-  pointer-events: none;
+-}
+-.chapter {
+-  min-height: 44px;
+-  text-align: left;
+-  display: flex;
+-  justify-content: space-between;
+-  align-items: center;
+-  padding: 12px 14px 0 0;
+-  font-size: 13px;
+-  color: var(--muted);
+-  border-left: 1px solid #6a7d8b;
+-  padding-left: 9px;
+-}
+-.chapter:first-of-type {
+-  padding-left: 0;
+-  border: 0;
+-}
+-.chapter.active {
+-  color: var(--orange);
+-}
+-.chapter:hover {
+-  color: var(--text);
+-}
+-.frame-heading {
+-  margin-bottom: 12px;
+-}
+-.frame-heading > span {
+-  font-size: 12px;
+-}
+-.frame-strip {
+-  display: flex;
+-  gap: 16px;
+-}
+-.segment {
+-  width: 23%;
+-  max-width: 212px;
+-  min-width: 100px;
+-  position: relative;
+-  border: 2px solid var(--line);
+-  border-radius: 5px;
+-  padding: 0;
+   overflow: hidden;
+   text-align: left;
+-  transition: border-color 0.15s;
+-}
+-.segment img {
++}
++.evidence-button > img {
+   display: block;
+   width: 100%;
+   aspect-ratio: 16/9;
+-  object-fit: contain;
+-}
+-.segment > span {
+-  position: absolute;
+-  bottom: 5px;
+-  right: 5px;
+-  font-size: 13px;
+-  background: #0a141deb;
++  object-fit: cover;
++}
++.evidence-button.selected {
++  border-color: var(--orange);
++}
++.evidence-caption {
++  position: absolute;
++  bottom: 7px;
++  right: 7px;
+   padding: 3px 6px;
+-  border-radius: 3px;
+-  font-variant-numeric: tabular-nums;
+-}
+-.segment > span > span {
+-  color: #b9c7d2;
+-  margin-left: 7px;
+-}
+-.segment.active {
+-  border-color: var(--orange);
+-}
+-.segment:hover {
+-  border-color: #e7eff4;
++  background: #111f2be6;
++  font-size: 12px;
++}
++.evidence-caption > span {
++  display: none;
++}
++.unresolved {
++  color: var(--muted);
++  font-size: 13px;
++  line-height: 1.6;
++  margin: 10px 0;
++}
++.unresolved strong {
++  display: none;
++}
++.trace-note {
++  display: none;
++}
++.response-details {
++  font-size: 12px;
++  color: var(--muted);
++  margin-top: 6px;
++}
++.response-details > summary {
++  min-height: 34px;
++  cursor: pointer;
++  display: list-item;
++  padding: 8px 0;
++}
++.response-details > summary:hover {
++  color: var(--text);
++}
++.response-details > button.evidence-button {
++  margin: 12px 0;
++}
++.response-details pre {
++  white-space: pre-wrap;
++  overflow-wrap: anywhere;
++  font-size: 11px;
++  max-height: 220px;
++  overflow: auto;
++}
++.response-actions {
++  display: flex;
++  gap: 8px;
++  flex-wrap: wrap;
++  border-top: 1px solid var(--line);
++  margin-top: 7px;
++  padding-top: 7px;
++}
++.text-button {
++  color: var(--muted);
++  font-size: 12px;
++  min-height: 36px;
++}
++.text-button:hover {
++  color: var(--orange);
++}
++.response-actions > .text-button {
++  color: var(--orange);
++  text-align: left;
++}
++.card-followup {
++  margin-left: auto;
++}
++.evidence-viewer {
++  position: absolute;
++  top: 148px;
++  right: 24px;
++  width: 350px;
++  max-height: calc(100dvh - 345px);
++  overflow: auto;
++  padding: 14px;
++  background: #182936;
++  border: 1px solid var(--line);
++  border-radius: 8px;
++  z-index: 7;
++}
++.viewer-heading {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 10px;
++}
++.viewer-heading h2 {
++  font-size: 16px;
++  font-weight: 650;
++  line-height: 1.5;
++  overflow-wrap: anywhere;
++}
++.icon-button {
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  min-width: 40px;
++  min-height: 40px;
++}
++.viewer-source {
++  font-size: 11px;
++  color: var(--muted);
++  display: flex;
++  gap: 10px;
++  margin: 6px 0 12px;
++}
++.viewer-source > span:first-child {
++  overflow-wrap: anywhere;
++  min-width: 0;
++}
++.player-wrap {
++  position: relative;
++}
++.player-wrap video {
++  display: block;
++  width: 100%;
++  aspect-ratio: 16/9;
++  background: #0b141c;
++  border-radius: 4px;
++}
++.player-wrap > span {
++  position: absolute;
++  top: 8px;
++  left: 8px;
++  font-size: 11px;
++  padding: 3px 5px;
++  background: #111f2be6;
++  pointer-events: none;
++}
++.player-footer {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 8px;
++  font-size: 11px;
++  color: var(--muted);
++  margin-top: 9px;
++  line-height: 1.6;
++}
++#video-meta {
++  font-size: 11px;
++  color: var(--muted);
++  line-height: 1.6;
++  margin-top: 6px;
++}
++.timeline-section {
++  margin-top: 14px;
++  font-size: 11px;
++  color: var(--muted);
++}
++.timeline {
++  position: relative;
++  display: flex;
++  margin-top: 8px;
++  border-top: 2px solid var(--line);
++}
++#playhead {
++  position: absolute;
++  top: -2px;
++  left: 0;
++  width: 100%;
++  height: 2px;
++  background: var(--orange);
++  transform-origin: left;
++}
++.chapter {
++  width: 33.33%;
++  min-height: 30px;
++  font-size: 11px;
++}
++.chapter.active {
++  color: var(--orange);
+ }
+ .demo-details {
+-  margin-top: 24px;
+-  border-top: 1px solid #2b4052;
+-  padding-top: 15px;
+-  color: var(--muted);
+-  font-size: 13px;
++  font-size: 11px;
++  color: var(--muted);
++  line-height: 1.7;
++  margin-top: 8px;
+ }
+ .demo-details summary {
+   cursor: pointer;
+-  min-height: 28px;
+-}
+-.demo-details > p {
+-  margin: 10px 0;
++  min-height: 32px;
++  padding: 7px 0;
++}
++.local-note {
++  font-size: 13px;
++  color: var(--muted);
+   line-height: 1.7;
+-}
+-.text-button {
+-  font-size: 13px;
+-  color: #b7cbdc;
+-  padding: 7px 0;
+-  margin-right: 12px;
+-}
+-.text-button:hover {
++  margin: 12px 0;
++}
++.restore-button {
+   color: var(--orange);
+-}
+-.run-context {
+-  padding: 14px 0;
+-}
+-.run-steps {
+-  margin: 10px 0;
+-  padding: 0;
+-  list-style: none;
+-}
+-.run-steps li {
+-  display: flex;
++  min-height: 44px;
++  font-size: 13px;
++}
++.composer-area {
++  position: absolute;
++  z-index: 8;
++  bottom: 24px;
++  left: calc(50% + 32px);
++  transform: translateX(-50%);
++  width: min(720px, calc(100% - 480px));
++}
++.composer-area form {
++  padding: 12px 16px;
++  background: var(--raised);
++  border: 1px solid #486277;
++  border-radius: 8px;
++}
++.composer-area:focus-within form {
++  border-color: #70899e;
++}
++.composer-context {
++  display: flex;
++  align-items: center;
++  gap: 12px;
+   justify-content: space-between;
+-  padding: 9px 0;
+-  border-bottom: 1px solid #2a3e50;
+-}
+-.run-steps p {
+-  font-size: 12px;
+-  margin-top: 4px;
+-}
+-.run-steps strong {
+-  font-weight: 500;
+-  color: var(--text);
+-}
+-.run-steps li.complete > span {
+-  color: #9cd1b6;
+-}
+-.local-note {
+-  padding: 18px 0;
+-  color: var(--muted);
+-  font-size: 14px;
+-  line-height: 1.7;
+-}
+-.conversation {
+-  grid-column: 3;
+-  grid-row: 2;
+-  display: flex;
+-  flex-direction: column;
+-  border-left: 1px solid #304659;
+-  min-width: 0;
+-  min-height: 0;
+-  background: #11202cd9;
+-}
+-.conversation-header {
+-  height: 76px;
+-  flex-shrink: 0;
+-  display: flex;
+-  align-items: center;
+-  justify-content: space-between;
+-  gap: 15px;
+-  padding: 0 24px;
+-  border-bottom: 1px solid #2d4355;
+-}
+-.conversation-header h2 {
+-  font-size: 25px;
+-  font-weight: 650;
+-}
+-.new-task {
+-  display: flex;
+-  align-items: center;
+-  gap: 8px;
+-  border: 1px solid var(--line);
+-  padding: 10px 12px;
+-  border-radius: 6px;
+-  font-size: 15px;
+-  white-space: nowrap;
+-}
+-.new-task .icon {
+-  width: 18px;
+-  height: 18px;
+-}
+-.new-task:hover {
+-  background: #243a4c;
+-}
+-.conversation-context {
+-  display: flex;
+-  align-items: center;
+-  gap: 8px;
+-  padding: 12px 24px;
+-  color: var(--muted);
+-  font-size: 12px;
+-  flex-shrink: 0;
+-}
+-.source-item {
+-  min-width: 0;
++  min-height: 27px;
++  margin-bottom: 5px;
++}
++.composer-context label {
++  font-size: 13px;
++  font-weight: 600;
+   overflow: hidden;
+   text-overflow: ellipsis;
+   white-space: nowrap;
+ }
+-.mode-label {
+-  font-size: 12px;
+-  padding: 3px 8px;
++.composer-context .text-button {
++  font-size: 11px;
++  min-height: 27px;
++  flex-shrink: 0;
++}
++.composer-area textarea {
++  resize: none;
++  display: block;
++  width: 100%;
++  height: 48px;
++  background: none;
++  border: 0;
++  padding: 5px 0;
++  color: var(--text);
++  font-size: 16px;
++  line-height: 1.5;
++  outline-offset: 0;
++}
++.composer-area textarea::placeholder {
++  color: var(--muted);
++}
++.composer-tools {
++  display: flex;
++  align-items: center;
++  gap: 12px;
++  margin-top: 5px;
++}
++.composer-tools > span {
++  color: var(--muted);
++  font-size: 11px;
++}
++.send-button {
+   margin-left: auto;
+-}
+-.context-toggle {
+-  display: none;
+-}
+-.chat-content {
+-  flex: 1;
+-  min-height: 0;
+-  overflow-y: auto;
+-  padding: 16px 22px 24px;
+-  scrollbar-width: thin;
+-  scrollbar-color: #3a5266 transparent;
+-  overscroll-behavior: contain;
+-}
+-.empty-state {
+-  display: flex;
+-  align-items: center;
+-  min-height: 85%;
+-  padding: 22px 10px;
+-}
+-.eyebrow {
+-  display: block;
+-  color: var(--orange);
+-  font-size: 13px;
+-  margin-bottom: 20px;
+-}
+-.task-intro h2 {
+-  font-size: 34px;
+-  line-height: 1.45;
+-  font-weight: 600;
+-  letter-spacing: -0.5px;
+-}
+-.task-intro p {
+-  font-size: 15px;
+-  color: var(--muted);
+-  line-height: 1.9;
+-  margin-top: 20px;
+-}
+-.turn {
+-  padding: 0 0 25px;
+-  margin-bottom: 20px;
+-  border-bottom: 1px solid #2b3e4e;
+-  scroll-margin-top: 16px;
+-}
+-.turn:last-child {
+-  margin-bottom: 0;
+-  border-bottom: 0;
+-}
+-.question-bubble {
+-  margin: 0 0 24px;
+-  padding: 13px 16px;
+-  border: 1px solid #354b5d;
+-  border-radius: 9px;
+-  background: #203140;
+-  line-height: 1.65;
+-  font-size: 16px;
+-  overflow-wrap: anywhere;
+-}
+-.question-bubble:before {
+-  content: "你";
+-  display: block;
+-  font-size: 12px;
+-  color: var(--muted);
+-  margin-bottom: 5px;
+-}
+-.answer-label {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 10px;
+-  align-items: center;
+-  font-size: 17px;
+-  font-weight: 600;
+-  margin-bottom: 12px;
+-}
+-.answer-label:before {
+-  content: "";
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  background: var(--orange);
++  width: 42px;
++  height: 42px;
++  border-radius: 50%;
++}
++.send-button .icon {
++  filter: none;
+   width: 24px;
+   height: 24px;
+-  flex-shrink: 0;
+-  background:
+-    url("/static/icons/play.svg") center/18px no-repeat,
+-    var(--orange);
+-  border-radius: 4px;
+-}
+-.fixture-tag {
+-  margin-left: auto;
+-  color: var(--muted);
+-  font-size: 12px;
+-  font-weight: 400;
+-}
+-.answer-text {
+-  font-size: 16px;
+-  line-height: 1.75;
+-  padding: 0 0 12px;
+-}
+-.answer-status {
+-  display: inline-block;
+-  font-size: 12px;
+-  color: #aabdc9;
+-  margin-bottom: 12px;
+-}
+-.answer-status.partial,
+-.answer-status.error {
+-  color: #ffc795;
+-}
+-.event {
++}
++.form-notice {
++  padding: 12px 16px;
++  margin-bottom: 8px;
++  border: 1px solid var(--line);
++  border-radius: 6px;
++  background: var(--raised);
++  color: var(--muted);
++  font-size: 13px;
++  line-height: 1.6;
++}
++.canvas-footer {
++  position: absolute;
++  z-index: 5;
++  left: 88px;
++  right: 24px;
++  bottom: 24px;
++  display: flex;
++  align-items: flex-end;
++  justify-content: space-between;
++  pointer-events: none;
++}
++.canvas-footer > * {
++  pointer-events: auto;
++}
++#canvas-hint {
++  color: var(--muted);
++  font-size: 11px;
++  margin-bottom: 56px;
++}
++.view-controls {
++  display: flex;
++  align-items: center;
++  background: var(--bg);
++  border: 1px solid var(--line);
++  border-radius: 6px;
++}
++.view-controls button {
++  min-height: 40px;
++  min-width: 36px;
++  font-size: 12px;
++}
++.view-controls button:hover {
++  background: var(--raised);
++}
++#fit-canvas {
++  padding: 0 12px;
++  border-left: 1px solid var(--line);
++}
++#zoom-in .icon {
++  width: 15px;
++  height: 15px;
++}
++.conversation-history {
++  position: absolute;
++  bottom: 24px;
++  left: 88px;
++  z-index: 9;
++  width: 240px;
++  font-size: 12px;
++  color: var(--muted);
++  background: var(--bg);
++  border: 1px solid var(--line);
++  border-radius: 6px;
++}
++.conversation-history summary {
+   padding: 12px;
+-  border: 1px solid #354b5d;
+-  background: #1b2c3a;
+-  border-radius: 8px;
+-  margin-bottom: 10px;
+-}
+-.event-heading {
+-  display: none;
+-}
+-.event-toolbar {
+-  display: flex;
+-  justify-content: space-between;
+-  gap: 8px;
+-  align-items: center;
+-  margin-bottom: 10px;
+-}
+-.seek-button {
+-  font-size: 14px;
+-  color: var(--orange);
+-  padding: 3px 0;
+-}
+-.support-label {
+-  font-size: 12px;
+-  color: var(--muted);
+-}
+-.evidence-grid {
+-  display: flex;
+-  gap: 10px;
+-}
+-.evidence-button {
+-  border: 2px solid #435b6e;
+-  padding: 0;
+-  border-radius: 5px;
+-  overflow: hidden;
+-  width: 46%;
+-  max-width: 180px;
++  cursor: pointer;
++  min-height: 40px;
++}
++.conversation-history nav {
++  display: flex;
++  flex-direction: column;
++  max-height: 280px;
++  overflow: auto;
++}
++.conversation-history > p,
++.conversation-history > span {
++  display: block;
++  padding: 12px;
++}
++.history-task {
+   text-align: left;
+-  position: relative;
+-}
+-.evidence-button img {
+-  display: block;
+-  width: 100%;
+-  aspect-ratio: 16/9;
+-  object-fit: contain;
+-}
+-.evidence-caption {
+-  position: absolute;
+-  bottom: 3px;
+-  right: 3px;
+-  background: #0d1822e8;
+-  padding: 3px 6px;
+-  font-size: 12px;
+-  border-radius: 3px;
+-  font-variant-numeric: tabular-nums;
+-}
+-.evidence-caption > span {
+-  display: none;
+-}
+-.evidence-button.selected {
+-  border-color: var(--orange);
+-}
+-.evidence-button.selected .evidence-caption {
+-  color: var(--orange);
+-}
+-.evidence-button:hover {
+-  border-color: #cddce7;
+-}
+-.event-summary {
+-  display: none;
+-}
+-.event > .text-button {
+-  padding: 8px 0 0;
+-  font-size: 12px;
+-}
+-.trace-note {
+-  display: none;
+-}
+-.unresolved {
+-  border-left: 2px solid #d99864;
+-  padding: 8px 12px;
+-  margin: 4px 0 12px;
+-  color: #ccd8e2;
+-  font-size: 13px;
+-  line-height: 1.7;
+-}
+-.unresolved strong {
+-  color: #ffc795;
+-  font-weight: 500;
+-}
+-.response-details {
+-  font-size: 12px;
+-  color: var(--muted);
+-  margin: 5px 0;
+-}
+-.response-details summary {
+-  cursor: pointer;
+-  padding: 5px 0;
+-}
+-.response-details pre {
+-  font-size: 12px;
+-  white-space: pre-wrap;
+-  overflow-wrap: anywhere;
+-  padding: 12px;
+-  background: #0d1922;
+-  border-radius: 5px;
+-}
+-.response-actions {
+-  display: flex;
+-  gap: 12px;
+-  flex-wrap: wrap;
+-}
+-.response-actions .text-button {
+-  font-size: 12px;
+-  color: #c2d4e3;
+-  border-bottom: 1px solid #425f74;
+-}
+-.turn.selected {
+-  border-left: 3px solid var(--orange);
+-  padding-left: 12px;
+-  margin-left: -15px;
+-  background: linear-gradient(90deg, #ff702e08, transparent 65%);
+-}
+-.composer-area {
+-  flex-shrink: 0;
+-  padding: 0 16px 13px;
+-  border-top: 1px solid transparent;
+-}
+-.suggestions {
+-  display: flex;
+-  gap: 6px;
+-  flex-wrap: wrap;
+-  padding: 8px 2px 12px;
+-}
+-.suggestions button {
+-  border: 1px solid #375067;
+-  border-radius: 5px;
+-  padding: 7px 9px;
+-  font-size: 12px;
+-  color: #b8cbdc;
+-}
+-.suggestions button:hover {
+-  border-color: var(--orange);
+-  color: var(--text);
+-}
+-.composer {
+-  border: 1px solid #496379;
+-  border-radius: 9px;
+-  padding: 13px 14px 10px;
+-  background: #182a38;
+-}
+-.composer:focus-within {
+-  border-color: #a9c0d1;
+-}
+-.composer label {
+-  display: block;
+-  font-size: 15px;
+-  font-weight: 600;
+-  margin-bottom: 10px;
+-}
+-.composer textarea {
+-  display: block;
+-  border: 0;
+-  background: #142532;
+-  color: var(--text);
+-  resize: none;
+-  width: 100%;
+-  min-height: 64px;
+-  padding: 12px;
+-  border-radius: 5px;
+-  line-height: 1.5;
+-  font-size: 15px;
+-}
+-.composer textarea::placeholder {
+-  color: #9bb0c1;
+-}
+-.composer-tools {
+-  display: flex;
+-  justify-content: space-between;
+-  align-items: center;
+-  margin-top: 9px;
+-}
+-.attach-button {
+-  padding: 8px 0;
+-  display: flex;
+-  align-items: center;
+-}
+-.attach-button .icon {
+-  width: 25px;
+-  height: 25px;
+-}
+-.send-button {
+-  background: var(--orange);
+-  width: 48px;
+-  height: 48px;
+-  border-radius: 50%;
+-  display: grid;
+-  place-items: center;
+-}
+-.send-button:hover:not(:disabled) {
+-  background: #ff874d;
+-}
+-.send-button .icon {
+-  width: 26px;
+-  height: 26px;
+-}
+-.composer-hint {
+-  display: flex;
+-  flex-wrap: wrap;
+-  justify-content: space-between;
+-  gap: 6px;
+-  color: var(--muted);
+-  font-size: 12px;
+-  margin: 8px 1px;
+-}
+-.conversation-history {
+-  font-size: 12px;
+-  color: var(--muted);
+-  margin-top: 9px;
+-}
+-.conversation-history summary {
+-  cursor: pointer;
+-}
+-.conversation-history summary > span:last-child {
+-  float: right;
+-}
+-.conversation-history[open] {
+-  max-height: 160px;
+-  overflow-y: auto;
+-}
+-.history-task {
+-  display: block;
+-  width: 100%;
+-  padding: 9px 4px;
+-  text-align: left;
+-  border-bottom: 1px solid #2b4152;
+-  color: #c4d1db;
+-  font-size: 12px;
++  padding: 10px 12px;
++  min-height: 38px;
++  font-size: 13px;
+ }
+ .history-task.active {
+   color: var(--orange);
+-}
+-#history-empty {
+-  padding: 10px 0;
+-}
+-.form-notice {
+-  padding: 10px 12px;
+-  border: 1px solid #765638;
+-  background: #3b2d22;
+-  margin: 8px 0;
+-  font-size: 13px;
+-  line-height: 1.7;
+-  border-radius: 6px;
+-}
+-.restore-button {
+-  color: var(--orange);
+-  padding: 10px 0;
+-  font-size: 13px;
+-}
+-@media (min-width: 1700px) {
+-  .canvas-content {
+-    padding: 28px 32px;
+-  }
+-  .source-heading {
+-    margin-bottom: 24px;
+-  }
+-  .source-heading h1 {
+-    font-size: 30px;
+-  }
+-}
+-@media (max-width: 1150px) and (min-width: 900px) {
+-  .agent-shell {
+-    grid-template-columns: 58px minmax(0, 1fr) 390px;
+-  }
+-  .studio-header {
+-    padding-left: 80px;
+-    gap: 18px;
+-  }
++  background: var(--raised);
++}
++@media (max-width: 1250px) {
+   .studio-header > p {
+     display: none;
+   }
+-  .source-heading h1 {
+-    font-size: 21px;
+-  }
+-  .workspace-caption {
++  .composer-area {
++    width: 600px;
++    bottom: 75px;
++  }
++  .evidence-viewer {
++    width: 300px;
++  }
++  .canvas-actions {
++    gap: 5px;
++  }
++  .canvas-topbar {
++    left: 82px;
++    right: 18px;
++  }
++  .source-tile {
++    width: 280px;
++  }
++  .canvas-footer {
++    left: 82px;
++    right: 18px;
++  }
++}
++@media (max-height: 790px) {
++  .composer-area {
++    bottom: 65px;
++  }
++  .canvas-footer {
++    bottom: 14px;
++  }
++  .evidence-viewer {
++    max-height: calc(100dvh - 250px);
++  }
++  .conversation-history {
++    bottom: 14px;
++  }
++  #canvas-hint {
+     display: none;
+   }
+-  .canvas-content {
+-    padding: 22px 18px;
+-  }
+-  .player-footer {
+-    flex-wrap: wrap;
+-  }
+-  .segment {
+-    width: 30%;
+-  }
+-}
+-@media (max-width: 899px) {
++}
++@media (max-width: 850px) {
+   .agent-shell {
+-    height: 100dvh;
+-    min-height: 600px;
+-    grid-template-columns: 1fr;
+-    grid-template-rows: 66px minmax(0, 1fr);
+-  }
+-  .studio-header {
+-    padding: 0 18px;
+-    gap: 16px;
+-  }
+-  .brand {
+-    font-size: 28px;
+-  }
+-  .studio-title {
+-    font-size: 15px;
+-    padding-left: 15px;
+-  }
+-  .studio-header > p,
+-  .open-source,
+-  .studio-rail {
+     display: none;
+   }
+-  .conversation {
+-    grid-column: 1;
+-    grid-row: 2;
+-    border: 0;
+-  }
+-  .conversation-header {
+-    height: 64px;
+-    padding: 0 18px;
+-  }
+-  .conversation-header h2 {
+-    font-size: 21px;
+-  }
+-  .conversation-context {
+-    padding: 10px 18px;
+-  }
+-  .context-toggle {
++  .desktop-message {
+     display: block;
+-    white-space: nowrap;
+-    color: #d4e1eb;
+-    border-bottom: 1px solid #627d92;
+-    padding: 4px;
+-  }
+-  .mode-label {
+-    display: none;
+-  }
+-  .evidence-canvas {
+-    display: none;
+-    grid-column: 1;
+-    grid-row: 2;
+-  }
+-  .evidence-open .evidence-canvas {
+-    display: block;
+-    position: absolute;
+-    top: 130px;
+-    bottom: 0;
+-    left: 0;
+-    right: 0;
+-    z-index: 2;
+-    background: var(--bg);
+-    padding-bottom: 20px;
+-  }
+-  .evidence-open .conversation-header {
+-    visibility: hidden;
+-  }
+-  .evidence-open .conversation-context {
+-    position: absolute;
+-    top: 78px;
+-    right: 18px;
+-    z-index: 3;
+-    padding: 0;
+-  }
+-  .evidence-open .source-item {
+-    display: none;
+-  }
+-  .canvas-content {
+-    padding: 20px 18px;
+-  }
+-  .source-heading {
+-    gap: 10px;
+-  }
+-  .source-heading h1 {
+-    font-size: 19px;
+-  }
+-  .workspace-caption {
+-    display: none;
+-  }
+-  .video-state {
+-    font-size: 12px;
+-    padding: 4px 8px;
+-  }
+-  .player-footer {
+-    align-items: start;
+-    flex-direction: column;
+-    padding: 10px 0;
+-    font-size: 12px;
+-  }
+-  .segment {
+-    width: 31%;
+-    min-width: 0;
+-  }
+-  .frame-strip {
+-    gap: 10px;
+-  }
+-  .segment > span > span {
+-    display: none;
+-  }
+-  .chat-content {
+-    padding: 16px 20px;
+-  }
+-  .composer-area {
+-    padding: 0 14px 12px;
+-  }
+-  .composer-hint {
+-    font-size: 12px;
+-  }
+-  .empty-state {
+-    min-height: 80%;
+-    padding: 18px 10px;
+-  }
+-  .task-intro h2 {
++    padding: 12vh 8vw;
++  }
++  .desktop-message h1 {
+     font-size: 32px;
+-  }
+-  .task-intro p {
+-    font-size: 14px;
+-  }
+-  .turn {
+-    padding-bottom: 18px;
+-    margin-bottom: 18px;
+-  }
+-  .question-bubble {
+-    margin-bottom: 18px;
+-  }
+-  .conversation-history {
+-    margin-top: 8px;
++    margin-bottom: 20px;
++  }
++  .desktop-message p {
++    color: var(--muted);
++    line-height: 1.8;
+   }
+ }
+ @media (prefers-reduced-motion: reduce) {
+   * {
+-    transition: none !important;
+     scroll-behavior: auto !important;
+   }
+ }
+-/* Compact chronological turns keep both question/answer pairs visible. */
+-.conversation-context {
+-  padding-top: 10px;
+-  padding-bottom: 10px;
+-}
+-.question-bubble {
+-  padding: 10px 14px;
+-  margin-bottom: 14px;
+-  font-size: 17px;
+-  line-height: 1.5;
+-}
+-.question-bubble:before {
+-  font-size: 12px;
+-  line-height: 1.4;
+-  margin-bottom: 3px;
+-}
+-.answer-label {
+-  margin-bottom: 8px;
+-  font-size: 18px;
+-}
+-.answer-text {
+-  font-size: 17px;
+-  line-height: 1.6;
+-  padding-bottom: 10px;
+-}
+-.answer-status.ok {
+-  display: none;
+-}
+-.event {
+-  display: flex;
+-  align-items: center;
+-  gap: 14px;
+-  padding: 10px 12px;
+-}
+-.event-toolbar {
+-  order: 2;
+-  flex: 1;
+-  display: block;
+-  margin: 0;
+-}
+-.seek-button {
+-  font-size: 14px;
+-  padding: 10px 0;
+-  min-height: 44px;
+-}
+-.support-label {
+-  display: none;
+-}
+-.evidence-grid {
+-  width: 47%;
+-  flex-shrink: 0;
+-  display: block;
+-}
+-.evidence-button {
+-  width: 100%;
+-  max-width: 180px;
+-}
+-.response-details {
+-  margin-top: 10px;
+-}
+-.response-details summary {
+-  padding: 5px 0;
+-  font-size: 12px;
+-}
+-.response-details > .evidence-button {
+-  width: 160px;
+-  display: block;
+-  margin: 10px 0;
+-}
+-.turn {
+-  padding-bottom: 18px;
+-  margin-bottom: 16px;
+-}
+-.composer textarea {
+-  min-height: 54px;
+-  padding: 10px;
+-  font-size: 16px;
+-}
+-.composer-tools {
+-  margin-top: 3px;
+-}
+-.send-button {
+-  width: 46px;
+-  height: 46px;
+-}
+-.composer {
+-  padding: 12px 14px 9px;
+-}
+-.composer label {
+-  font-size: 16px;
+-  margin-bottom: 8px;
+-}
+-@media (max-width: 899px) {
+-  .suggestions button {
+-    min-height: 40px;
+-    font-size: 12px;
+-  }
+-  .new-task {
+-    min-height: 44px;
+-  }
+-  .context-toggle {
+-    min-height: 44px;
+-  }
+-  .frame-strip .segment {
+-    min-height: 60px;
+-  }
+-  .conversation-context {
+-    padding-top: 4px;
+-    padding-bottom: 4px;
+-  }
+-  .evidence-open .conversation-context {
+-    top: 76px;
+-  }
+-  .composer-hint {
+-    font-size: 12px;
+-  }
+-  .fixture-tag {
+-    font-size: 12px;
+-  }
+-}
+-@media (min-width: 900px) {
+-  .conversation-context {
+-    display: none;
+-  }
+-  .source-heading h1 {
+-    font-size: 30px;
+-  }
+-}
+-.answer-text {
+-  font-size: 18px;
+-  padding-bottom: 8px;
+-}
+-.evidence-grid {
+-  width: 140px;
+-}
+-.event {
+-  gap: 16px;
+-  padding: 8px 10px;
+-}
+-.evidence-button {
+-  max-width: 140px;
++
++/* Canvas density and non-overlapping evidence dock, checked against selected concept. */
++.card-drag,
++.card-select {
++  min-height: 28px;
+ }
+ .question-bubble {
+   margin-bottom: 12px;
+ }
+-.turn {
+-  padding-bottom: 14px;
+-  margin-bottom: 14px;
+-}
+-.response-details {
+-  margin-top: 5px;
+-  margin-bottom: 0;
+-}
+-.sr-only {
+-  top: 0;
+-  left: 0;
+-}
+-.agent-shell {
+-  min-height: 0;
+-}
+-.attach-button {
+-  min-width: 44px;
+-  min-height: 44px;
+-}
+-.task-intro h2 {
+-  max-width: 9em;
+-}
+-@media (max-width: 899px) {
+-  .evidence-open .chat-content,
+-  .evidence-open .composer-area {
+-    visibility: hidden;
+-  }
+-  .response-details summary {
+-    min-height: 44px;
+-    display: flex;
+-    align-items: center;
+-  }
+-  .evidence-open .conversation {
+-    overflow: hidden;
+-  }
+-}
+-@media (max-width: 899px) {
+-  .response-details summary {
+-    display: list-item;
+-    line-height: 34px;
++.answer-text {
++  margin-bottom: 12px;
++}
++.fixture-tag {
++  display: none;
++}
++.seek-button {
++  min-height: 30px;
++}
++.response-details > summary {
++  min-height: 28px;
++  padding: 5px 0;
++}
++.response-actions {
++  padding-top: 0;
++  margin-top: 6px;
++}
++.response-actions .text-button {
++  min-height: 32px;
++}
++.turn[data-status="partial"] {
++  width: 300px;
++}
++.turn[data-status="partial"] .answer-status {
++  display: none;
++}
++.evidence-viewer {
++  top: 80px;
++  max-height: 370px;
++}
++.agent-shell:has(.evidence-viewer:not([hidden])) .canvas-actions {
++  margin-right: 370px;
++}
++.composer-area {
++  width: min(660px, calc(100% - 500px));
++}
++.composer-area textarea:focus-visible {
++  outline: none;
++}
++.composer-area:focus-within form {
++  border-color: var(--orange);
++}
++@media (max-width: 1250px) {
++  .agent-shell:has(.evidence-viewer:not([hidden])) .canvas-actions {
++    margin-right: 320px;
++    flex-wrap: wrap;
++    justify-content: flex-end;
++  }
++  .source-tile {
++    width: 260px;
++  }
++  .composer-area {
++    width: 600px;
++  }
++  .evidence-viewer {
++    max-height: 350px;
++  }
++  .canvas-actions select {
++    width: 110px;
++  }
++  .canvas-actions .outline-button {
++    padding: 0 10px;
+   }
+ }
+
+-/* Disclosure rows and compact actions keep a usable click/touch area. */
+-.demo-details summary,
+-.conversation-history summary {
+-  min-height: 44px;
+-  line-height: 44px;
+-}
+-.suggestions button,
+-.new-task,
+-.history-task,
+-.text-button {
+-  min-height: 44px;
+-}
+-.response-details summary {
+-  min-height: 44px;
+-  line-height: 34px;
+-}
+-.composer-area {
+-  padding-bottom: max(12px, env(safe-area-inset-bottom));
+-}
+-
+-/* Keep first questions with their empty-state prompt. */
+-.task-intro h2 {
+-  font-size: 30px;
+-  line-height: 1.4;
+-}
+-.task-intro > .suggestions {
+-  margin-top: 20px;
+-  padding: 0;
+-  gap: 8px;
+-}
+-.task-intro .suggestions button {
+-  font-size: 14px;
+-  text-align: left;
+-}
+-@media (max-width: 899px) {
+-  .task-intro h2 { font-size: 28px; }
+-}
+-
+-/* Hover must preserve the currently selected evidence/time state. */
+-.evidence-button.selected:hover,
+-.segment.active:hover {
+-  border-color: var(--orange);
+-}
+-.chapter.active:hover {
++.turn[data-status="partial"] .card-drag {
+   color: var(--orange);
+ }
+-
+-/* Keep the full local filename readable within the video column. */
+-.source-heading {
+-  align-items: flex-start;
+-}
+-.source-heading h1 {
+-  min-width: 0;
+-  overflow-wrap: anywhere;
+-}
+-
+-/* Dark glyph on orange gives the send action a distinct, readable shape. */
+-.send-button .icon {
+-  filter: none;
+-}

@@ -1,0 +1,20 @@
+{
+  "closed": {
+    "display": "none",
+    "draft": "保留测试草稿",
+    "expanded": "false",
+    "findings": 3,
+    "label": "打开素材",
+    "questions": 6
+  },
+  "evidenceReopen": {
+    "display": "block",
+    "draft": "保留测试草稿",
+    "expanded": "true",
+    "findings": 3,
+    "label": "收起素材",
+    "player": 13,
+    "questions": 6
+  },
+  "errors": []
+}

@@ -1,0 +1,218 @@
+
+> test
+> node --test tests/*.test.cjs
+
+TAP version 13
+# Subtest: 完整问题不依赖上下文
+ok 1 - 完整问题不依赖上下文
+  ---
+  duration_ms: 1.509084
+  type: 'test'
+  ...
+# Subtest: 连续的指代追问承接包裹，再确认搬运者
+ok 2 - 连续的指代追问承接包裹，再确认搬运者
+  ---
+  duration_ms: 0.20175
+  type: 'test'
+  ...
+# Subtest: 查看证据引用上一轮而不产生新的事件
+ok 3 - 查看证据引用上一轮而不产生新的事件
+  ---
+  duration_ms: 0.062125
+  type: 'test'
+  ...
+# Subtest: 重置或改变话题后不沿用旧包裹上下文
+ok 4 - 重置或改变话题后不沿用旧包裹上下文
+  ---
+  duration_ms: 0.070167
+  type: 'test'
+  ...
+# Subtest: 未实现的问题不伪造回答，也不改动问题或目录
+ok 5 - 未实现的问题不伪造回答，也不改动问题或目录
+  ---
+  duration_ms: 0.125084
+  type: 'test'
+  ...
+# Subtest: 同一短追问按所选卡片解析，跨主题不会错误承接
+ok 6 - 同一短追问按所选卡片解析，跨主题不会错误承接
+  ---
+  duration_ms: 0.205708
+  type: 'test'
+  ...
+# Subtest: 演示分支保留显式父轮次，不修改原目录
+ok 7 - 演示分支保留显式父轮次，不修改原目录
+  ---
+  duration_ms: 0.294166
+  type: 'test'
+  ...
+# Subtest: 损坏或循环的演示引用在载入前拒绝
+ok 8 - 损坏或循环的演示引用在载入前拒绝
+  ---
+  duration_ms: 0.1695
+  type: 'test'
+  ...
+# Subtest: mobile evidence hands focus to return action, then restores clicked evidence and draft
+ok 9 - mobile evidence hands focus to return action, then restores clicked evidence and draft
+  ---
+  duration_ms: 6.331375
+  type: 'test'
+  ...
+# Subtest: loading video retains original evidence trigger for focus restoration
+ok 10 - loading video retains original evidence trigger for focus restoration
+  ---
+  duration_ms: 1.689625
+  type: 'test'
+  ...
+# Subtest: removed evidence cannot receive focus; desktop seek preserves current focus
+ok 11 - removed evidence cannot receive focus; desktop seek preserves current focus
+  ---
+  duration_ms: 2.003458
+  type: 'test'
+  ...
+# Subtest: unsupported follow-up on another topic gives a supported recovery question
+ok 12 - unsupported follow-up on another topic gives a supported recovery question
+  ---
+  duration_ms: 1.975417
+  type: 'test'
+  ...
+# Subtest: cached metadata supports immediate seek; deferred metadata applies a queued seek
+ok 13 - cached metadata supports immediate seek; deferred metadata applies a queued seek
+  ---
+  duration_ms: 4.675709
+  type: 'test'
+  ...
+# Subtest: reset after media failure cannot claim readiness; reload updates source with existing tasks
+ok 14 - reset after media failure cannot claim readiness; reload updates source with existing tasks
+  ---
+  duration_ms: 1.688583
+  type: 'test'
+  ...
+# Subtest: selecting an older task synchronizes the canvas and exposes selected history
+ok 15 - selecting an older task synchronizes the canvas and exposes selected history
+  ---
+  duration_ms: 2.234917
+  type: 'test'
+  ...
+# Subtest: mobile evidence reveal and collapse retain task draft
+ok 16 - mobile evidence reveal and collapse retain task draft
+  ---
+  duration_ms: 1.053292
+  type: 'test'
+  ...
+# Subtest: local playback and new task retain unindexed state and disabled question
+ok 17 - local playback and new task retain unindexed state and disabled question
+  ---
+  duration_ms: 1.415042
+  type: 'test'
+  ...
+# Subtest: bounded session history removes the same oldest task as the conversation
+ok 18 - bounded session history removes the same oldest task as the conversation
+  ---
+  duration_ms: 2.538125
+  type: 'test'
+  ...
+# Subtest: a branch attaches to the explicitly selected turn, not the latest turn
+ok 19 - a branch attaches to the explicitly selected turn, not the latest turn
+  ---
+  duration_ms: 0.662417
+  type: 'test'
+  ...
+# Subtest: zoom preserves the world point under the pointer and clamps scale
+ok 20 - zoom preserves the world point under the pointer and clamps scale
+  ---
+  duration_ms: 0.203458
+  type: 'test'
+  ...
+# Subtest: time and status sorting preserve graph parents and manually moved nodes are restored by arrangement
+ok 21 - time and status sorting preserve graph parents and manually moved nodes are restored by arrangement
+  ---
+  duration_ms: 0.685542
+  type: 'test'
+  ...
+# Subtest: fit includes nodes in negative world space and reset removes stale parents and transforms
+ok 22 - fit includes nodes in negative world space and reset removes stale parents and transforms
+  ---
+  duration_ms: 0.654334
+  type: 'test'
+  ...
+# Subtest: fit keeps a twelve-turn investigation chain within the viewport
+ok 23 - fit keeps a twelve-turn investigation chain within the viewport
+  ---
+  duration_ms: 0.205083
+  type: 'test'
+  ...
+# Subtest: 横向评审排列保留分支且在小桌面保有可读比例
+ok 24 - 横向评审排列保留分支且在小桌面保有可读比例
+  ---
+  duration_ms: 0.1035
+  type: 'test'
+  ...
+# Subtest: 工作台按对象排列分开问题和发现，保留证据来源
+ok 25 - 工作台按对象排列分开问题和发现，保留证据来源
+  ---
+  duration_ms: 0.1785
+  type: 'test'
+  ...
+# Subtest: 工作台取景按输入区留白，发现卡片不被底部遮挡
+ok 26 - 工作台取景按输入区留白，发现卡片不被底部遮挡
+  ---
+  duration_ms: 0.092709
+  type: 'test'
+  ...
+# Subtest: 对齐吸附选最近轴线，超出容差保持自由移动且不改父关系
+ok 27 - 对齐吸附选最近轴线，超出容差保持自由移动且不改父关系
+  ---
+  duration_ms: 0.461083
+  type: 'test'
+  ...
+# Subtest: 选中分支关联祖先和下游发现，其他分支不误标为来源
+ok 28 - 选中分支关联祖先和下游发现，其他分支不误标为来源
+  ---
+  duration_ms: 0.460708
+  type: 'test'
+  ...
+# Subtest: 小地图包含负坐标对象与远处视野，投影随缩放平移更新
+ok 29 - 小地图包含负坐标对象与远处视野，投影随缩放平移更新
+  ---
+  duration_ms: 0.240333
+  type: 'test'
+  ...
+# Subtest: 订阅使用稳定快照，可退订；独立切换旧轮次而非最新问题
+ok 30 - 订阅使用稳定快照，可退订；独立切换旧轮次而非最新问题
+  ---
+  duration_ms: 0.594083
+  type: 'test'
+  ...
+# Subtest: 证据去重保留真实引用，拒绝伪造时间或其他文件
+ok 31 - 证据去重保留真实引用，拒绝伪造时间或其他文件
+  ---
+  duration_ms: 0.165042
+  type: 'test'
+  ...
+# Subtest: partial结论与未确认项一并导出，不保存失败或无结果为事实
+ok 32 - partial结论与未确认项一并导出，不保存失败或无结果为事实
+  ---
+  duration_ms: 0.278
+  type: 'test'
+  ...
+# Subtest: 集合限制、移除与重置不遗留引用，本地文件禁止套用演示事实
+ok 33 - 集合限制、移除与重置不遗留引用，本地文件禁止套用演示事实
+  ---
+  duration_ms: 0.458
+  type: 'test'
+  ...
+# Subtest: 最近12轮受限，但保存的发现保留来源快照
+ok 34 - 最近12轮受限，但保存的发现保留来源快照
+  ---
+  duration_ms: 0.112583
+  type: 'test'
+  ...
+1..34
+# tests 34
+# suites 0
+# pass 34
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 65.769875

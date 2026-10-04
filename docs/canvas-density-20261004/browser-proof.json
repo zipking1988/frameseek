@@ -1,0 +1,51 @@
+{
+  "final": {
+    "composerTop": 1132,
+    "context": "继续追问：是连续移动吗？",
+    "density": "调查画布 · 摘要",
+    "dragging": 0,
+    "findings": 3,
+    "maxNodeBottom": 1066.9102783203125,
+    "minimap": 7,
+    "names": [
+      "固定物体核查",
+      "路径 2",
+      "路径 3",
+      "位置变化核查",
+      "路径 5",
+      "路径 6",
+      "路径 1",
+      "路径 2",
+      "路径 3"
+    ],
+    "player": 13,
+    "questions": 6,
+    "selected": "task-6",
+    "viewport": {
+      "height": 1344,
+      "width": 2164
+    },
+    "visible": [
+      "task-1",
+      "task-4",
+      "task-5",
+      "task-6",
+      "finding-1",
+      "finding-2",
+      "finding-3"
+    ],
+    "zoom": "59%"
+  },
+  "console": [],
+  "verified": [
+    "overview 57% keeps title font14px screen",
+    "detail CTA restores original image",
+    "collapsed descendants stay in DOM and history reopens ancestors",
+    "renaming saved; Escape cancels; whitespace gives visible validation",
+    "folded parent drag +77.658/+48.536 world moves its two hidden children by same delta",
+    "arrange while folded then expand gives 9 nodes and zero pairwise intersections",
+    "small map35% six objects: bottom524.34 < composer588",
+    "small detail bottom565.26 < composer589",
+    "source0/13 frames and partial conclusions preserve original provenance"
+  ]
+}

@@ -1,0 +1,130 @@
+TAP version 13
+# Subtest: 完整问题不依赖上下文
+ok 1 - 完整问题不依赖上下文
+  ---
+  duration_ms: 1.070416
+  type: 'test'
+  ...
+# Subtest: 连续的指代追问承接包裹，再确认搬运者
+ok 2 - 连续的指代追问承接包裹，再确认搬运者
+  ---
+  duration_ms: 0.109542
+  type: 'test'
+  ...
+# Subtest: 查看证据引用上一轮而不产生新的事件
+ok 3 - 查看证据引用上一轮而不产生新的事件
+  ---
+  duration_ms: 0.106791
+  type: 'test'
+  ...
+# Subtest: 重置或改变话题后不沿用旧包裹上下文
+ok 4 - 重置或改变话题后不沿用旧包裹上下文
+  ---
+  duration_ms: 0.112584
+  type: 'test'
+  ...
+# Subtest: 未实现的问题不伪造回答，也不改动问题或目录
+ok 5 - 未实现的问题不伪造回答，也不改动问题或目录
+  ---
+  duration_ms: 0.064958
+  type: 'test'
+  ...
+# Subtest: mobile evidence hands focus to return action, then restores clicked evidence and draft
+ok 6 - mobile evidence hands focus to return action, then restores clicked evidence and draft
+  ---
+  duration_ms: 4.619958
+  type: 'test'
+  ...
+# Subtest: loading video retains original evidence trigger for focus restoration
+ok 7 - loading video retains original evidence trigger for focus restoration
+  ---
+  duration_ms: 1.763584
+  type: 'test'
+  ...
+# Subtest: removed evidence cannot receive focus; desktop seek preserves current focus
+ok 8 - removed evidence cannot receive focus; desktop seek preserves current focus
+  ---
+  duration_ms: 1.892833
+  type: 'test'
+  ...
+# Subtest: unsupported follow-up on another topic gives a supported recovery question
+ok 9 - unsupported follow-up on another topic gives a supported recovery question
+  ---
+  duration_ms: 1.741292
+  type: 'test'
+  ...
+# Subtest: cached metadata supports immediate seek; deferred metadata applies a queued seek
+ok 10 - cached metadata supports immediate seek; deferred metadata applies a queued seek
+  ---
+  duration_ms: 4.465667
+  type: 'test'
+  ...
+# Subtest: reset after media failure cannot claim readiness; reload updates source with existing tasks
+ok 11 - reset after media failure cannot claim readiness; reload updates source with existing tasks
+  ---
+  duration_ms: 1.730667
+  type: 'test'
+  ...
+# Subtest: selecting an older task synchronizes the canvas and exposes selected history
+ok 12 - selecting an older task synchronizes the canvas and exposes selected history
+  ---
+  duration_ms: 2.2265
+  type: 'test'
+  ...
+# Subtest: mobile evidence reveal and collapse retain task draft
+ok 13 - mobile evidence reveal and collapse retain task draft
+  ---
+  duration_ms: 0.957
+  type: 'test'
+  ...
+# Subtest: local playback and new task retain unindexed state and disabled question
+ok 14 - local playback and new task retain unindexed state and disabled question
+  ---
+  duration_ms: 1.368917
+  type: 'test'
+  ...
+# Subtest: bounded session history removes the same oldest task as the conversation
+ok 15 - bounded session history removes the same oldest task as the conversation
+  ---
+  duration_ms: 2.042791
+  type: 'test'
+  ...
+# Subtest: a branch attaches to the explicitly selected turn, not the latest turn
+ok 16 - a branch attaches to the explicitly selected turn, not the latest turn
+  ---
+  duration_ms: 0.744209
+  type: 'test'
+  ...
+# Subtest: zoom preserves the world point under the pointer and clamps scale
+ok 17 - zoom preserves the world point under the pointer and clamps scale
+  ---
+  duration_ms: 0.204917
+  type: 'test'
+  ...
+# Subtest: time and status sorting preserve graph parents and manually moved nodes are restored by arrangement
+ok 18 - time and status sorting preserve graph parents and manually moved nodes are restored by arrangement
+  ---
+  duration_ms: 0.226959
+  type: 'test'
+  ...
+# Subtest: fit includes nodes in negative world space and reset removes stale parents and transforms
+ok 19 - fit includes nodes in negative world space and reset removes stale parents and transforms
+  ---
+  duration_ms: 0.55575
+  type: 'test'
+  ...
+# Subtest: fit keeps a twelve-turn investigation chain within the viewport
+ok 20 - fit keeps a twelve-turn investigation chain within the viewport
+  ---
+  duration_ms: 0.17175
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 68.461625

@@ -1,0 +1,347 @@
+/* Durable investigations, owned sources, and recoverable real-model requests. */
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const ui = () => window.FrameSeekSessionUI;
+  const store = () => window.FrameSeekWorkbench;
+  const demo = {id:"demo_parcel",name:"包裹移动 · 合成演示",metadata:{duration:18,audio:false},job:{state:"ready"}};
+  const labels = { queued:"等待预检", probing:"检查素材", captioning:"理解画面", transcribing:"转写音轨", indexing:"建立索引", ready:"可以提问", failed:"处理失败", cancelled:"已取消", awaiting_configuration:"等待模型配置" };
+  let session, current, currentVideo = demo, suspended = true, saving = null, lastSaved = "", lastSavedEdits = "", timer;
+  let conflict = false, requestEpoch = 0, activeRequest = null, libraryEpoch = 0;
+  const owns = (id, epoch) => current?.id === id && requestEpoch === epoch;
+  function status(text, kind="") { $("save-state").textContent = text; $("save-state").dataset.state = kind; }
+  async function api(path, method="GET", body) {
+    const response = await fetch(path, {method, credentials:"same-origin", cache:"no-store",
+      headers: body ? {"Content-Type":"application/json", "X-FS-CSRF":session.csrf} : method !== "GET" ? {"X-FS-CSRF":session.csrf} : {},
+      body: body ? JSON.stringify(body) : undefined });
+    const data = response.status === 204 ? null : await response.json();
+    if (!response.ok) { const error = new Error(data?.detail || "request_failed"); error.status=response.status; error.data=data; throw error; }
+    return data;
+  }
+  const snapshot = () => ui().snapshot();
+  function editSnapshot(state) {
+    const {playerTime, ...panelState}=state.ui || {};
+    return JSON.stringify({...state,ui:panelState});
+  }
+  function remember() { try { localStorage.setItem("frameseek-current", current.id); } catch {} }
+  async function flush() {
+    if (saving) {
+      const desk=current;
+      await saving;
+      if (current!==desk) return;
+      if (editSnapshot(snapshot())!==lastSavedEdits) return flush();
+      return;
+    }
+    if (suspended || conflict || !current) return;
+    const state=snapshot(), encoded=JSON.stringify(state), edits=editSnapshot(state);
+    if (encoded === lastSaved) return;
+    const desk = current;
+    status("正在保存…");
+    saving = api(`/api/investigations/${desk.id}`, "PUT", {revision:desk.revision,state:JSON.parse(encoded)})
+      .then(result => { desk.revision=result.revision; lastSaved=encoded; lastSavedEdits=edits; status("已保存到本机","saved"); })
+      .catch(error => { conflict=error.status===409; status(conflict ? "其他页面已修改 · 请重新打开" : "保存失败 · 点击重试", "error"); throw error; })
+      .finally(() => { saving=null; });
+    await saving;
+    if (current!==desk) return;
+    if (editSnapshot(snapshot())!==lastSavedEdits) return flush();
+  }
+  function changed() {
+    if (suspended || conflict) return;
+    status("有未保存修改"); clearTimeout(timer);
+    timer=setTimeout(() => flush().catch(() => {}),500);
+  }
+  async function openDesk(id) {
+    const previousId=current?.id, epoch=++requestEpoch;
+    ui().busy(true);
+    try {
+      await flush(); if (!owns(previousId,epoch)) return false;
+      await stopRequest(); if (!owns(previousId,epoch)) return false;
+      const desk=await api(`/api/investigations/${id}`);
+      if (!owns(previousId,epoch)) return false;
+      const video=desk.video === "demo_parcel" ? demo : await api(`/api/videos/${desk.video}`);
+      if (!owns(previousId,epoch)) return false;
+      await flush(); if (!owns(previousId,epoch)) return false;
+      if (desk.id===previousId && !conflict && current.revision>desk.revision) {desk.state=snapshot();desk.revision=current.revision;}
+      suspended=true;
+      current=desk; currentVideo=video; conflict=false;
+      ui().restore({...desk.state,title:desk.state.title || desk.title},video);
+      const restored=snapshot();lastSaved=JSON.stringify(restored);lastSavedEdits=editSnapshot(restored);
+      remember(); status("已恢复调查","saved");
+      $("workspace-library").close();
+      suspended=false;
+      await recover();
+      if (!owns(desk.id,epoch)) return false;
+      if (["queued","probing","captioning","transcribing","indexing"].includes(video.job?.state)) watch(video.id,epoch);
+      return true;
+    } finally { if (epoch===requestEpoch) {suspended=false;ui().busy(false);} }
+  }
+  async function create(video=demo) {
+    const previousId=current?.id, epoch=++requestEpoch;
+    ui().busy(true);
+    try {
+      await flush(); if (!owns(previousId,epoch)) return false;
+      await stopRequest(); if (!owns(previousId,epoch)) return false;
+      const desk=await api("/api/investigations","POST",{video_id:video.id,title:video.id === "demo_parcel" ? "未命名调查" : video.name.replace(/\.[^.]+$/, "")});
+      if (!owns(previousId,epoch)) return false;
+      await flush(); if (!owns(previousId,epoch)) return false;
+      suspended=true;
+      current=desk;
+      currentVideo=video; conflict=false;
+      ui().applySource(video); store().rename(current.title);
+      lastSaved=""; lastSavedEdits="";remember();
+      suspended=false;
+      await flush(); if (!owns(desk.id,epoch)) return false;
+      $("workspace-library").close();
+      if (["queued","probing","captioning","transcribing","indexing"].includes(video.job?.state)) watch(video.id,epoch);
+      return true;
+    } finally { if (epoch===requestEpoch) {suspended=false;ui().busy(false);} }
+  }
+  function item(title, detail, action, actionLabel="打开") {
+    const row=document.createElement("article"); row.className="library-row";
+    const copy=document.createElement("div"); const name=document.createElement("strong"); name.textContent=title;
+    const meta=document.createElement("small");meta.textContent=detail;copy.append(name,meta);row.append(copy);
+    const button=document.createElement("button");button.className="outline-button";button.textContent=actionLabel;
+    button.onclick=()=>Promise.resolve(action()).catch(error=>libraryNotice(error.message));row.append(button);return row;
+  }
+  function libraryNotice(message) { $("library-notice").textContent=message; }
+  async function library(kind="investigations") {
+    const deskId=current?.id, epoch=requestEpoch, token=++libraryEpoch;
+    const active=()=>owns(deskId,epoch) && token===libraryEpoch;
+    await flush(); if (!active()) return; libraryNotice("");
+    $("library-title").textContent=kind === "videos" ? "素材库" : "调查库";
+    $("library-intro").textContent=kind === "videos" ? "每段素材独立保存问题与证据。上传后先预检，再按已批准预算分析。" : `调查保存在这台电脑的服务中，默认保留 ${session.ttl_hours} 小时。继续上次的路径，或开启新调查。`;
+    $("library-add").textContent=kind === "videos" ? "上传视频" : "新建调查";
+    $("library-add").onclick=()=>{
+      if(kind === "videos") {$("workspace-library").close();$("file-input").click();}
+      else create(currentVideo).catch(e=>libraryNotice(e.message));
+    };
+    const body=$("library-items");body.replaceChildren();
+    $("workspace-library").showModal();
+    if (kind === "videos") {
+      body.append(item(demo.name,"18 秒 · 公开合成演示 · 预设回答",()=>openSource(demo)));
+      const data=await api("/api/videos");
+      if (!active()) return;
+      for (const video of data.items) {
+        const job=video.job;
+        const row=item(video.name,`${Math.round(video.bytes/1024/1024)} MB · ${labels[job?.state] || "已上传"}${job?.total ? ` · ${job.completed}/${job.total} 窗口` : ""}`,()=>openSource(video));
+        if (["failed","cancelled"].includes(job?.state) && !video.metadata?.windows) {
+          const retry=document.createElement("button");retry.className="outline-button";retry.textContent="重新预检";
+          retry.onclick=async()=>{try {await api(`/api/videos/${video.id}/retry`,"POST");libraryNotice("已重新开始预检。");if(currentVideo.id===video.id) watch(video.id,requestEpoch);}catch(e){libraryNotice(e.message);}};
+          row.append(retry);
+        } else if (["awaiting_configuration","failed","cancelled"].includes(job?.state)) {
+          const analyze=document.createElement("button");analyze.className="outline-button";analyze.textContent="开始分析";
+          analyze.disabled=!session.real_ready || !video.metadata?.windows;
+          analyze.title=analyze.disabled ? "需要模型服务、有效校准记录和已批准预算" : "使用已批准预算分析完整素材";
+          analyze.onclick=async()=>{try {await api(`/api/videos/${video.id}/analyze`,"POST"); libraryNotice("已受理分析。点击刷新查看真实阶段。"); if (currentVideo.id===video.id) watch(video.id,requestEpoch);}catch(e){libraryNotice(e.message);}};
+          row.append(analyze);
+        }
+        if (["queued","probing","captioning","transcribing","indexing"].includes(job?.state)) {
+          const cancel=document.createElement("button");cancel.className="text-button";cancel.textContent="取消";
+          cancel.onclick=async()=>{await api(`/api/videos/${video.id}/cancel`,"POST");await library("videos");};row.append(cancel);
+        }
+        const rename=document.createElement("button");rename.className="text-button";rename.textContent="重命名";
+        rename.onclick=()=>renameSource(video);row.append(rename);
+        const remove=document.createElement("button");remove.className="text-button danger";remove.textContent="删除";
+        remove.setAttribute("aria-label",`删除素材：${video.name}`);
+        remove.onclick=()=>confirmDelete(video,"videos");row.append(remove);body.append(row);
+      }
+      if (!session.real_ready) libraryNotice("真实分析等待模型地址与预算配置。上传、预检、播放和调查保存已可使用。");
+    } else {
+      const data=await api("/api/investigations");
+      if (!active()) return;
+      for (const desk of data.items) {
+        const row=item(desk.title,`${desk.video === "demo_parcel" ? "演示素材" : "真实素材"} · ${new Date(desk.updated*1000).toLocaleString()}${desk.id===current?.id ? " · 当前" : ""}`,()=>openDesk(desk.id));
+        const remove=document.createElement("button");remove.className="text-button danger";remove.textContent="删除";
+        remove.onclick=()=>confirmDelete(desk,"investigations");row.append(remove);body.append(row);
+      }
+    }
+    $("library-refresh").onclick=()=>library(kind).catch(e=>libraryNotice(e.message));
+  }
+  function renameSource(video) {
+    $("rename-source-input").value=video.name;
+    $("rename-source-form").onsubmit=async event=>{
+      event.preventDefault();
+      try {
+        const result=await api(`/api/videos/${video.id}`,"PATCH",{name:$("rename-source-input").value});
+        if(currentVideo.id===video.id) {currentVideo={...currentVideo,name:result.name};ui().renameSource(result.name);}
+        $("rename-source-dialog").close();await library("videos");
+      } catch(error) {libraryNotice(error.message);}
+    };
+    $("rename-source-cancel").onclick=()=>$("rename-source-dialog").close();
+    $("rename-source-dialog").showModal();$("rename-source-input").focus();
+  }
+  function confirmDelete(entity,table) {
+    $("delete-description").textContent=table === "videos" ? `删除「${entity.name}」及其所有调查、证据和原文件？` : `删除调查「${entity.title}」？`;
+    $("delete-confirm").onclick=async()=>{
+      const deskId=current?.id;
+      const deletingCurrent=(table === "videos" && current?.video===entity.id) || deskId===entity.id;
+      const epoch=deletingCurrent ? ++requestEpoch : requestEpoch;
+      if (deletingCurrent) ui().busy(true);
+      try {
+        if (deletingCurrent) {
+          await flush(); if (!owns(deskId,epoch)) return;
+          await stopRequest(); if (!owns(deskId,epoch)) return;
+          suspended=true;
+        }
+        await api(`/api/${table}/${entity.id}`,"DELETE");
+        if (!owns(deskId,epoch)) return;
+        $("delete-dialog").close();
+        suspended=false;
+        if (deletingCurrent) { current=null; if (!await create(demo)) return; }
+        await library(table);
+      } catch(e) {if (owns(deskId,epoch)) {$("delete-dialog").close();libraryNotice(e.message);}}
+      finally {if (epoch===requestEpoch) {suspended=false;if (deletingCurrent) ui().busy(false);}}
+    };
+    $("delete-dialog").showModal();
+  }
+  async function openSource(video) {
+    const deskId=current?.id, epoch=++requestEpoch;
+    ui().busy(true);
+    try {
+      await flush(); if (!owns(deskId,epoch)) return false;
+      const desks=(await api("/api/investigations")).items.filter(d=>d.video===video.id);
+      if (!owns(deskId,epoch)) return false;
+      if (desks.length) return await openDesk(desks[0].id);
+      return await create(video);
+    } finally {if (owns(deskId,epoch)) ui().busy(false);}
+  }
+  async function upload(file) {
+    if (!file.type.startsWith("video/") || file.size > 500*1024**2) {ui().notify("请选择不超过 500 MB 的视频文件。");return;}
+    try {
+      const deskId=current?.id, epoch=requestEpoch;
+      await flush();if (!owns(deskId,epoch)) return;ui().notify(`正在上传 ${file.name} · 0%`);
+      const result=await new Promise((resolve,reject)=>{
+        const xhr=new XMLHttpRequest();xhr.open("POST","/api/videos");
+        xhr.setRequestHeader("Content-Type",file.type);xhr.setRequestHeader("X-FS-CSRF",session.csrf);
+        xhr.setRequestHeader("X-File-Name",encodeURIComponent(file.name));xhr.timeout=180000;
+        xhr.upload.onprogress=e=>{if(owns(deskId,epoch) && e.lengthComputable)ui().notify(`正在上传 ${file.name} · ${Math.round(e.loaded/e.total*100)}%`);};
+        xhr.onload=()=>{let data;try {data=JSON.parse(xhr.responseText);}catch{reject(new Error("上传响应无效"));return;}xhr.status===201 ? resolve(data) : reject(new Error(data.detail || "上传失败"));};
+        xhr.onerror=()=>reject(new Error("上传连接中断，原调查已保留。"));xhr.ontimeout=xhr.onerror;xhr.send(file);
+      });
+      if (!owns(deskId,epoch)) return;
+      const video=await api(`/api/videos/${result.id}`);if (!owns(deskId,epoch)) return;
+      if (!await create(video)) return;
+      ui().notify("上传完成，服务端正在预检素材。可在素材库查看进度。");
+      ui().showSource();
+    }catch(error){ui().notify(error.message);}
+  }
+  async function watch(videoId, epoch) {
+    const deskId=current?.id;
+    for (let i=0;i<90 && owns(deskId,epoch);i++) {
+      await new Promise(r=>setTimeout(r,2000));
+      if (!owns(deskId,epoch)) return;
+      try {
+        const video=await api(`/api/videos/${videoId}`);
+        if (!owns(deskId,epoch)) return;
+        ui().notify(`${labels[video.job?.state] || "处理素材"}${video.job?.total ? ` · ${video.job.completed}/${video.job.total} 窗口` : ""}`);
+        if (["ready","failed","awaiting_configuration","cancelled"].includes(video.job?.state)) {
+          await flush(); if (!owns(deskId,epoch)) return;
+          currentVideo=video; const saved=snapshot();suspended=true;
+          try {ui().restore(saved,video);} finally {suspended=false;}
+          changed();
+          if (video.job?.state === "failed") ui().notify(`预检或分析失败：${video.job.error}。素材保留，可重新处理或删除。`);
+          if (video.job?.state === "awaiting_configuration") ui().notify("预检完成，等待模型服务与预算配置。不会发送模型请求。");
+          return;
+        }
+      }catch(error){if (owns(deskId,epoch)) ui().notify(error.message);return;}
+    }
+  }
+  async function recover() {
+    if (!current || currentVideo.id === "demo_parcel") return;
+    const deskId=current.id, epoch=requestEpoch, initialDraft=$("question").value;
+    $('resume-query').hidden=true;
+    const data = await api(`/api/investigations/${deskId}/requests`);
+    if (!owns(deskId,epoch)) return;
+    const existing=new Set(store().getSnapshot().records.map(r=>r.query.id));
+    const completed=data.items.filter(r=>r.state === "done" && r.result?.response?.schema_version).slice(0,12).reverse();
+    let added=false;
+    for (const request of completed) {
+      if (!existing.has(request.id)) {
+        const parent=store().getSnapshot().records.find(r=>r.query.id===request.input?.parent_request_id);
+        ui().answer({...request.result,parentTurn:parent?.id || null});
+        added=true;
+      }
+      if (activeRequest?.desk===deskId && activeRequest.id===request.id) activeRequest=null;
+    }
+    let draft=$("question").value;
+    for (const request of data.items) {
+      if (request.state === "done" && activeRequest?.desk===deskId && activeRequest.id===request.id) activeRequest=null;
+      if (["running","unknown"].includes(request.state)) {
+        if (!draft && initialDraft===draft && request.input) draft=request.input.question;
+        if (!activeRequest) activeRequest={desk:deskId,id:request.id,state:request.state};
+        else if (activeRequest.desk===deskId && activeRequest.id===request.id) activeRequest.state=request.state;
+        ui().notify(request.state === "unknown" ? "先前调用结果不确定，不会自动重复调用。原问题已保留。" : "先前查询仍在执行；点击恢复查询获取结果。");
+        $('resume-query').hidden=false;
+      }
+    }
+    ui().restoreDraft(draft);
+    if (added || draft!==initialDraft) {await flush();if (!owns(deskId,epoch)) return;}
+  }
+  async function ask(question) {
+    if (suspended || !current || currentVideo.job?.state!=="ready") return;
+    if (activeRequest?.state!=="unknown" && activeRequest) {
+      $('resume-query').hidden=false;ui().notify("查询仍在执行，请恢复当前请求，勿发起重复尝试。");return;
+    }
+    const desk=current,epoch=requestEpoch;
+    const context=ui().currentContext();
+    const parentTurn=context?.mode==="real" ? store().getSnapshot().records.find(r=>r.query.id===context.id)?.id || null : null;
+    const body={investigation_id:desk.id,request_id:crypto.randomUUID().replaceAll("-",""),
+      generation:store().getSnapshot().epoch,question,parent_request_id:context?.mode==="real" ? context.id : null};
+    ui().busy(true);
+    let pending=null;
+    try {
+      await flush(); if (!owns(desk.id,epoch)) return;
+      if (activeRequest) {await stopRequest();if (!owns(desk.id,epoch)) return;}
+      const prepared=await api("/api/chat/prepare","POST",body);
+      if(!owns(desk.id,epoch)) return;
+      if (prepared.kind!=="ready") {ui().notify(prepared.message);return;}
+      pending={desk:desk.id,id:body.request_id,state:"running"};activeRequest=pending;
+      status("正在查找证据…");
+      let data;
+      for (let i=0;i<15;i++) {
+        try {data=await api("/api/chat","POST",body);}catch(error){if(error.data?.kind==="query_control") {data=error.data;}else if(error.data?.response) {data=error.data;} else throw error;}
+        if(data?.response && activeRequest===pending) activeRequest=null;
+        if(!owns(desk.id,epoch)) return;
+        if(data.kind!=="query_control") break;
+        if(data.state==="unknown") {pending.state="unknown";$('resume-query').hidden=false;ui().notify(data.suggested_action);status("调用结果不确定","error");return;}
+        await new Promise(r=>setTimeout(r,Math.min(10000,3000+i*500)));
+        if (!owns(desk.id,epoch)) return;
+      }
+      if(data?.response) {
+        if (!store().getSnapshot().records.some(r=>r.query.id===data.id)) ui().answer({...data,parentTurn},question);
+        ui().notify("");await flush();if (!owns(desk.id,epoch)) return;
+      } else {$('resume-query').hidden=false;ui().notify("查询仍在执行，保留原问题。请从当前请求恢复，勿发起重复尝试。");}
+    }catch(error){if(owns(desk.id,epoch)){if(activeRequest===pending && pending) $('resume-query').hidden=false;ui().notify(`${error.message} · 原问题已保留。`);status("查找未完成","error");}}
+    finally {if(owns(desk.id,epoch)) ui().busy(false);}
+  }
+  async function stopRequest() {
+    const pending=activeRequest;
+    if(!pending) return;
+    await api(`/api/investigations/${pending.desk}/requests/${pending.id}/cancel`,"POST");
+    if (activeRequest===pending) activeRequest=null;
+  }
+  async function start() {
+    if(!ui()?.ready())return;
+    try {
+      session=await api("/api/session");
+      let id;try{id=localStorage.getItem("frameseek-current");}catch{}
+      const desks=(await api("/api/investigations")).items;
+      suspended=false;
+      if(id && desks.some(d=>d.id===id))await openDesk(id);
+      else if(desks.length)await openDesk(desks[0].id);else await create(demo);
+      store().subscribe(changed);
+      ["pointerup","keyup","wheel"].forEach(event=>document.addEventListener(event,()=>{if(JSON.stringify(snapshot())!==lastSaved)changed();},{passive:true}));
+      document.addEventListener("visibilitychange",()=>{if(document.hidden)flush().catch(()=>{});});
+      $("open-investigations").onclick=()=>library().catch(e=>ui().notify(e.message));
+      $("open-sources").onclick=()=>library("videos").catch(e=>ui().notify(e.message));
+      $("save-state").onclick=()=>conflict ? openDesk(current.id).catch(e=>ui().notify(e.message)) : flush().catch(()=>{});
+      $("resume-query").onclick=()=>recover().catch(e=>ui().notify(e.message));
+      $("close-library").onclick=()=>$("workspace-library").close();
+      $("delete-cancel").onclick=()=>$("delete-dialog").close();
+    }catch(error){suspended=true;status("调查服务暂不可用","error");ui().notify(error.message);}
+  }
+  window.FrameSeekPersistence={flush,upload,ask,library,openDemo:()=>openSource(demo).catch(e=>ui().notify(e.message)),
+    newInvestigation:()=>create(currentVideo).catch(e=>ui().notify(e.message))};
+  window.addEventListener("frameseek-catalog-ready",start,{once:true});
+  if(ui()?.ready())start();
+})();

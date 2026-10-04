@@ -1,0 +1,6 @@
+uv run --frozen ruff check .
+All checks passed!
+uv run --frozen ruff format --check .
+62 files already formatted
+uv run --frozen python scripts/export_contracts.py --check
+Contract exports match source

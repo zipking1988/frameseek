@@ -1,0 +1,61 @@
+{
+  "iteration": 1,
+  "reviewer": "native ceo_spec",
+  "quality_score": 6,
+  "outcome": "issues",
+  "issues": [
+    {
+      "id": 1,
+      "finding": "降级输入缺ASR置信度与原音轨复核",
+      "disposition": "proposed correction saved; reviewer confirmation pending"
+    },
+    {
+      "id": 2,
+      "finding": "派生存储TTL未定义",
+      "disposition": "proposed correction saved; reviewer confirmation pending"
+    },
+    {
+      "id": 3,
+      "finding": "zoom全局预算与原文冲突",
+      "disposition": "proposed correction saved; reviewer confirmation pending"
+    },
+    {
+      "id": 4,
+      "finding": "技术契约authority冲突",
+      "disposition": "proposed correction saved; reviewer confirmation pending"
+    },
+    {
+      "id": 5,
+      "finding": "中文能力未证明却宣称",
+      "disposition": "proposed correction saved; reviewer confirmation pending"
+    },
+    {
+      "id": 6,
+      "finding": "support_level与score混合合并不清",
+      "disposition": "proposed correction saved; reviewer confirmation pending"
+    },
+    {
+      "id": 7,
+      "finding": "降级通道ready条件不清",
+      "disposition": "proposed correction saved; reviewer confirmation pending"
+    },
+    {
+      "id": 8,
+      "finding": "原应急范围缩减未批准",
+      "disposition": "proposed correction saved; reviewer confirmation pending"
+    },
+    {
+      "id": 9,
+      "finding": "U1小时目标预算阻塞",
+      "disposition": "proposed correction saved; reviewer confirmation pending"
+    },
+    {
+      "id": 10,
+      "finding": "已接受义务未分配排期",
+      "disposition": "proposed correction saved; reviewer confirmation pending"
+    }
+  ],
+  "full_inputs_read": true,
+  "bytes": 27627,
+  "outside_status": "unavailable"
+}

@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#142330" />
+    <title>FrameSeek · 影像控制台</title>
+    <link rel="icon" href="/static/icons/play.svg" type="image/svg+xml" />
+    <link
+      rel="preload"
+      href="/static/fonts/InstrumentSans.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
+    <link rel="stylesheet" href="/static/styles.css?v=83261f08384c" />
+    <script src="/static/demo-conversation.js" defer></script>
+    <script src="/static/app.js?v=38d7eb1af0d7" defer></script>
+  </head>
+  <body>
+    <a href="#question" class="skip-link">跳到对话输入</a>
+    <div class="agent-shell">
+      <header class="studio-header">
+        <a class="brand" href="/" aria-label="FrameSeek 首页">FrameSeek</a>
+        <span class="studio-title">影像控制台</span>
+        <p>用自然语言，在视频中找到关键画面</p>
+        <button id="open-local" class="open-source" type="button">
+          <img
+            class="icon"
+            src="/static/icons/folder-open.svg"
+            alt=""
+          />打开本地视频
+        </button>
+      </header>
+      <nav class="studio-rail" aria-label="工作区导航">
+        <button
+          id="rail-video"
+          class="rail-button active"
+          aria-label="查看视频工作区"
+        >
+          <img class="icon" src="/static/icons/play.svg" alt="" /><span
+            >视频</span
+          >
+        </button>
+        <button id="rail-source" class="rail-button" aria-label="打开素材">
+          <img class="icon" src="/static/icons/folder-open.svg" alt="" /><span
+            >素材</span
+          >
+        </button>
+        <a
+          href="/docs"
+          target="_blank"
+          rel="noopener"
+          class="rail-button rail-docs"
+          aria-label="API 文档"
+          ><img class="icon" src="/static/icons/code.svg" alt="" /><span
+            >文档</span
+          ></a
+        >
+      </nav>
+      <main
+        id="evidence-canvas"
+        class="evidence-canvas"
+        aria-labelledby="video-heading"
+      >
+        <div class="canvas-content">
+          <div class="source-heading">
+            <h1 id="video-heading">包裹移动 · 合成演示</h1>
+            <span id="video-state" class="video-state">演示素材</span
+            ><span class="workspace-caption">视频工作区</span>
+          </div>
+          <div class="player-wrap">
+            <video
+              id="player"
+              controls
+              playsinline
+              preload="auto"
+              poster="/media/demo_parcel/frames/0.jpg"
+              aria-label="当前视频播放器"
+            >
+              <source src="/demo/video" type="video/mp4" /></video
+            ><span id="video-watermark" class="video-watermark">合成演示</span>
+          </div>
+          <div class="player-footer">
+            <span id="seek-status">选择时间或画面，回到证据</span
+            ><button id="reload-video" class="text-button" hidden>
+              重新加载视频</button
+            ><span id="video-meta">18 秒 · 1600 × 900 · 无音轨</span>
+          </div>
+          <div id="demo-timeline" class="timeline-section">
+            <div class="section-label">
+              <h2>素材时间线</h2>
+              <span id="playback-time" class="timecode">00:00 / 00:18</span>
+            </div>
+            <div class="timeline">
+              <div id="playhead" class="playhead" aria-hidden="true"></div>
+              <button
+                class="chapter"
+                data-time="0"
+                aria-label="定位左侧片段 00:00"
+              >
+                <span>00:00</span><span>左侧</span></button
+              ><button
+                class="chapter"
+                data-time="5"
+                aria-label="定位中央片段 00:05"
+              >
+                <span>00:05</span><span>中央</span></button
+              ><button
+                class="chapter"
+                data-time="11"
+                aria-label="定位右侧片段 00:11"
+              >
+                <span>00:11</span><span>右侧</span>
+              </button>
+            </div>
+          </div>
+          <div id="frame-heading" class="section-label frame-heading">
+            <h2>素材关键帧</h2>
+            <span>点击回看</span>
+          </div>
+          <div id="segments" class="frame-strip" aria-label="素材关键帧">
+            <button
+              class="segment"
+              data-time="0"
+              aria-label="查看左侧画面 00:00"
+            >
+              <img
+                src="/media/demo_parcel/frames/0.jpg"
+                alt="包裹位于工作台左侧"
+              /><span>00:00 <span>左侧</span></span>
+            </button>
+            <button
+              class="segment"
+              data-time="6"
+              aria-label="查看中央画面 00:06"
+            >
+              <img
+                src="/media/demo_parcel/frames/6.jpg"
+                alt="包裹位于工作台中央"
+              /><span>00:06 <span>中央</span></span>
+            </button>
+            <button
+              class="segment"
+              data-time="13"
+              aria-label="查看右侧画面 00:13"
+            >
+              <img
+                src="/media/demo_parcel/frames/13.jpg"
+                alt="包裹位于工作台右侧"
+              /><span>00:13 <span>右侧</span></span>
+            </button>
+          </div>
+          <p id="local-note" class="local-note" hidden>
+            文件仅在浏览器播放。尚未上传、建立索引或交给模型。
+          </p>
+          <details class="demo-details">
+            <summary>演示说明与结果来源</summary>
+            <p id="demo-notice-text">
+              合成素材与预设回答。支持固定的上下文追问，不上传文件，不调用模型。
+            </p>
+            <section class="run-context" aria-labelledby="run-heading">
+              <div class="section-label">
+                <h2 id="run-heading">当前结果</h2>
+                <span id="run-state">等待提问</span>
+              </div>
+              <ol class="run-steps">
+                <li>
+                  <div>
+                    <strong>素材</strong>
+                    <p id="source-step">正在加载视频</p>
+                  </div>
+                  <span id="source-step-state">加载中</span>
+                </li>
+                <li>
+                  <div>
+                    <strong>结果来源</strong>
+                    <p id="result-step">从固定样例中匹配</p>
+                  </div>
+                  <span id="result-step-state">待匹配</span>
+                </li>
+                <li>
+                  <div>
+                    <strong>证据定位</strong>
+                    <p id="evidence-step">时间与画面关联</p>
+                  </div>
+                  <span id="evidence-step-state">待选择</span>
+                </li>
+              </ol>
+            </section>
+            <button data-query="right" class="text-button">查看右侧样例</button
+            ><button data-query="failure" class="text-button">
+              查看失败样例
+            </button>
+          </details>
+        </div>
+      </main>
+      <aside class="conversation" aria-labelledby="chat-heading">
+        <header class="conversation-header">
+          <h2 id="chat-heading">视频对话</h2>
+          <button id="reset-chat" class="new-task">
+            <img
+              class="icon"
+              src="/static/icons/plus.svg"
+              alt=""
+            />新对话</button
+          ><button id="mobile-reset" hidden aria-label="新对话">新对话</button>
+        </header>
+        <div class="conversation-context">
+          <div class="source-item">
+            <span id="attached-source-name">包裹移动演示.mp4</span>
+          </div>
+          <span id="mode-label" class="mode-label">演示模式</span
+          ><span id="attached-source-state" class="sr-only">正在加载</span
+          ><button
+            id="toggle-evidence"
+            class="context-toggle"
+            aria-expanded="false"
+            aria-controls="evidence-canvas"
+          >
+            查看视频
+          </button>
+        </div>
+        <div id="chat-content" class="chat-content">
+          <div id="empty-state" class="empty-state">
+            <div class="task-intro">
+              <span id="empty-eyebrow" class="eyebrow">已加载演示视频</span>
+              <h2>想找哪个画面？</h2>
+              <p>
+                先问包裹的位置，再继续追问。
+              </p>
+          <div id="suggestions" class="suggestions" aria-label="演示问题">
+            <button data-query="center">包裹何时在中央？</button
+            ><button data-query="person">能确认搬运者吗？</button
+            ><button data-query="forklift">有叉车吗？</button>
+          </div>
+            </div>
+          </div>
+          <div id="messages"></div>
+        </div>
+        <div class="composer-area">
+          <p id="form-notice" class="form-notice" role="status" hidden></p>
+          <form id="question-form">
+            <div class="composer">
+              <label for="question">继续聊这段视频</label
+              ><textarea
+                id="question"
+                rows="2"
+                maxlength="1000"
+                placeholder="继续追问，或提出新的问题…"
+              ></textarea>
+              <div class="composer-tools">
+                <button
+                  id="attach-local"
+                  class="attach-button"
+                  type="button"
+                  aria-label="打开本地视频文件"
+                >
+                  <img
+                    class="icon"
+                    src="/static/icons/paperclip.svg"
+                    alt=""
+                  /></button
+                ><button
+                  id="send-question"
+                  class="send-button"
+                  type="submit"
+                  aria-label="发送消息"
+                  disabled
+                >
+                  <img
+                    class="icon"
+                    src="/static/icons/arrow-right.svg"
+                    alt=""
+                  />
+                </button>
+              </div>
+            </div>
+            <p class="composer-hint">
+              <span>Enter 发送 · Shift + Enter 换行</span
+              ><span id="composer-mode-text">预设演示 · 未调用模型</span>
+            </p>
+          </form>
+          <input id="file-input" type="file" accept="video/*" hidden /><button
+            id="restore-demo"
+            class="restore-button"
+            hidden
+          >
+            返回演示，体验证据检索
+          </button>
+          <details class="conversation-history">
+            <summary>
+              当前会话 <span id="task-count">0</span> 轮 <span>最近 12 轮</span>
+            </summary>
+            <p id="history-empty">提问后可在这里切换轮次</p>
+            <nav id="task-list" aria-label="本次会话任务"></nav>
+          </details>
+        </div>
+      </aside>
+    </div>
+    <div
+      id="announcement"
+      class="sr-only"
+      role="status"
+      aria-live="polite"
+    ></div>
+  </body>
+</html>

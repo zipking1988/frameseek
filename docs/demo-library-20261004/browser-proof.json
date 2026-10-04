@@ -1,0 +1,88 @@
+{
+  "routes": [
+    {
+      "count": "3",
+      "dialogOpen": false,
+      "questions": [
+        "包裹什么时候出现在中央？",
+        "那后来呢？",
+        "谁搬的？"
+      ],
+      "route": "位置追踪 · 3 轮预设",
+      "statuses": [
+        "ok",
+        "ok",
+        "partial"
+      ]
+    },
+    {
+      "count": "3",
+      "dialogOpen": false,
+      "questions": [
+        "对比开始和结束时包裹的位置。",
+        "中间呢？",
+        "是连续移动吗？"
+      ],
+      "route": "前后对比 · 3 轮预设",
+      "statuses": [
+        "ok",
+        "ok",
+        "partial"
+      ]
+    },
+    {
+      "count": "3",
+      "dialogOpen": false,
+      "questions": [
+        "能确认是谁搬动的吗？",
+        "那能确定什么？",
+        "标签能读出来吗？"
+      ],
+      "route": "反向核查 · 3 轮预设",
+      "statuses": [
+        "partial",
+        "ok",
+        "partial"
+      ]
+    },
+    {
+      "count": "3",
+      "dialogOpen": false,
+      "questions": [
+        "有叉车出现吗？",
+        "查看失败样例",
+        "重新查看中央证据。"
+      ],
+      "route": "无结果与恢复 · 3 轮预设",
+      "statuses": [
+        "no_result",
+        "error",
+        "ok"
+      ]
+    },
+    {
+      "count": "3",
+      "dialogOpen": false,
+      "questions": [
+        "视频里有哪些固定物体？",
+        "胶带呢？",
+        "灯光呢？"
+      ],
+      "route": "多主题分支 · 3 轮预设",
+      "statuses": [
+        "ok",
+        "ok",
+        "ok"
+      ]
+    }
+  ],
+  "additionalChecks": [
+    "完整时间线三轮载入，3段证据可见",
+    "选中旧卡片追问胶带生成第4轮",
+    "结束证据将真实播放器定位至13秒，保持暂停",
+    "1200×800演示库完整可见",
+    "1200×800横向分支87%，时间线73%，卡片在输入上方",
+    "Escape关闭原生dialog并恢复演示库入口焦点",
+    "viewport已恢复默认"
+  ]
+}

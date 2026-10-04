@@ -1,0 +1,12 @@
+{
+  "decision": "D55:A",
+  "state": "APPROVED",
+  "timestamp": "2026-10-04T02:15:06.929396+00:00",
+  "human_answer": "A",
+  "scope": "whole implementation plan, C1–C7 defaults, start D1 local implementation/preflight",
+  "budget_policy": "D49:A retained",
+  "numeric_budget": "not approved; explicit finite calibration/call/money confirmation required",
+  "deployment": "not authorized by plan approval",
+  "approved_implementation_sha256": "c18b134271f9ba2bd20b52534c63f3d04b9ee03cee9bb023067009e0904fc6d3",
+  "run_id": "frameseek-autoplan-20261004-approved"
+}

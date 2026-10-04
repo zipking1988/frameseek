@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111f2b" />
+    <title>FrameSeek · 调查画布</title>
+    <link rel="icon" href="/static/icons/play.svg" type="image/svg+xml" />
+    <link
+      rel="preload"
+      href="/static/fonts/InstrumentSans.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
+    <link rel="stylesheet" href="/static/styles.css?v=136d47b61d96" />
+    <link rel="stylesheet" href="/static/workbench.css?v=2d989ac8f434" />
+    <script src="/static/demo-conversation.js?v=fc40894c3313" defer></script>
+    <script src="/static/investigation-canvas.js?v=9d163efcc9aa" defer></script>
+    <script src="/static/workbench-model.js?v=f44897b5875d" defer></script>
+    <script src="/static/workbench.js?v=2be3ce92c7fa" defer></script>
+    <script src="/static/app.js?v=381630cb74d1" defer></script>
+  </head>
+  <body>
+    <a href="#question" class="skip-link">跳到对话输入</a>
+    <div class="desktop-message">
+      <h1>FrameSeek</h1>
+      <p>调查画布需要桌面空间。请在电脑浏览器中打开。</p>
+    </div>
+    <div class="agent-shell workbench-shell">
+      <header class="studio-header">
+        <a class="brand" href="/" aria-label="FrameSeek 首页">FrameSeek</a>
+        <div id="project-title"></div>
+        <span id="composer-mode-text" class="header-mode"
+          >预设演示 · 未调用模型</span
+        >
+        <button id="open-demos" class="outline-button" type="button" disabled>
+          演示库
+        </button>
+        <button id="open-local" class="open-source" type="button">
+          <img
+            class="icon"
+            src="/static/icons/folder-open.svg"
+            alt=""
+          />打开本地视频
+        </button>
+      </header>
+      <nav class="studio-rail" aria-label="工作区导航">
+        <button
+          id="rail-canvas"
+          class="rail-button active"
+          aria-label="回到调查画布"
+        >
+          <img class="icon" src="/static/icons/chats-circle.svg" alt="" /><span
+            >调查</span
+          >
+        </button>
+        <button id="rail-source" class="rail-button" aria-label="打开素材">
+          <img class="icon" src="/static/icons/folder-open.svg" alt="" /><span
+            >素材</span
+          >
+        </button>
+        <a
+          href="/docs"
+          target="_blank"
+          rel="noopener"
+          class="rail-button rail-docs"
+          aria-label="API 文档"
+          ><img class="icon" src="/static/icons/code.svg" alt="" /><span
+            >文档</span
+          ></a
+        >
+      </nav>
+      <main
+        id="chat-content"
+        class="canvas-viewport"
+        aria-label="调查画布"
+        tabindex="0"
+      >
+        <canvas id="canvas-links" aria-hidden="true"></canvas>
+        <div id="canvas-plane">
+          <div id="finding-group-region" hidden>
+            <span id="finding-group-label">关键发现</span>
+          </div>
+          <div id="messages"></div>
+          <div id="board-artifacts"></div>
+        </div>
+        <div id="empty-state" class="empty-state">
+          <div class="task-intro">
+            <span id="empty-eyebrow" class="eyebrow">已加载演示视频</span>
+            <h1>从一个问题，展开调查。</h1>
+            <p>找到的画面会留在这里。继续追问，把发现连起来。</p>
+            <div id="suggestions" class="suggestions" aria-label="演示问题">
+              <button data-query="center">
+                包裹何时在中央？<img
+                  class="icon"
+                  src="/static/icons/arrow-right.svg"
+                  alt=""
+                />
+              </button>
+              <button data-query="person">能确认搬运者吗？</button>
+              <button data-query="forklift">有叉车吗？</button>
+            </div>
+            <button id="demo-library-empty" class="text-button" disabled>
+              浏览 6 条评审演示 →
+            </button>
+          </div>
+        </div>
+      </main>
+      <section class="canvas-topbar" aria-label="画布操作">
+        <button id="rail-video" class="source-tile" aria-label="查看当前视频">
+          <img
+            id="source-thumbnail"
+            src="/media/demo_parcel/frames/0.jpg"
+            alt="合成仓库视频"
+          />
+          <span class="source-item"
+            ><strong id="attached-source-name">包裹移动 · 合成演示</strong
+            ><span id="attached-source-state">正在加载</span></span
+          >
+          <img class="icon" src="/static/icons/play.svg" alt="" />
+        </button>
+        <div class="canvas-actions">
+          <span class="board-label">调查画布</span>
+          <span id="demo-current" class="demo-current" hidden></span>
+          <label class="sr-only" for="arrange-mode">自动整理方式</label>
+          <select id="arrange-mode">
+            <option value="threads">追问关系</option>
+            <option value="spread">横向展开</option>
+            <option value="workspace">按对象分组</option>
+            <option value="time">视频时间</option>
+            <option value="status">结果状态</option>
+          </select>
+          <button id="arrange-canvas" class="outline-button">整理</button>
+          <button
+            id="toggle-inspector"
+            class="outline-button"
+            aria-label="切换调查检查器"
+            aria-expanded="true"
+          >
+            检查器
+          </button>
+          <button id="reset-chat" class="outline-button">
+            <img class="icon" src="/static/icons/plus.svg" alt="" />新调查
+          </button>
+        </div>
+      </section>
+      <section id="source-dock" class="source-dock" aria-label="视频与调查脉络">
+        <div class="source-dock-heading">
+          <span>素材 / 01</span
+          ><button
+            id="collapse-source"
+            class="icon-button"
+            aria-label="收起素材面板"
+          >
+            <img class="icon" src="/static/icons/x.svg" alt="" />
+          </button>
+        </div>
+        <aside
+          id="evidence-canvas"
+          class="evidence-viewer"
+          aria-labelledby="evidence-question"
+        >
+          <header class="viewer-heading">
+            <h2 id="evidence-question">素材预览</h2>
+            <button
+              id="toggle-evidence"
+              class="icon-button"
+              aria-label="关闭证据播放器"
+              aria-expanded="false"
+              aria-controls="evidence-canvas"
+            >
+              <img class="icon" src="/static/icons/x.svg" alt="" />
+            </button>
+          </header>
+          <div class="viewer-source">
+            <span id="video-heading">包裹移动 · 合成演示</span
+            ><span id="video-state">演示素材</span>
+          </div>
+          <div class="player-wrap">
+            <video
+              id="player"
+              controls
+              playsinline
+              preload="auto"
+              poster="/media/demo_parcel/frames/0.jpg"
+              aria-label="当前视频播放器"
+            >
+              <source src="/demo/video" type="video/mp4" /></video
+            ><span id="video-watermark">合成演示</span>
+          </div>
+          <div class="player-footer">
+            <span id="seek-status">选择证据，回看对应画面</span
+            ><button id="reload-video" class="text-button" hidden>
+              重新加载视频
+            </button>
+          </div>
+          <p id="video-meta">18 秒 · 1600 × 900 · 无音轨</p>
+          <div id="demo-timeline" class="timeline-section">
+            <span id="playback-time">00:00 / 00:18</span>
+            <div class="timeline">
+              <div id="playhead" aria-hidden="true"></div>
+              <button
+                class="chapter"
+                data-time="0"
+                aria-label="定位左侧片段 00:00"
+              >
+                左侧</button
+              ><button
+                class="chapter"
+                data-time="5"
+                aria-label="定位中央片段 00:05"
+              >
+                中央</button
+              ><button
+                class="chapter"
+                data-time="11"
+                aria-label="定位右侧片段 00:11"
+              >
+                右侧
+              </button>
+            </div>
+          </div>
+          <p id="local-note" class="local-note" hidden>
+            文件仅在浏览器播放。尚未上传、建立索引或交给模型。
+          </p>
+          <button id="restore-demo" class="restore-button" hidden>
+            返回演示，体验证据检索
+          </button>
+          <details class="demo-details">
+            <summary>演示说明与结果来源</summary>
+            <p id="demo-notice-text">
+              合成素材与预设回答。支持固定的上下文追问，不上传文件，不调用模型。
+            </p>
+            <button data-query="failure" class="text-button">
+              查看失败样例
+            </button>
+          </details>
+          <div class="source-filmstrip" aria-label="素材关键帧">
+            <button
+              class="segment"
+              data-time="0"
+              aria-label="回看素材左侧 00:00"
+            >
+              <img
+                src="/media/demo_parcel/frames/0.jpg"
+                alt="包裹位于左侧"
+              /><span>00:00</span>
+            </button>
+            <button
+              class="segment"
+              data-time="6"
+              aria-label="回看素材中央 00:06"
+            >
+              <img
+                src="/media/demo_parcel/frames/6.jpg"
+                alt="包裹位于中央"
+              /><span>00:06</span>
+            </button>
+            <button
+              class="segment"
+              data-time="13"
+              aria-label="回看素材右侧 00:13"
+            >
+              <img
+                src="/media/demo_parcel/frames/13.jpg"
+                alt="包裹位于右侧"
+              /><span>00:13</span>
+            </button>
+          </div>
+        </aside>
+        <div id="investigation-outline"></div>
+      </section>
+      <aside
+        id="workbench-inspector"
+        class="workbench-inspector"
+        aria-label="调查检查器"
+      ></aside>
+      <section class="composer-area" aria-label="与 FrameSeek 对话">
+        <p id="form-notice" class="form-notice" role="status" hidden></p>
+        <form id="question-form">
+          <div class="composer-context">
+            <label id="composer-label" for="question">向 FrameSeek 提问</label
+            ><button
+              id="clear-context"
+              class="text-button"
+              type="button"
+              hidden
+            >
+              另起问题
+            </button>
+          </div>
+          <textarea
+            id="question"
+            rows="2"
+            maxlength="1000"
+            placeholder="问问这段视频，或继续追问…"
+          ></textarea>
+          <div class="composer-tools">
+            <button
+              id="attach-local"
+              class="icon-button"
+              type="button"
+              aria-label="打开本地视频文件"
+            >
+              <img
+                class="icon"
+                src="/static/icons/paperclip.svg"
+                alt=""
+              /></button
+            ><span>Enter 发送 · Shift + Enter 换行</span
+            ><button
+              id="send-question"
+              class="send-button"
+              type="submit"
+              aria-label="发送消息"
+              disabled
+            >
+              <img class="icon" src="/static/icons/arrow-right.svg" alt="" />
+            </button>
+          </div>
+        </form>
+      </section>
+      <section class="canvas-footer" aria-label="画布视图">
+        <div class="canvas-navigation">
+          <section
+            id="canvas-minimap"
+            class="empty"
+            aria-label="画布导航小地图"
+          >
+            <div class="minimap-heading">
+              <span>全局导航</span><span id="canvas-node-count">0 个对象</span>
+            </div>
+            <div id="minimap-content" role="group" aria-label="点击对象定位">
+              <div id="minimap-window" aria-hidden="true"></div>
+            </div>
+            <p>点击定位 · 橙色为当前选中</p>
+          </section>
+          <p id="canvas-hint">拖动空白平移 · ⌘ / Ctrl + 滚轮缩放</p>
+        </div>
+        <div class="view-controls">
+          <button
+            id="toggle-minimap"
+            aria-label="切换画布小地图"
+            aria-expanded="true"
+            aria-controls="canvas-minimap"
+          >
+            导航
+          </button>
+          <button id="focus-card" disabled title="聚焦当前对象（画布内按 F）">
+            聚焦选中
+          </button>
+          <button id="zoom-out" aria-label="缩小画布">−</button
+          ><button id="zoom-reset" aria-label="恢复百分之百缩放">100%</button
+          ><button id="zoom-in" aria-label="放大画布">
+            <img class="icon" src="/static/icons/plus.svg" alt="" /></button
+          ><button id="fit-canvas">适应视图</button>
+        </div>
+      </section>
+      <details class="conversation-history">
+        <summary>本次调查 <span id="task-count">0</span> 轮</summary>
+        <p id="history-empty">提问后可在这里切换轮次</p>
+        <nav id="task-list" aria-label="本次会话任务"></nav>
+        <span>最近 12 轮 · 本次页面会话</span>
+      </details>
+      <input id="file-input" type="file" accept="video/*" hidden />
+      <div hidden>
+        <button id="mobile-reset">新对话</button
+        ><span id="mode-label">演示模式</span>
+        <h2 id="frame-heading">素材关键帧</h2>
+        <div id="segments"></div>
+        <div class="run-context">
+          <span id="run-state"></span>
+          <ol class="run-steps">
+            <li>
+              <span id="source-step"></span><span id="source-step-state"></span>
+            </li>
+            <li>
+              <span id="result-step"></span><span id="result-step-state"></span>
+            </li>
+            <li>
+              <span id="evidence-step"></span
+              ><span id="evidence-step-state"></span>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </div>
+    <dialog id="demo-library" aria-labelledby="demo-library-title">
+      <header class="demo-library-heading">
+        <div>
+          <span class="eyebrow">FrameSeek / 演示库</span>
+          <h2 id="demo-library-title">选择一条调查路径</h2>
+        </div>
+        <button id="close-demos" class="icon-button" aria-label="关闭演示库">
+          <img class="icon" src="/static/icons/x.svg" alt="" />
+        </button>
+      </header>
+      <p class="demo-library-intro">
+        六种调查方式，从三轮对话开始。载入后可以回看证据、整理画布，或选中任意卡片继续追问。
+      </p>
+      <div id="demo-scenarios" class="demo-scenarios"></div>
+      <p class="demo-library-note">
+        载入会替换当前画布。所有路径使用同一段 18
+        秒合成视频与预设回答，不调用模型。
+      </p>
+    </dialog>
+    <div
+      id="announcement"
+      class="sr-only"
+      role="status"
+      aria-live="polite"
+    ></div>
+  </body>
+</html>

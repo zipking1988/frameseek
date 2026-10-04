@@ -1,0 +1,50 @@
+{
+  "phase": "ceo",
+  "methodology_ranges": [
+    [
+      1,
+      600
+    ],
+    [
+      601,
+      1200
+    ],
+    [
+      1201,
+      1800
+    ],
+    [
+      1801,
+      2400
+    ],
+    [
+      2401,
+      2495
+    ]
+  ],
+  "supplemental": [
+    255,
+    305
+  ],
+  "scope_input_lines": 408,
+  "original_sha256": "6f854ee1b1c4aa7e4da6a5719302575198263f92ba9bcfea3bffbdfb4cd961ea",
+  "base_branch": "main",
+  "git_available": false,
+  "outside_status": "unavailable",
+  "reason": "under_codex",
+  "native_spec": "completed_two_passes",
+  "spec_initial_score": 6,
+  "spec_final_score": 9,
+  "spec_confirmed_fixed": 10,
+  "phase_completion": [
+    "ceo",
+    "design",
+    "dx",
+    "eng"
+  ],
+  "final_approval": "approved D55:A",
+  "budget_policy": "D49:A approved",
+  "eng_latest_run": "frameseek-autoplan-20261004-eng2",
+  "eng_invocations": 2,
+  "numeric_budget": "pending D1 explicit confirmation"
+}

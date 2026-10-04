@@ -1,0 +1,43 @@
+{
+  "selected_option": 1,
+  "preview": "http://127.0.0.1:8765/",
+  "qa_state": "3 UI-generated turns, second turn selected, playback paused around13s",
+  "qa_viewport": [
+    1487,
+    1058
+  ],
+  "small_desktop_viewport": [
+    1200,
+    800
+  ],
+  "handoff_viewport": [
+    2164,
+    1344
+  ],
+  "temporary_viewport_reset": true,
+  "warn_error_logs": [],
+  "tested": [
+    "first question and two followups",
+    "old-card context branch",
+    "pointer card drag",
+    "keyboard card movement",
+    "background pan",
+    "zoom controls",
+    "time sort",
+    "relationship arrangement",
+    "evidence seek and pause",
+    "close focus return and draft retention",
+    "unsupported question draft retention",
+    "local file playback boundary and restore"
+  ],
+  "frontend_tests": 20,
+  "python_tests": 82,
+  "make_check": "passed",
+  "limits": [
+    "fixture only",
+    "no indexed personal video queries",
+    "current page only, latest12turns",
+    "no mobile UI",
+    "no named groups or collaboration"
+  ]
+}

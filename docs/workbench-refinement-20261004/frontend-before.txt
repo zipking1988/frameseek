@@ -1,0 +1,158 @@
+
+> test
+> node --test tests/*.test.cjs
+
+TAP version 13
+# Subtest: 完整问题不依赖上下文
+ok 1 - 完整问题不依赖上下文
+  ---
+  duration_ms: 1.037167
+  type: 'test'
+  ...
+# Subtest: 连续的指代追问承接包裹，再确认搬运者
+ok 2 - 连续的指代追问承接包裹，再确认搬运者
+  ---
+  duration_ms: 0.160583
+  type: 'test'
+  ...
+# Subtest: 查看证据引用上一轮而不产生新的事件
+ok 3 - 查看证据引用上一轮而不产生新的事件
+  ---
+  duration_ms: 0.057334
+  type: 'test'
+  ...
+# Subtest: 重置或改变话题后不沿用旧包裹上下文
+ok 4 - 重置或改变话题后不沿用旧包裹上下文
+  ---
+  duration_ms: 0.065083
+  type: 'test'
+  ...
+# Subtest: 未实现的问题不伪造回答，也不改动问题或目录
+ok 5 - 未实现的问题不伪造回答，也不改动问题或目录
+  ---
+  duration_ms: 0.11875
+  type: 'test'
+  ...
+# Subtest: 同一短追问按所选卡片解析，跨主题不会错误承接
+ok 6 - 同一短追问按所选卡片解析，跨主题不会错误承接
+  ---
+  duration_ms: 0.091834
+  type: 'test'
+  ...
+# Subtest: 演示分支保留显式父轮次，不修改原目录
+ok 7 - 演示分支保留显式父轮次，不修改原目录
+  ---
+  duration_ms: 0.313125
+  type: 'test'
+  ...
+# Subtest: 损坏或循环的演示引用在载入前拒绝
+ok 8 - 损坏或循环的演示引用在载入前拒绝
+  ---
+  duration_ms: 0.16625
+  type: 'test'
+  ...
+# Subtest: mobile evidence hands focus to return action, then restores clicked evidence and draft
+ok 9 - mobile evidence hands focus to return action, then restores clicked evidence and draft
+  ---
+  duration_ms: 4.710417
+  type: 'test'
+  ...
+# Subtest: loading video retains original evidence trigger for focus restoration
+ok 10 - loading video retains original evidence trigger for focus restoration
+  ---
+  duration_ms: 1.843625
+  type: 'test'
+  ...
+# Subtest: removed evidence cannot receive focus; desktop seek preserves current focus
+ok 11 - removed evidence cannot receive focus; desktop seek preserves current focus
+  ---
+  duration_ms: 1.963292
+  type: 'test'
+  ...
+# Subtest: unsupported follow-up on another topic gives a supported recovery question
+ok 12 - unsupported follow-up on another topic gives a supported recovery question
+  ---
+  duration_ms: 1.662125
+  type: 'test'
+  ...
+# Subtest: cached metadata supports immediate seek; deferred metadata applies a queued seek
+ok 13 - cached metadata supports immediate seek; deferred metadata applies a queued seek
+  ---
+  duration_ms: 4.71825
+  type: 'test'
+  ...
+# Subtest: reset after media failure cannot claim readiness; reload updates source with existing tasks
+ok 14 - reset after media failure cannot claim readiness; reload updates source with existing tasks
+  ---
+  duration_ms: 1.582958
+  type: 'test'
+  ...
+# Subtest: selecting an older task synchronizes the canvas and exposes selected history
+ok 15 - selecting an older task synchronizes the canvas and exposes selected history
+  ---
+  duration_ms: 2.060083
+  type: 'test'
+  ...
+# Subtest: mobile evidence reveal and collapse retain task draft
+ok 16 - mobile evidence reveal and collapse retain task draft
+  ---
+  duration_ms: 0.956917
+  type: 'test'
+  ...
+# Subtest: local playback and new task retain unindexed state and disabled question
+ok 17 - local playback and new task retain unindexed state and disabled question
+  ---
+  duration_ms: 1.387959
+  type: 'test'
+  ...
+# Subtest: bounded session history removes the same oldest task as the conversation
+ok 18 - bounded session history removes the same oldest task as the conversation
+  ---
+  duration_ms: 2.266334
+  type: 'test'
+  ...
+# Subtest: a branch attaches to the explicitly selected turn, not the latest turn
+ok 19 - a branch attaches to the explicitly selected turn, not the latest turn
+  ---
+  duration_ms: 0.544583
+  type: 'test'
+  ...
+# Subtest: zoom preserves the world point under the pointer and clamps scale
+ok 20 - zoom preserves the world point under the pointer and clamps scale
+  ---
+  duration_ms: 0.139167
+  type: 'test'
+  ...
+# Subtest: time and status sorting preserve graph parents and manually moved nodes are restored by arrangement
+ok 21 - time and status sorting preserve graph parents and manually moved nodes are restored by arrangement
+  ---
+  duration_ms: 0.20875
+  type: 'test'
+  ...
+# Subtest: fit includes nodes in negative world space and reset removes stale parents and transforms
+ok 22 - fit includes nodes in negative world space and reset removes stale parents and transforms
+  ---
+  duration_ms: 0.492834
+  type: 'test'
+  ...
+# Subtest: fit keeps a twelve-turn investigation chain within the viewport
+ok 23 - fit keeps a twelve-turn investigation chain within the viewport
+  ---
+  duration_ms: 0.624834
+  type: 'test'
+  ...
+# Subtest: 横向评审排列保留分支且在小桌面保有可读比例
+ok 24 - 横向评审排列保留分支且在小桌面保有可读比例
+  ---
+  duration_ms: 0.142542
+  type: 'test'
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 64.041625

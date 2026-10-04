@@ -1,0 +1,19 @@
+uv run --frozen pytest
+============================= test session starts ==============================
+platform darwin -- Python 3.13.12, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Applications/MAMP/htdocs/frameseek
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.15.1
+collected 109 items
+
+tests/test_agent.py ..................                                   [ 16%]
+tests/test_api.py ....                                                   [ 20%]
+tests/test_budget.py .................                                   [ 35%]
+tests/test_config.py ...............                                     [ 49%]
+tests/test_demo_routes.py .                                              [ 50%]
+tests/test_schema.py ........................                            [ 72%]
+tests/test_windows.py ......................                             [ 92%]
+tests/test_workspace.py ........                                         [100%]
+
+============================= 109 passed in 16.78s =============================

@@ -1,0 +1,108 @@
+# Implementation Tasks — aggregated across phases
+
+最新phase输出26项（CEO8、Design3、Eng12、DX3），原22项完整保留＋4项工程预算复核任务。latest run per phase选择Eng20261004，其余20261003；nongit/unknown＋两次已绑定run_id替代不存在的commit-window。仅component/sorted-files/title完全匹配去重0项，非完全重叠保留并标记；Files只在renderer按E07归一，不改历史JSONL。全部unchecked，工时不能相加，CC不含GPU/授权/人工等待。
+
+- [ ] **CEO-T8 (P1, human: 4h / CC: 1h)** — 交付 — 部署回滚及赛事材料
+  - Surfaced by: ceo-review — C12真实可复现交付
+  - Files: docs/deployment.md, README.md, LICENSE
+  - Possible duplicate/shared files: CEO-T1, Eng-T9, Eng-T10, Eng-T7, DX-T1, DX-T3；合并实现但保留各验收。
+- [ ] **CEO-T2 (P1, human: 6h / CC: 45min)** — 契约 — schema/时间/支持与文档一致
+  - Surfaced by: ceo-review — C02-C03/C14契约漂移
+  - Files: src/frameseek/schema.py, src/frameseek/media.py, ARCHITECTURE.md, profile.md
+  - Possible duplicate/shared files: Eng-T4, Eng-T10, Eng-T7, Eng-T12, DX-T2, Eng-T6；合并实现但保留各验收。
+- [ ] **CEO-T3 (P1, human: 1d / CC: 2h)** — 摄取 — 持久分窗/能力manifest与预算
+  - Surfaced by: ceo-review — C08/C13半索引和预算放大
+  - Files: src/frameseek/ingest.py, src/frameseek/jobs.py, src/frameseek/storage.py, src/frameseek/agent.py
+  - Possible duplicate/shared files: CEO-T5, Eng-T9, Eng-T4, Eng-T3, Eng-T2, Eng-T8, Eng-T12, Eng-T11；合并实现但保留各验收。
+- [ ] **CEO-T1 (P1, human: 4h / CC: 1h)** — 环境 — 真实模型与配额预检
+  - Surfaced by: ceo-review — C06模型/云能力尚未验证
+  - Files: scripts/preflight.py, README.md, docs/deployment.md
+  - Possible duplicate/shared files: CEO-T8, Eng-T9, Eng-T10, Eng-T7, DX-T1, DX-T3；合并实现但保留各验收。
+- [ ] **CEO-T5 (P1, human: 1d / CC: 90min)** — 生命周期 — 拥有权/TTL与删除竞态
+  - Surfaced by: ceo-review — C09/C15隐私闭环
+  - Files: src/frameseek/api.py, src/frameseek/storage.py, tests/test_lifecycle.py
+  - Possible duplicate/shared files: CEO-T3, Eng-T9, Eng-T4, Eng-T2, Eng-T8, Eng-T12, DX-T2；合并实现但保留各验收。
+- [ ] **CEO-T6 (P1, human: 1d / CC: 3h)** — 评测 — 早期基线/原指标与消融
+  - Surfaced by: ceo-review — C18/C19发现性能风险太晚
+  - Files: eval/run.py, eval/baselines.py, docs/evaluation.md
+  - Possible duplicate/shared files: CEO-T4, Eng-T3, Eng-T5, Eng-T7, Eng-T11；合并实现但保留各验收。
+- [ ] **CEO-T4 (P1, human: 1d / CC: 3h + 标注)** — 诊断 — 四类真实问题诊断集
+  - Surfaced by: ceo-review — C17合法JSON不能证明核心价值
+  - Files: eval/diagnostics.json, eval/run.py
+  - Possible duplicate/shared files: CEO-T6, Eng-T3, Eng-T5, Eng-T7, Eng-T11；合并实现但保留各验收。
+- [ ] **Design-T2 (P1, human: 1天 / CC: 1小时)** — evidence-player — 实现证据定位与过期删除失效
+  - Surfaced by: design-review — H1/H4
+  - Files: src/frameseek/static/index.html, src/frameseek/static/app.js, src/frameseek/static/styles.css
+  - Possible duplicate/shared files: Design-T1, Eng-T12, CEO-T7, Design-T3；合并实现但保留各验收。
+- [ ] **Design-T1 (P1, human: 2天 / CC: 2小时)** — ui-state — 实现上传任务与问答状态恢复
+  - Surfaced by: design-review — H2/H3/M5/M6
+  - Files: src/frameseek/static/index.html, src/frameseek/static/app.js, src/frameseek/static/styles.css
+  - Possible duplicate/shared files: Design-T2, Eng-T12, CEO-T7, Design-T3；合并实现但保留各验收。
+- [ ] **Eng-T9 (P1, human: 1d / CC: 2h + 实机)** — budget — 实现已批准实际窗口预算与完整GPU费用账本
+  - Surfaced by: eng-review — D49:A/E13; A9/E18; P5/E15
+  - Files: src/frameseek/config.py, src/frameseek/attempts.py, src/frameseek/storage.py, docs/configuration.md, docs/deployment.md, tests/test_budget.py, tests/test_resources.py
+  - Possible duplicate/shared files: CEO-T8, CEO-T3, CEO-T1, CEO-T5, Eng-T2, Eng-T8, Eng-T10, Eng-T7, Eng-T1, Eng-T11, DX-T3；合并实现但保留各验收。
+- [ ] **Eng-T4 (P1, human: 6h / CC: 1h)** — context — typed澄清与按问题/revision缓存
+  - Surfaced by: eng-review — A4-A5/E04-E05
+  - Files: src/frameseek/api.py, src/frameseek/schema.py, src/frameseek/agent.py, src/frameseek/cache.py, tests/test_context.py, tests/test_cache.py
+  - Possible duplicate/shared files: CEO-T2, CEO-T3, CEO-T5, Eng-T12, DX-T2；合并实现但保留各验收。
+- [ ] **Eng-T3 (P1, human: 1d / CC: 2h + 标注)** — diagnostic — 前置真实跨窗候选与GO依赖
+  - Surfaced by: eng-review — A3/E03
+  - Files: src/frameseek/ingest.py, src/frameseek/retrieval.py, eval/diagnostics.json, eval/run.py
+  - Possible duplicate/shared files: CEO-T3, CEO-T6, CEO-T4, Eng-T5, Eng-T7, Eng-T11；合并实现但保留各验收。
+- [ ] **Eng-T2 (P1, human: 1d / CC: 2h)** — durable — 持久attempt、query幂等与worker lease
+  - Surfaced by: eng-review — A2/E02
+  - Files: src/frameseek/storage.py, src/frameseek/jobs.py, src/frameseek/attempts.py, tests/test_attempts.py
+  - Possible duplicate/shared files: CEO-T3, CEO-T5, Eng-T9, Eng-T8, Eng-T12, Eng-T1, Eng-T11；合并实现但保留各验收。
+- [ ] **Eng-T5 (P1, human: 1d / CC: 2h)** — eval — 冻结指标分母及24路径回归
+  - Surfaced by: eng-review — A6/Test/E06/E11
+  - Files: eval/run.py, eval/baselines.py, docs/evaluation.md, tests/test_metrics.py, tests/*
+  - Possible duplicate/shared files: CEO-T6, CEO-T4, Eng-T3, Eng-T7, Eng-T11；合并实现但保留各验收。
+- [ ] **Eng-T8 (P1, human: 6h / CC: 1h)** — lifecycle — 原子manifest及expiry删除升级闭环
+  - Surfaced by: eng-review — Architecture/X05/E12
+  - Files: src/frameseek/lifecycle.py, src/frameseek/storage.py, src/frameseek/jobs.py, tests/test_lifecycle.py, tests/test_migrations.py
+  - Possible duplicate/shared files: CEO-T3, CEO-T5, Eng-T9, Eng-T2, Eng-T12, Eng-T11；合并实现但保留各验收。
+- [ ] **Eng-T10 (P1, human: 6h / CC: 1h + 双平台)** — media — 隔离并限制媒体预检子进程
+  - Surfaced by: eng-review — A7/E14; native1
+  - Files: src/frameseek/media.py, src/frameseek/config.py, tests/test_media_isolation.py, docs/deployment.md
+  - Possible duplicate/shared files: CEO-T8, CEO-T2, CEO-T1, Eng-T9, Eng-T7, Eng-T1, DX-T3；合并实现但保留各验收。
+- [ ] **Eng-T7 (P1, human: 6h / CC: 1h + 实机)** — performance — 流式采样批量检索成本阶段实测
+  - Surfaced by: eng-review — Q3/P1-P4/E09-E10
+  - Files: src/frameseek/media.py, src/frameseek/index.py, src/frameseek/retrieval.py, eval/run.py, docs/deployment.md
+  - Possible duplicate/shared files: CEO-T8, CEO-T2, CEO-T1, CEO-T6, CEO-T4, Eng-T9, Eng-T3, Eng-T5, Eng-T10, Eng-T11, DX-T3；合并实现但保留各验收。
+- [ ] **Eng-T12 (P1, human: 6h / CC: 1h)** — recovery — 冻结同请求查询恢复控制协议
+  - Surfaced by: eng-review — A8/E17; native4
+  - Files: src/frameseek/api.py, src/frameseek/schema.py, src/frameseek/jobs.py, src/frameseek/static/app.js, docs/api.md, docs/errors.md, tests/test_query_recovery.py
+  - Possible duplicate/shared files: CEO-T2, CEO-T3, CEO-T5, Design-T2, Design-T1, Eng-T4, Eng-T2, Eng-T8, DX-T2, CEO-T7, Design-T3, Eng-T11；合并实现但保留各验收。
+- [ ] **Eng-T1 (P1, human: 1d / CC: 2h)** — resource — 全局admission与有限Agent调用账本
+  - Surfaced by: eng-review — A1/E01
+  - Files: src/frameseek/config.py, src/frameseek/attempts.py, src/frameseek/models.py, tests/test_limits.py
+  - Possible duplicate/shared files: Eng-T9, Eng-T2, Eng-T10, Eng-T11；合并实现但保留各验收。
+- [ ] **DX-T2 (P1, human: 1天 / CC: 1小时)** — api-contract — 冻结HTTP错误契约和客户端示例
+  - Surfaced by: devex-review — DX2/DX3 Pass2/3
+  - Files: src/frameseek/api.py, src/frameseek/schema.py, docs/api.md, docs/errors.md
+  - Possible duplicate/shared files: CEO-T2, CEO-T5, Eng-T4, Eng-T12；合并实现但保留各验收。
+- [ ] **DX-T1 (P1, human: 2天 / CC: 2小时)** — dev-environment — 实现双模式快速开始预检配置
+  - Surfaced by: devex-review — DX1/DX5 Pass1/6
+  - Files: pyproject.toml, Makefile, .env.example, README.md, scripts/preflight.py
+  - Possible duplicate/shared files: CEO-T8, CEO-T1；合并实现但保留各验收。
+- [ ] **CEO-T7 (P2, human: 4h / CC: 45min)** — UI — 证据五状态/引用重置
+  - Surfaced by: ceo-review — C11错误/partial区分
+  - Files: src/frameseek/static/index.html, src/frameseek/static/app.js, src/frameseek/static/styles.css
+  - Possible duplicate/shared files: Design-T2, Design-T1, Eng-T12, Design-T3；合并实现但保留各验收。
+- [ ] **Design-T3 (P2, human: 1天 / CC: 1小时)** — ui-system — 实现响应式可访问性与主题
+  - Surfaced by: design-review — Pass4/5/6 TasteC3–5
+  - Files: src/frameseek/static/index.html, src/frameseek/static/app.js, src/frameseek/static/styles.css, DESIGN.md
+  - Possible duplicate/shared files: Design-T2, Design-T1, Eng-T12, CEO-T7；合并实现但保留各验收。
+- [ ] **Eng-T6 (P2, human: 4h / CC: 45min)** — organization — 统一package assets和共享授权安全示例
+  - Surfaced by: eng-review — Q1-Q2/E07-E08
+  - Files: src/frameseek/auth.py, src/frameseek/static/*, ARCHITECTURE.md, profile.md
+  - Possible duplicate/shared files: CEO-T2；合并实现但保留各验收。
+- [ ] **Eng-T11 (P2, human: 4h / CC: 45min + 实机)** — scheduler — 按单次attempt公平调度查询与摄取
+  - Surfaced by: eng-review — P6/E16; native3; Taste C7
+  - Files: src/frameseek/jobs.py, src/frameseek/attempts.py, tests/test_scheduler.py, eval/run.py
+  - Possible duplicate/shared files: CEO-T3, CEO-T6, CEO-T4, Eng-T9, Eng-T3, Eng-T2, Eng-T5, Eng-T8, Eng-T7, Eng-T12, Eng-T1；合并实现但保留各验收。
+- [ ] **DX-T3 (P2, human: 1天 / CC: 1小时)** — docs-migration — 交付分阶段文档版本迁移与冷启动测量
+  - Surfaced by: devex-review — DX4 Pass4/5/8
+  - Files: docs/getting-started.md, docs/configuration.md, docs/deployment.md, CHANGELOG.md, CONTRIBUTING.md
+  - Possible duplicate/shared files: CEO-T8, CEO-T1, Eng-T9, Eng-T10, Eng-T7；合并实现但保留各验收。

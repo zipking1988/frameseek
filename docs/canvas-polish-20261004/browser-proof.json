@@ -1,0 +1,31 @@
+{
+  "geometry": {
+    "composer": "继续追问：是连续移动吗？",
+    "composerTop": 1132,
+    "dragging": 0,
+    "findings": 3,
+    "maxNodeBottom": 1103.345947265625,
+    "minimapCount": 6,
+    "playerTime": 13,
+    "questions": 3,
+    "selected": [
+      "finding-3"
+    ],
+    "viewport": {
+      "height": 1344,
+      "width": 2164
+    },
+    "zoom": "85%"
+  },
+  "console": [],
+  "verified": [
+    "minimap selects older question and restores readable zoom",
+    "card drag x +25, y +5 snaps y175, pointer end clears dragging",
+    "blank drag pans x40 y35 and clears panning",
+    "follow-up appends fourth question",
+    "small viewport automatically focuses current card",
+    "small inspector right904 vs composer right880",
+    "minimap toggle hides and restores map",
+    "focus and Home return readable/global views"
+  ]
+}

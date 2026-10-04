@@ -1,0 +1,44 @@
+[
+  {
+    "step": 1,
+    "name": "新会话",
+    "health": "基本清楚",
+    "screenshot": "01-start.jpg"
+  },
+  {
+    "step": 2,
+    "name": "首轮回答",
+    "health": "继续提问入口弱",
+    "screenshot": "02-first-answer.jpg"
+  },
+  {
+    "step": 3,
+    "name": "发现下一问",
+    "health": "建议藏在证据详情中",
+    "screenshot": "03-followup-discovery.jpg"
+  },
+  {
+    "step": 4,
+    "name": "连续追问两次",
+    "health": "行为健康，身份不确定性清楚",
+    "screenshot": "04-multiturn.jpg"
+  },
+  {
+    "step": 5,
+    "name": "手机回看证据并返回",
+    "health": "操作健康，缺所属问题",
+    "screenshot": "05-mobile-evidence.jpg"
+  },
+  {
+    "step": 6,
+    "name": "未支持问题",
+    "health": "保留草稿，恢复动作可加强",
+    "screenshot": "06-unsupported-question.jpg"
+  },
+  {
+    "step": 7,
+    "name": "打开本地视频后提问",
+    "health": "阻塞：只能播放，尚未索引",
+    "screenshot": "07-own-video-boundary.jpg"
+  }
+]

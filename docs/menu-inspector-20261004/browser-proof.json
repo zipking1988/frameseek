@@ -1,0 +1,71 @@
+{
+  "final": {
+    "draft": "",
+    "findings": 3,
+    "group": "位置变化 · 待核实",
+    "menuRect": {
+      "bottom": 739,
+      "height": 671,
+      "left": 64,
+      "right": 348,
+      "top": 68,
+      "width": 284,
+      "x": 64,
+      "y": 68
+    },
+    "menuVisible": true,
+    "note": "对照三个位置阶段；连续搬运仍需真实录像核实。",
+    "overflow": false,
+    "panelTab": "发现 3",
+    "panelWidth": 344,
+    "player": 13,
+    "questions": 6,
+    "rows": 3,
+    "sourceOpen": "false",
+    "viewport": {
+      "height": 1344,
+      "width": 2164
+    }
+  },
+  "filter": {
+    "evidenceRows": 2,
+    "times": [
+      "证据帧 / 00:00",
+      "证据帧 / 00:13"
+    ],
+    "conclusionRows": 1,
+    "sourceFocus": "inspector-context-tab"
+  },
+  "basis": {
+    "open": true,
+    "scope": "01查看范围合成视频 · 00:00–00:18 · 无音轨02固定样例匹配3 段事件 · 4 张证据帧03仍有未确认项未执行新的模型推理",
+    "steps": 3
+  },
+  "continue": {
+    "context": "继续追问：是连续移动吗？\n              另起问题\n            \n     ",
+    "draft": "保留多轮追问草稿",
+    "focus": "question"
+  },
+  "closedInspector": {
+    "canvasRight": 2164,
+    "panelDisplay": "none",
+    "viewport": 2164
+  },
+  "sourceNavigation": {
+    "open": true,
+    "closed": true
+  },
+  "contextFocus": "inspector-context-tab",
+  "outsideClickClosed": true,
+  "escapeFocus": "工作区菜单",
+  "smallViewport": {
+    "width": 1200,
+    "height": 800,
+    "panelWidth": 320,
+    "menuBottom": 739,
+    "composerRight": 758,
+    "panelLeft": 880,
+    "overflow": false
+  },
+  "console": []
+}

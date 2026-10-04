@@ -1,0 +1,24 @@
+{
+  "final": {
+    "composerTop": 1133,
+    "findingCount": 3,
+    "group": "位置变化 · 待核实",
+    "maxCardBottom": 1104.3499755859375,
+    "paused": true,
+    "playerTime": 13.486934,
+    "questionCount": 3,
+    "sourceQuestion": "是连续移动吗？"
+  },
+  "tests": [
+    "实际指针拖入保存0秒证据",
+    "保存13秒证据与partial结论",
+    "移除0秒证据并再次保存，发现位置不重叠",
+    "发现分组、调查命名和笔记",
+    "两帧原生dialog对照",
+    "记录完整预览与Markdown复制",
+    "本地文件禁用检索和证据集合",
+    "1200×800所选卡片与输入间隔24px，检查器与输入不重叠",
+    "默认viewport已恢复"
+  ],
+  "errors": []
+}

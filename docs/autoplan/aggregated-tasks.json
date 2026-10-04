@@ -1,0 +1,520 @@
+[
+  {
+    "phase": "ceo-review",
+    "run_id": "frameseek-autoplan-20261003",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T8",
+    "priority": "P1",
+    "component": "交付",
+    "effort_human": "4h",
+    "effort_cc": "1h",
+    "title": "部署回滚及赛事材料",
+    "source_finding": "C12真实可复现交付",
+    "files": [
+      "docs/deployment.md",
+      "README.md",
+      "LICENSE"
+    ]
+  },
+  {
+    "phase": "ceo-review",
+    "run_id": "frameseek-autoplan-20261003",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T2",
+    "priority": "P1",
+    "component": "契约",
+    "effort_human": "6h",
+    "effort_cc": "45min",
+    "title": "schema/时间/支持与文档一致",
+    "source_finding": "C02-C03/C14契约漂移",
+    "files": [
+      "src/frameseek/schema.py",
+      "src/frameseek/media.py",
+      "ARCHITECTURE.md",
+      "profile.md"
+    ]
+  },
+  {
+    "phase": "ceo-review",
+    "run_id": "frameseek-autoplan-20261003",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T3",
+    "priority": "P1",
+    "component": "摄取",
+    "effort_human": "1d",
+    "effort_cc": "2h",
+    "title": "持久分窗/能力manifest与预算",
+    "source_finding": "C08/C13半索引和预算放大",
+    "files": [
+      "src/frameseek/ingest.py",
+      "src/frameseek/jobs.py",
+      "src/frameseek/storage.py",
+      "src/frameseek/agent.py"
+    ]
+  },
+  {
+    "phase": "ceo-review",
+    "run_id": "frameseek-autoplan-20261003",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T1",
+    "priority": "P1",
+    "component": "环境",
+    "effort_human": "4h",
+    "effort_cc": "1h",
+    "title": "真实模型与配额预检",
+    "source_finding": "C06模型/云能力尚未验证",
+    "files": [
+      "scripts/preflight.py",
+      "README.md",
+      "docs/deployment.md"
+    ]
+  },
+  {
+    "phase": "ceo-review",
+    "run_id": "frameseek-autoplan-20261003",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T5",
+    "priority": "P1",
+    "component": "生命周期",
+    "effort_human": "1d",
+    "effort_cc": "90min",
+    "title": "拥有权/TTL与删除竞态",
+    "source_finding": "C09/C15隐私闭环",
+    "files": [
+      "src/frameseek/api.py",
+      "src/frameseek/storage.py",
+      "tests/test_lifecycle.py"
+    ]
+  },
+  {
+    "phase": "ceo-review",
+    "run_id": "frameseek-autoplan-20261003",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T6",
+    "priority": "P1",
+    "component": "评测",
+    "effort_human": "1d",
+    "effort_cc": "3h",
+    "title": "早期基线/原指标与消融",
+    "source_finding": "C18/C19发现性能风险太晚",
+    "files": [
+      "eval/run.py",
+      "eval/baselines.py",
+      "docs/evaluation.md"
+    ]
+  },
+  {
+    "phase": "ceo-review",
+    "run_id": "frameseek-autoplan-20261003",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T4",
+    "priority": "P1",
+    "component": "诊断",
+    "effort_human": "1d",
+    "effort_cc": "3h + 标注",
+    "title": "四类真实问题诊断集",
+    "source_finding": "C17合法JSON不能证明核心价值",
+    "files": [
+      "eval/diagnostics.json",
+      "eval/run.py"
+    ]
+  },
+  {
+    "phase": "design-review",
+    "run_id": "frameseek-autoplan-20261003",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T2",
+    "priority": "P1",
+    "component": "evidence-player",
+    "title": "实现证据定位与过期删除失效",
+    "source_finding": "H1/H4",
+    "effort_human": "1天",
+    "effort_cc": "1小时",
+    "files": [
+      "app/static/index.html",
+      "app/static/app.js",
+      "app/static/styles.css"
+    ]
+  },
+  {
+    "phase": "design-review",
+    "run_id": "frameseek-autoplan-20261003",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T1",
+    "priority": "P1",
+    "component": "ui-state",
+    "title": "实现上传任务与问答状态恢复",
+    "source_finding": "H2/H3/M5/M6",
+    "effort_human": "2天",
+    "effort_cc": "2小时",
+    "files": [
+      "app/static/index.html",
+      "app/static/app.js",
+      "app/static/styles.css"
+    ]
+  },
+  {
+    "phase": "eng-review",
+    "run_id": "frameseek-autoplan-20261004-eng2",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T9",
+    "priority": "P1",
+    "component": "budget",
+    "title": "实现已批准实际窗口预算与完整GPU费用账本",
+    "source_finding": "D49:A/E13; A9/E18; P5/E15",
+    "effort_human": "1d",
+    "effort_cc": "2h + 实机",
+    "files": [
+      "src/frameseek/config.py",
+      "src/frameseek/attempts.py",
+      "src/frameseek/storage.py",
+      "docs/configuration.md",
+      "docs/deployment.md",
+      "tests/test_budget.py",
+      "tests/test_resources.py"
+    ],
+    "verify": "N30/31/32/scene；最后额度并发；未知/伪造/降额；启动空闲崩溃停费校准"
+  },
+  {
+    "phase": "eng-review",
+    "run_id": "frameseek-autoplan-20261004-eng2",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T4",
+    "priority": "P1",
+    "component": "context",
+    "title": "typed澄清与按问题/revision缓存",
+    "source_finding": "A4-A5/E04-E05",
+    "effort_human": "6h",
+    "effort_cc": "1h",
+    "files": [
+      "src/frameseek/api.py",
+      "src/frameseek/schema.py",
+      "src/frameseek/agent.py",
+      "src/frameseek/cache.py",
+      "tests/test_context.py",
+      "tests/test_cache.py"
+    ],
+    "carried_from": "frameseek-autoplan-20261003",
+    "verify": "原E01–E12及29路径簇对应断言，原完整范围保留"
+  },
+  {
+    "phase": "eng-review",
+    "run_id": "frameseek-autoplan-20261004-eng2",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T3",
+    "priority": "P1",
+    "component": "diagnostic",
+    "title": "前置真实跨窗候选与GO依赖",
+    "source_finding": "A3/E03",
+    "effort_human": "1d",
+    "effort_cc": "2h + 标注",
+    "files": [
+      "src/frameseek/ingest.py",
+      "src/frameseek/retrieval.py",
+      "eval/diagnostics.json",
+      "eval/run.py"
+    ],
+    "carried_from": "frameseek-autoplan-20261003",
+    "verify": "原E01–E12及29路径簇对应断言，原完整范围保留"
+  },
+  {
+    "phase": "eng-review",
+    "run_id": "frameseek-autoplan-20261004-eng2",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T2",
+    "priority": "P1",
+    "component": "durable",
+    "title": "持久attempt、query幂等与worker lease",
+    "source_finding": "A2/E02",
+    "effort_human": "1d",
+    "effort_cc": "2h",
+    "files": [
+      "src/frameseek/storage.py",
+      "src/frameseek/jobs.py",
+      "src/frameseek/attempts.py",
+      "tests/test_attempts.py"
+    ],
+    "carried_from": "frameseek-autoplan-20261003",
+    "verify": "原E01–E12及29路径簇对应断言，原完整范围保留"
+  },
+  {
+    "phase": "eng-review",
+    "run_id": "frameseek-autoplan-20261004-eng2",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T5",
+    "priority": "P1",
+    "component": "eval",
+    "title": "冻结指标分母及24路径回归",
+    "source_finding": "A6/Test/E06/E11",
+    "effort_human": "1d",
+    "effort_cc": "2h",
+    "files": [
+      "eval/run.py",
+      "eval/baselines.py",
+      "docs/evaluation.md",
+      "tests/test_metrics.py",
+      "tests/*"
+    ],
+    "carried_from": "frameseek-autoplan-20261003",
+    "verify": "原E01–E12及29路径簇对应断言，原完整范围保留"
+  },
+  {
+    "phase": "eng-review",
+    "run_id": "frameseek-autoplan-20261004-eng2",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T8",
+    "priority": "P1",
+    "component": "lifecycle",
+    "title": "原子manifest及expiry删除升级闭环",
+    "source_finding": "Architecture/X05/E12",
+    "effort_human": "6h",
+    "effort_cc": "1h",
+    "files": [
+      "src/frameseek/lifecycle.py",
+      "src/frameseek/storage.py",
+      "src/frameseek/jobs.py",
+      "tests/test_lifecycle.py",
+      "tests/test_migrations.py"
+    ],
+    "carried_from": "frameseek-autoplan-20261003",
+    "verify": "原E01–E12及29路径簇对应断言，原完整范围保留"
+  },
+  {
+    "phase": "eng-review",
+    "run_id": "frameseek-autoplan-20261004-eng2",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T10",
+    "priority": "P1",
+    "component": "media",
+    "title": "隔离并限制媒体预检子进程",
+    "source_finding": "A7/E14; native1",
+    "effort_human": "6h",
+    "effort_cc": "1h + 双平台",
+    "files": [
+      "src/frameseek/media.py",
+      "src/frameseek/config.py",
+      "tests/test_media_isolation.py",
+      "docs/deployment.md"
+    ],
+    "verify": "畸形/挂起/外部引用/无限输出/10x；kill子孙清理；保护缺失零推理"
+  },
+  {
+    "phase": "eng-review",
+    "run_id": "frameseek-autoplan-20261004-eng2",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T7",
+    "priority": "P1",
+    "component": "performance",
+    "title": "流式采样批量检索成本阶段实测",
+    "source_finding": "Q3/P1-P4/E09-E10",
+    "effort_human": "6h",
+    "effort_cc": "1h + 实机",
+    "files": [
+      "src/frameseek/media.py",
+      "src/frameseek/index.py",
+      "src/frameseek/retrieval.py",
+      "eval/run.py",
+      "docs/deployment.md"
+    ],
+    "carried_from": "frameseek-autoplan-20261003",
+    "verify": "原E01–E12及29路径簇对应断言，原完整范围保留"
+  },
+  {
+    "phase": "eng-review",
+    "run_id": "frameseek-autoplan-20261004-eng2",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T12",
+    "priority": "P1",
+    "component": "recovery",
+    "title": "冻结同请求查询恢复控制协议",
+    "source_finding": "A8/E17; native4",
+    "effort_human": "6h",
+    "effort_cc": "1h",
+    "files": [
+      "src/frameseek/api.py",
+      "src/frameseek/schema.py",
+      "src/frameseek/jobs.py",
+      "src/frameseek/static/app.js",
+      "docs/api.md",
+      "docs/errors.md",
+      "tests/test_query_recovery.py"
+    ],
+    "verify": "断线/双POST/持久前后crash；pending/unknown独立四状态；预算无新dispatch；reset拒绝"
+  },
+  {
+    "phase": "eng-review",
+    "run_id": "frameseek-autoplan-20261004-eng2",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T1",
+    "priority": "P1",
+    "component": "resource",
+    "title": "全局admission与有限Agent调用账本",
+    "source_finding": "A1/E01",
+    "effort_human": "1d",
+    "effort_cc": "2h",
+    "files": [
+      "src/frameseek/config.py",
+      "src/frameseek/attempts.py",
+      "src/frameseek/models.py",
+      "tests/test_limits.py"
+    ],
+    "carried_from": "frameseek-autoplan-20261003",
+    "verify": "原E01–E12及29路径簇对应断言，原完整范围保留"
+  },
+  {
+    "phase": "devex-review",
+    "run_id": "frameseek-autoplan-20261003",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T2",
+    "priority": "P1",
+    "component": "api-contract",
+    "title": "冻结HTTP错误契约和客户端示例",
+    "source_finding": "DX2/DX3 Pass2/3",
+    "effort_human": "1天",
+    "effort_cc": "1小时",
+    "files": [
+      "src/frameseek/api.py",
+      "src/frameseek/schema.py",
+      "docs/api.md",
+      "docs/errors.md"
+    ]
+  },
+  {
+    "phase": "devex-review",
+    "run_id": "frameseek-autoplan-20261003",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T1",
+    "priority": "P1",
+    "component": "dev-environment",
+    "title": "实现双模式快速开始预检配置",
+    "source_finding": "DX1/DX5 Pass1/6",
+    "effort_human": "2天",
+    "effort_cc": "2小时",
+    "files": [
+      "pyproject.toml",
+      "Makefile",
+      ".env.example",
+      "README.md",
+      "scripts/preflight.py"
+    ]
+  },
+  {
+    "phase": "ceo-review",
+    "run_id": "frameseek-autoplan-20261003",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T7",
+    "priority": "P2",
+    "component": "UI",
+    "effort_human": "4h",
+    "effort_cc": "45min",
+    "title": "证据五状态/引用重置",
+    "source_finding": "C11错误/partial区分",
+    "files": [
+      "web/index.html",
+      "web/app.js",
+      "web/styles.css"
+    ]
+  },
+  {
+    "phase": "design-review",
+    "run_id": "frameseek-autoplan-20261003",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T3",
+    "priority": "P2",
+    "component": "ui-system",
+    "title": "实现响应式可访问性与主题",
+    "source_finding": "Pass4/5/6 TasteC3–5",
+    "effort_human": "1天",
+    "effort_cc": "1小时",
+    "files": [
+      "app/static/index.html",
+      "app/static/app.js",
+      "app/static/styles.css",
+      "DESIGN.md"
+    ]
+  },
+  {
+    "phase": "eng-review",
+    "run_id": "frameseek-autoplan-20261004-eng2",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T6",
+    "priority": "P2",
+    "component": "organization",
+    "title": "统一package assets和共享授权安全示例",
+    "source_finding": "Q1-Q2/E07-E08",
+    "effort_human": "4h",
+    "effort_cc": "45min",
+    "files": [
+      "src/frameseek/auth.py",
+      "src/frameseek/static/*",
+      "ARCHITECTURE.md",
+      "profile.md"
+    ],
+    "carried_from": "frameseek-autoplan-20261003",
+    "verify": "原E01–E12及29路径簇对应断言，原完整范围保留"
+  },
+  {
+    "phase": "eng-review",
+    "run_id": "frameseek-autoplan-20261004-eng2",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T11",
+    "priority": "P2",
+    "component": "scheduler",
+    "title": "按单次attempt公平调度查询与摄取",
+    "source_finding": "P6/E16; native3; Taste C7",
+    "effort_human": "4h",
+    "effort_cc": "45min + 实机",
+    "files": [
+      "src/frameseek/jobs.py",
+      "src/frameseek/attempts.py",
+      "tests/test_scheduler.py",
+      "eval/run.py"
+    ],
+    "verify": "1:1两类无饥饿、单类继续、取消/到期/剩余deadline拒绝、原P95与吞吐"
+  },
+  {
+    "phase": "devex-review",
+    "run_id": "frameseek-autoplan-20261003",
+    "branch": "nongit",
+    "commit": "unknown",
+    "id": "T3",
+    "priority": "P2",
+    "component": "docs-migration",
+    "title": "交付分阶段文档版本迁移与冷启动测量",
+    "source_finding": "DX4 Pass4/5/8",
+    "effort_human": "1天",
+    "effort_cc": "1小时",
+    "files": [
+      "docs/getting-started.md",
+      "docs/configuration.md",
+      "docs/deployment.md",
+      "CHANGELOG.md",
+      "CONTRIBUTING.md"
+    ]
+  }
+]

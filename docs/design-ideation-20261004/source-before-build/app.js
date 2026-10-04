@@ -1,0 +1,517 @@
+"use strict";
+const $ = (id) => document.getElementById(id);
+const player = $("player");
+let demo = null;
+let localUrl = null;
+let localMode = false;
+let mediaReady = false;
+let mediaFailed = false;
+let pendingSeek = null;
+let turns = 0;
+let taskSequence = 0;
+
+function showEvidence(open) {
+  document
+    .querySelector(".agent-shell")
+    .classList.toggle("evidence-open", open);
+  $("toggle-evidence").setAttribute("aria-expanded", String(open));
+  $("toggle-evidence").firstChild.textContent = open
+    ? "返回任务 "
+    : "查看证据 ";
+}
+function resetContext() {
+  $("run-state").textContent = localMode ? "未建立索引" : "等待任务";
+  updateMediaContext();
+  $("result-step").textContent = localMode
+    ? "尚未接入视频检索"
+    : "从固定样例中匹配";
+  $("result-step-state").textContent = localMode ? "不可用" : "待匹配";
+  $("evidence-step").textContent = localMode
+    ? "此文件没有检索证据"
+    : "时间与画面关联";
+  $("evidence-step-state").textContent = localMode ? "不可用" : "待选择";
+  document.querySelectorAll(".run-steps li").forEach((item, index) => {
+    if (index > 0) item.classList.remove("complete");
+  });
+}
+
+function updateMediaContext() {
+  $("source-step").textContent = mediaFailed
+    ? "视频加载失败"
+    : !mediaReady
+      ? "正在加载视频"
+      : localMode
+        ? "仅浏览器内播放"
+        : "合成视频已加载";
+  $("source-step-state").textContent = mediaFailed
+    ? "需重试"
+    : !mediaReady
+      ? "加载中"
+      : localMode
+        ? "未索引"
+        : "已就绪";
+  $("attached-source-state").textContent = mediaFailed
+    ? "加载失败"
+    : !mediaReady
+      ? "正在加载"
+      : localMode
+        ? "仅本地播放 · 未索引"
+        : "已加载 · 18 秒";
+  document
+    .querySelector(".run-steps li:first-child")
+    .classList.toggle("complete", mediaReady && !mediaFailed && !localMode);
+}
+const stateLabels = {
+  ok: "已提供证据",
+  partial: "部分确认",
+  no_result: "未找到相关画面",
+  error: "查找未完成",
+};
+function selectTask(data, historyButton) {
+  document.querySelectorAll(".history-task").forEach((item) => {
+    const active = item === historyButton;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-current", active ? "true" : "false");
+  });
+  $("run-state").textContent = stateLabels[data.status];
+  $("result-step").textContent = "已匹配固定演示样例";
+  $("result-step-state").textContent = "已匹配";
+  document
+    .querySelector(".run-steps li:nth-child(2)")
+    .classList.add("complete");
+  $("evidence-step").textContent = data.events.length
+    ? `${data.events.length} 个事件可回看`
+    : "该样例没有可定位的事件";
+  $("evidence-step-state").textContent = data.events.length
+    ? "待选择"
+    : "无证据";
+  document
+    .querySelector(".run-steps li:last-child")
+    .classList.remove("complete");
+}
+
+const clock = (seconds) => {
+  const total = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+};
+function announce(message) {
+  $("announcement").textContent = message;
+}
+function notice(message) {
+  $("form-notice").textContent = message;
+  $("form-notice").hidden = !message;
+}
+function node(tag, className, text) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  if (text !== undefined) element.textContent = text;
+  return element;
+}
+function button(label, className, action) {
+  const element = node("button", className, label);
+  element.type = "button";
+  element.addEventListener("click", action);
+  return element;
+}
+function updateSend() {
+  $("send-question").disabled =
+    !demo || localMode || !$("question").value.trim();
+}
+function seek(seconds) {
+  if (localMode) return;
+  if (mediaFailed) {
+    announce("视频无法定位，请先重新加载视频。");
+    $("seek-status").textContent = "视频无法定位，请先重新加载视频。";
+    return;
+  }
+  if (!mediaReady) {
+    pendingSeek = seconds;
+    announce("视频仍在加载，加载后将定位到对应画面。");
+    return;
+  }
+  const wasPaused = player.paused;
+  player.currentTime = seconds;
+  if (wasPaused) player.pause();
+  if (window.innerWidth < 900) {
+    showEvidence(true);
+    player.scrollIntoView({
+      block: "center",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+  }
+  $("seek-status").textContent =
+    `已定位 ${clock(seconds)} · ${wasPaused ? "保持暂停" : "继续播放"}`;
+  announce($("seek-status").textContent);
+  $("evidence-step").textContent = `已定位到 ${clock(seconds)}`;
+  $("evidence-step-state").textContent = "已定位";
+  document.querySelector(".run-steps li:last-child").classList.add("complete");
+}
+function updateTime() {
+  $("playback-time").textContent =
+    `${clock(player.currentTime)} / ${clock(player.duration)}`;
+  const percent = player.duration
+    ? (player.currentTime / player.duration) * 100
+    : 0;
+  $("playhead").style.transform = `scaleX(${Math.min(percent, 100) / 100})`;
+  const start = player.currentTime < 5 ? 0 : player.currentTime < 11 ? 5 : 11;
+  document.querySelectorAll(".chapter,.segment").forEach((element) => {
+    const activeTime = element.classList.contains("segment")
+      ? start === 5
+        ? 6
+        : start === 11
+          ? 13
+          : 0
+      : start;
+    const active = !localMode && Number(element.dataset.time) === activeTime;
+    element.classList.toggle("active", active);
+    element.setAttribute("aria-current", active ? "time" : "false");
+  });
+}
+function renderAnswer(query) {
+  if (localMode || !demo) return;
+  if (++turns > 12) {
+    const oldestId = $("messages").firstElementChild?.id;
+    if (oldestId) document.querySelector(`[data-turn="${oldestId}"]`)?.remove();
+    $("messages").firstElementChild?.remove();
+  }
+  const data = query.response;
+  const turn = node("article", "turn");
+  turn.id = `task-${++taskSequence}`;
+  turn.append(node("p", "question-bubble", query.question));
+  const label = node("div", "answer-label", "FrameSeek");
+  label.append(node("span", "fixture-tag", "预设演示结果"));
+  turn.append(label, node("p", "answer-text", data.answer));
+  turn.append(
+    node("span", `answer-status ${data.status}`, stateLabels[data.status]),
+  );
+  data.events.forEach((event) => {
+    const row = node("section", "event");
+    row.append(node("h3", "event-heading", event.action));
+    const toolbar = node("div", "event-toolbar");
+    toolbar.append(
+      button(
+        `▷ ${clock(event.start)}–${clock(event.end)}`,
+        "seek-button",
+        () => {
+          selectTask(data, historyButton);
+          seek(event.start);
+        },
+      ),
+      node("span", "support-label", "固定样例 · 画面直接支持"),
+    );
+    row.append(toolbar);
+    const evidence = node("div", "evidence-grid");
+    event.evidence.forEach((frame) => {
+      const frameButton = button("", "evidence-button", () => {
+        selectTask(data, historyButton);
+        document.querySelectorAll(".evidence-button").forEach((item) => {
+          const selected = item === frameButton;
+          item.classList.toggle("selected", selected);
+          item.setAttribute("aria-pressed", String(selected));
+        });
+        seek(frame.t);
+      });
+      frameButton.setAttribute("aria-pressed", "false");
+      frameButton.setAttribute("aria-label", `定位证据帧 ${clock(frame.t)}`);
+      const image = document.createElement("img");
+      image.src = frame.uri;
+      image.alt = frame.caption;
+      image.loading = "lazy";
+      const caption = node("span", "evidence-caption", clock(frame.t));
+      caption.append(node("span", "", "查看此帧 ↗"));
+      frameButton.append(image, caption);
+      evidence.append(frameButton);
+    });
+    row.append(evidence, node("p", "event-summary", event.summary));
+    row.append(
+      button("复制时间引用", "text-button", async (eventClick) => {
+        const trigger = eventClick.currentTarget;
+        try {
+          await navigator.clipboard.writeText(
+            `合成演示：${demo.video.title} ${clock(event.start)}–${clock(event.end)} — ${event.action}`,
+          );
+          trigger.textContent = "已复制";
+          announce("已复制演示素材的时间引用。");
+        } catch {
+          notice("浏览器不允许复制。可在结构化结果中选择并复制时间。 ");
+        }
+      }),
+    );
+    turn.append(row);
+  });
+  if (data.unresolved.length) {
+    const unresolved = node("div", "unresolved");
+    unresolved.append(node("strong", "", "仍未确认"));
+    data.unresolved.forEach((text) => unresolved.append(node("p", "", text)));
+    turn.append(unresolved);
+  }
+  if (data.errors.length) {
+    turn.append(
+      node("p", "trace-note", data.errors[0].message),
+      button("选择其他示例问题", "text-button", () => {
+        $("question").focus();
+        notice("可以尝试：包裹什么时候出现在中央？");
+      }),
+    );
+  } else {
+    turn.append(
+      node(
+        "p",
+        "trace-note",
+        "演示检查范围：00:00–00:18 · 无音轨 · 非真实模型评测",
+      ),
+    );
+  }
+  const details = node("details", "response-details");
+  details.append(
+    node("summary", "", "查看结构化结果"),
+    node("pre", "", JSON.stringify(data, null, 2)),
+  );
+  turn.append(details);
+  const actions = node("div", "response-actions");
+  data.followups.forEach((question) =>
+    actions.append(button(question, "text-button", () => ask(question))),
+  );
+  turn.append(actions);
+  $("empty-state").hidden = true;
+  $("messages").append(turn);
+  const historyButton = button(query.question, "history-task", () => {
+    turn.scrollIntoView({
+      block: "start",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+    selectTask(data, historyButton);
+  });
+  historyButton.dataset.turn = turn.id;
+  historyButton.title = query.question;
+  $("task-list").prepend(historyButton);
+  $("history-empty").hidden = true;
+  $("task-count").textContent = $("messages").children.length;
+  selectTask(data, historyButton);
+  const chatContent = $("chat-content");
+  chatContent.scrollTop +=
+    turn.getBoundingClientRect().top - chatContent.getBoundingClientRect().top;
+  announce(`演示回答：${stateLabels[data.status]}。${data.answer}`);
+}
+function ask(question) {
+  if (localMode) return;
+  const normalized = (value) => value.replace(/[\s？?。！!]/g, "");
+  const query = demo?.queries.find(
+    (item) => normalized(item.question) === normalized(question),
+  );
+  if (!query) {
+    notice(
+      "当前支持固定示例问题，尚不能理解自由提问。请选择示例，或输入“什么时候移到右侧？”。",
+    );
+    announce("此问题不属于演示样例，未调用模型。");
+    return;
+  }
+  notice("");
+  renderAnswer(query);
+  $("question").value = "";
+  updateSend();
+  $("question").focus();
+}
+function clearChat() {
+  $("messages").replaceChildren();
+  $("empty-state").hidden = false;
+  $("question").value = "";
+  turns = 0;
+  $("task-list").replaceChildren();
+  $("task-count").textContent = "0";
+  $("history-empty").hidden = false;
+  resetContext();
+  notice("");
+  updateSend();
+}
+function setLocalMode(enabled) {
+  localMode = enabled;
+  $("mode-label").textContent = enabled ? "本地播放" : "演示模式";
+  $("demo-notice-text").textContent = enabled
+    ? "本地播放模式。文件只在此浏览器中打开，未上传、未建立索引，也未发送给模型。"
+    : "正在体验固定演示。视频为合成素材，回答为预设样例；不会上传文件或调用模型。";
+  $("restore-demo").hidden = !enabled;
+  $("suggestions").hidden = enabled;
+  $("composer-mode-text").textContent = enabled
+    ? "仅本地播放 · 未建立索引"
+    : "预设演示 · 未调用模型";
+  $("demo-timeline").hidden = enabled;
+  $("segments").hidden = enabled;
+  $("local-note").hidden = !enabled;
+  $("video-watermark").hidden = enabled;
+  $("question").disabled = enabled;
+  $("question").placeholder = enabled
+    ? "当前视频未建立索引，暂时不能提问。"
+    : "例如：包裹什么时候出现在中央？";
+  document.querySelectorAll("[data-query]").forEach((element) => {
+    element.disabled = enabled || !demo;
+  });
+  $("video-state").textContent = enabled ? "仅本地播放" : "演示素材";
+  document.querySelector(".source-item span").textContent = enabled
+    ? "本地视频 · 未索引"
+    : "包裹移动演示";
+  $("attached-source-state").textContent = enabled
+    ? "仅本地播放 · 未索引"
+    : "已加载 · 18 秒";
+  $("empty-state").querySelector("h2").textContent = enabled
+    ? "素材已打开，尚未建立索引。"
+    : "你想在视频里找到什么？";
+  $("empty-state").querySelector(".task-intro > p").textContent = enabled
+    ? "你可以在证据画布中播放文件，或返回演示体验预设任务。"
+    : "描述目标，沿着时间和画面检查答案。";
+  $("video-state").title = enabled ? "未上传、未分析" : "公开合成素材";
+  $("seek-status").textContent = enabled
+    ? "未上传 · 未分析 · 文件只在浏览器内播放"
+    : "点击时间或证据帧，定位到对应画面";
+  clearChat();
+  if (enabled) {
+    notice("已打开本地视频。真实索引和问答尚未接入，可返回演示体验证据跳转。");
+  }
+}
+$("question-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!$("send-question").disabled) ask($("question").value.trim());
+});
+$("question").addEventListener("input", updateSend);
+$("question").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    $("question-form").requestSubmit();
+  }
+});
+document.querySelectorAll("[data-query]").forEach((element) =>
+  element.addEventListener("click", () => {
+    const query = demo?.queries.find(
+      (item) => item.id === element.dataset.query,
+    );
+    if (query) ask(query.question);
+  }),
+);
+document
+  .querySelectorAll("[data-time]")
+  .forEach((element) =>
+    element.addEventListener("click", () => seek(Number(element.dataset.time))),
+  );
+function newTask() {
+  clearChat();
+  if (localMode) {
+    notice("当前视频仅供本地播放，返回演示后可提问。");
+  }
+  showEvidence(false);
+  if (!localMode) $("question").focus();
+  announce("演示对话已重置。");
+}
+$("reset-chat").addEventListener("click", newTask);
+$("mobile-reset").addEventListener("click", newTask);
+$("toggle-evidence").addEventListener("click", () => {
+  const open = $("toggle-evidence").getAttribute("aria-expanded") !== "true";
+  showEvidence(open);
+  if (!open) $("question").scrollIntoView({ block: "center" });
+});
+$("open-local").addEventListener("click", () => $("file-input").click());
+$("file-input").addEventListener("change", () => {
+  const file = $("file-input").files[0];
+  if (!file) return;
+  if (!file.type.startsWith("video/") || file.size > 500 * 1024 * 1024) {
+    notice("请选择不超过 500 MB 的视频文件用于本地播放。");
+    $("file-input").value = "";
+    return;
+  }
+  player.pause();
+  if (localUrl) URL.revokeObjectURL(localUrl);
+  localUrl = URL.createObjectURL(file);
+  player.preload = "metadata";
+  mediaReady = false;
+  mediaFailed = false;
+  pendingSeek = null;
+  player.removeAttribute("poster");
+  player.src = localUrl;
+  player.load();
+  setLocalMode(true);
+  $("video-heading").textContent = file.name;
+  $("attached-source-name").textContent = file.name;
+  $("video-meta").textContent = "正在读取本地视频信息…";
+  if (window.innerWidth < 900) showEvidence(true);
+  announce("本地视频已打开，未上传、未建立索引。");
+});
+$("restore-demo").addEventListener("click", () => {
+  player.pause();
+  if (localUrl) URL.revokeObjectURL(localUrl);
+  localUrl = null;
+  mediaReady = false;
+  mediaFailed = false;
+  pendingSeek = null;
+  player.src = "/demo/video";
+  player.preload = "auto";
+  player.poster = "/media/demo_parcel/frames/0.jpg";
+  player.load();
+  setLocalMode(false);
+  $("video-heading").textContent = "包裹移动 · 合成演示";
+  $("attached-source-name").textContent = "包裹移动演示.mp4";
+  $("video-meta").textContent = "18 秒 · 960 × 540 · 无音轨";
+  $("file-input").value = "";
+  showEvidence(false);
+  announce("已返回固定演示，原本地文件没有上传。");
+});
+function mediaLoaded() {
+  mediaReady = true;
+  mediaFailed = false;
+  $("reload-video").hidden = true;
+  updateMediaContext();
+  if (localMode)
+    $("video-meta").textContent =
+      `${clock(player.duration)} · ${player.videoWidth} × ${player.videoHeight} · 未建立索引`;
+  if (pendingSeek !== null) {
+    const seconds = pendingSeek;
+    pendingSeek = null;
+    seek(seconds);
+  }
+  updateTime();
+}
+player.addEventListener("loadedmetadata", mediaLoaded);
+if (player.readyState >= 1) mediaLoaded();
+else updateMediaContext();
+player.addEventListener("error", () => {
+  mediaReady = false;
+  mediaFailed = true;
+  updateMediaContext();
+  pendingSeek = null;
+  $("seek-status").textContent =
+    "视频无法播放，请重新加载或选择浏览器支持的格式。";
+  $("reload-video").hidden = false;
+  announce($("seek-status").textContent);
+});
+$("reload-video").addEventListener("click", () => {
+  mediaFailed = false;
+  mediaReady = false;
+  updateMediaContext();
+  player.load();
+  $("seek-status").textContent = "正在重新加载视频…";
+});
+player.addEventListener("timeupdate", updateTime);
+window.addEventListener("beforeunload", () => {
+  if (localUrl) URL.revokeObjectURL(localUrl);
+});
+document.querySelectorAll("[data-query]").forEach((element) => {
+  element.disabled = true;
+});
+fetch("/demo/catalog")
+  .then((response) => {
+    if (!response.ok) throw new Error("catalog");
+    return response.json();
+  })
+  .then((data) => {
+    demo = data;
+    document.querySelectorAll("[data-query]").forEach((element) => {
+      element.disabled = localMode;
+    });
+    updateSend();
+  })
+  .catch(() => {
+    notice("演示数据暂时无法加载，请刷新页面重试。");
+    announce("演示数据加载失败。");
+  });

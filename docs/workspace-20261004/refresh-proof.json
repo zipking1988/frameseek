@@ -1,0 +1,97 @@
+{
+  "before": {
+    "cards": [
+      {
+        "id": "task-1",
+        "style": "left: 84px; top: 175px;"
+      },
+      {
+        "id": "task-2",
+        "style": "left: 524px; top: 175px;"
+      },
+      {
+        "id": "task-3",
+        "style": "left: 964px; top: 175px;"
+      },
+      {
+        "id": "task-4",
+        "style": "left: 84px; top: 655px;"
+      },
+      {
+        "id": "task-5",
+        "style": "left: 524px; top: 695px;"
+      },
+      {
+        "id": "task-6",
+        "style": "left: 524px; top: 1155px;"
+      },
+      {
+        "id": "finding-1",
+        "style": "left: 84px; top: 1794px;"
+      },
+      {
+        "id": "finding-2",
+        "style": "left: 504px; top: 1830px;"
+      },
+      {
+        "id": "finding-3",
+        "style": "left: 924px; top: 1830px;"
+      }
+    ],
+    "group": "位置变化 · 待核实",
+    "note": "对照三个位置阶段；连续搬运仍需真实录像核实。",
+    "plane": "transform: translate(435.006px, 24.5265px) scale(0.431277); --canvas-scale: 0.4312773190869354;",
+    "source": "false",
+    "tab": "true",
+    "title": "双路径视频调查",
+    "video": 13
+  },
+  "after": {
+    "cards": [
+      {
+        "id": "task-1",
+        "style": "left: 84px; top: 175px;"
+      },
+      {
+        "id": "task-2",
+        "style": "left: 524px; top: 175px;"
+      },
+      {
+        "id": "task-3",
+        "style": "left: 964px; top: 175px;"
+      },
+      {
+        "id": "task-4",
+        "style": "left: 84px; top: 655px;"
+      },
+      {
+        "id": "task-5",
+        "style": "left: 524px; top: 695px;"
+      },
+      {
+        "id": "task-6",
+        "style": "left: 524px; top: 1155px;"
+      },
+      {
+        "id": "finding-1",
+        "style": "left: 84px; top: 1794px;"
+      },
+      {
+        "id": "finding-2",
+        "style": "left: 504px; top: 1830px;"
+      },
+      {
+        "id": "finding-3",
+        "style": "left: 924px; top: 1830px;"
+      }
+    ],
+    "group": "位置变化 · 待核实",
+    "note": "对照三个位置阶段；连续搬运仍需真实录像核实。",
+    "plane": "transform: translate(435.006px, 24.5265px) scale(0.431277); --canvas-scale: 0.4312773190869354;",
+    "source": "false",
+    "tab": "true",
+    "title": "双路径视频调查",
+    "video": 13
+  },
+  "exactMatch": true
+}

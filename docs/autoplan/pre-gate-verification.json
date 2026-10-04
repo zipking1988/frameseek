@@ -1,0 +1,40 @@
+{
+  "run_id": "frameseek-autoplan-20261004-eng2",
+  "git": "absent",
+  "branch": "nongit",
+  "commit": "unknown",
+  "aggregation": "latest run per phase; exact component/sorted-files/title only; adapted nongit identity",
+  "tasks": 26,
+  "exact_duplicates_removed": 0,
+  "decision_count": 52,
+  "mechanical": 44,
+  "taste": 7,
+  "user_challenges": 1,
+  "test_paths": 29,
+  "tests_executed": false,
+  "native": [
+    5,
+    6,
+    5,
+    4
+  ],
+  "outside_status": "unavailable_all_four",
+  "root_architecture_sha256": "6f854ee1b1c4aa7e4da6a5719302575198263f92ba9bcfea3bffbdfb4cd961ea",
+  "root_profile_sha256": "44f0bf2170d445dd80a6abf00d4b4a742aaac597cddf2155b7c64fa0824fca29",
+  "approval": "approved D55:A",
+  "unresolved": [
+    "D1 numeric call/money/calibration budgets"
+  ],
+  "provisional": [],
+  "audit_records": 53,
+  "resolved_user_challenges": 1,
+  "open_user_challenges": 0,
+  "eng_invocations": 2,
+  "eng_close_packet": "/private/tmp/frameseek-autoplan-state/projects/frameseek/autoplan-eng-W5d2uB/close-packet.md",
+  "eng_close_read": [
+    "1-497 (truncated)",
+    "320-414",
+    "415-447"
+  ],
+  "eng_input": "1bc1dee66dce653f78530994687cb4e191b0d217e3f5416753d60c72839dc88b"
+}
