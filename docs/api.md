@@ -1,14 +1,14 @@
-# API与输出契约（D1）
+# API与输出契约
 
-当前为本地fixture交互服务：`GET /`、`GET /health`、`GET /docs`、`GET /openapi.json`、`GET /docs/errors`，以及`GET /demo/catalog`固定问答目录、`GET /demo/video`合成视频（支持Range请求）、`/static/*`静态界面和`/media/demo_parcel/frames/*`公开合成帧。只有demo_parcel媒体公开；没有真实用户素材存储或读取接口。session、upload、jobs、chat和delete接口未实现，返回404。
+当前本地服务包含公开合成演示、拥有权保护的会话/调查/上传/任务/查询操作，以及私有媒体读取。具体端点和输入模型见运行服务的 `/docs` 与 `/openapi.json`；下文workspace接口与 [运行指南](WORKSPACE_RUNTIME.md) 描述当前实现。默认fixture不发送模型请求，上传素材未就绪时禁止问答，不使用演示答案。
 
-`/openapi.json`包含Answer与QueryControl的数据合同、health和demo读取路径，不包含未实现的chat操作。浏览器提问仅匹配已下载的固定问答目录，未知问题保留草稿并提示演示边界；本地文件通过blob URL播放，不上传，也不能提问。`docs/schema/`保存同一模型生成的JSON Schema；schema版本0.1仍属开发期，完整请求/worker协议在对应实现阶段冻结。
+仅 `demo_parcel` 合成媒体公开。私有素材、帧、任务、查询和调查校验会话拥有权及到期时间；写入还校验CSRF/Origin。浏览器选择文件后以原始视频字节上传并预检，不是仅blob播放。
 
 导出文件：[Answer](schema/answer-0.1.json)、[QueryControl](schema/query-control-0.1.json)、[四状态合成样例](schema/fixtures-0.1.json)。修改模型后运行`make schema`重新生成；`make check`会检测导出漂移。
 
 Answer始终包含schema_version、status、timebase、answer、events、unresolved、followups、trace及errors。事件时间与证据时间使用原视频绝对秒数，人类时间必须等价；证据须在事件区间且属于同一视频。support_score与support_level互斥，公开debug为null，未测量支持分量时必须使用level。
 
-JSON Schema检查字段、状态组合与support互斥/非空；时间等价、证据区间/视频归属和计数关系由服务端Pydantic校验补充。仅通过JSON Schema不足以证明证据有效，上传与模型输出仍需后续真实验证。
+JSON Schema检查字段、状态组合与support互斥/非空；时间等价、证据区间/视频归属和计数关系由服务端Pydantic校验补充。仅通过JSON Schema不足以证明证据有效，上传与模型输出另外经过服务端验证；真实模型证据质量仍需实跑验收。
 
 | 最终status | 必须满足 |
 |---|---|
@@ -17,11 +17,11 @@ JSON Schema检查字段、状态组合与support互斥/非空；时间等价、�
 | no_result | 成功查找无证据命中；events/unresolved/errors为空 |
 | error | 无合法事件，至少一条结构化失败信息 |
 
-future查询恢复控制：kind=query_control，state=pending（带2–10秒重试间隔）或unknown（停止自动轮询）。不含status，不增加第五种最终回答；HTTP202/409、同request_id恢复、持久lease/完成结果与未知不重发在后续任务实现，当前只有类型与测试。
+查询恢复控制：kind=query_control，state=pending（带2–10秒重试间隔）或unknown（停止自动轮询）。不含status，不增加第五种最终回答；HTTP202/409、同request_id恢复、持久lease/完成结果与未知不重发已实现。
 
 固定合同样例：运行`make eval-fixture`。其事件、URI与说明均为合成样例，未证明真实证据或模型效果。
 
-将随后续功能交付的接口清单及完整owner/CSRF/代际/幂等要求见ARCHITECTURE.md中的X02、E04和E17。
+完整owner/CSRF/代际/幂等要求见ARCHITECTURE.md中的X02、E04和E17。
 
 
 ## 2026-10-04 workspace endpoints
