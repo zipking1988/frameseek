@@ -991,7 +991,7 @@
         if (e.button !== 0) return;
         e.preventDefault();
         const item = model.items.get(turn.id);
-        choose(turn.id,false,e.shiftKey,!e.shiftKey);
+        choose(turn.id,false,false,true);
         if(!selectedIds.has(turn.id))return;
         gesture = {
           before:model.checkpoint(),

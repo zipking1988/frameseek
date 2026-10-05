@@ -367,3 +367,20 @@ test('aligning a folded parent ignores selected hidden children and preserves th
  m.move('parent',100,0);m.move('child',500,20);m.move('other',0,100);m.fold('parent',true);
  m.align(['child','parent','other'],'left');assert.equal(m.items.get('parent').x,0);assert.equal(m.items.get('child').x,400);assert.equal(m.items.get('other').x,0);
 });
+
+
+test('holding Shift before title drag preserves selection and still begins a free-placement gesture',()=>{
+ const fs=require('node:fs'),vm=require('node:vm');
+ const source=fs.readFileSync(require.resolve('../src/frameseek/static/investigation-canvas.js'),'utf8');
+ const chooser=source.slice(source.indexOf('    function choose('),source.indexOf('    function clearScope('));
+ const begin=source.indexOf('      drag.addEventListener("pointerdown", (e) => {');
+ const end=source.indexOf('      const end = () => {',begin);
+ let handler;const selectedIds=new Set(),elements=new Map();
+ const $=id=>{if(!elements.has(id))elements.set(id,{});return elements.get(id);};
+ const records=new Map(['A','B'].map(id=>[id,{query:{id,question:id,response:{id}},select:{setAttribute(){}}}]));
+ const ctx=vm.createContext({records,selectedIds,$,model:{expandPath(){},items:new Map([['A',{x:1,y:2}]]),view:{scale:1},checkpoint:()=>({})},detailFocus:null,selected:null,gesture:null,callbacks:{select(){}},draw(){},clearScope(){selectedIds.clear();},turn:{id:'A',classList:{add(){}}},drag:{addEventListener:(name,fn)=>handler=fn,focus(){},setPointerCapture(){}}});
+ vm.runInContext(chooser,ctx);vm.runInContext("choose('A');choose('B',false,true)",ctx);
+ vm.runInContext(source.slice(begin,end),ctx);
+ handler({button:0,shiftKey:true,pointerId:1,clientX:10,clientY:20,preventDefault(){}});
+ assert.deepEqual([...selectedIds],['A','B']);assert.equal(ctx.selected,'A');assert.equal(ctx.gesture.kind,'card');assert.deepEqual(Array.from(ctx.gesture.ids),['A','B']);
+});
