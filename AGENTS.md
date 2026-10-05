@@ -22,6 +22,7 @@ The default `fixture` mode uses explicitly labeled synthetic demo answers and se
 | `src/frameseek/api.py`, `routes.py` | FastAPI app, owned HTTP operations, workers and media delivery |
 | `workspace.py` | SQLite investigations, ownership, revisions, generation and expiry |
 | `agent.py`, `attempts.py` | Model adapters, retrieval/evidence pipeline and approved-budget reservations |
+| `evaluation.py`, `readiness.py` | Offline artifact scoring and readonly local dispatch prerequisites |
 | `media.py`, `media_limits.py`, `windows.py` | Isolated decoding, real timestamps, bounded sampling and window planning |
 | `schema.py`, `config.py`, `preflight.py` | Output contracts, finite settings and readiness reporting |
 | `frontend/workbench.jsx` | Authored React workbench components |
@@ -42,6 +43,8 @@ make preflight
 make run                    # http://127.0.0.1:8765; one API/worker process
 make test                   # backend; isolated fixtures/mock transports
 make check                  # Ruff lint/format and schema drift
+make eval-check             # offline unrun templates; NOT_ACCEPTED expected
+make agent-check            # readonly prerequisites; no calls or approvals
 npm ci --ignore-scripts
 npm test                    # all frontend regressions
 npm run build               # bundle and static content hashes
@@ -62,6 +65,6 @@ Run relevant existing tests for behavioral changes. Add focused regressions for 
 
 ## Repository hygiene and delivery
 
-Keep `.frameseek-data/`, uploaded private media, session databases, `.env`, private runtime/approval records, caches, `.venv/` and `node_modules/` out of Git. `.env.example` and `docs/runtime.example.json` are templates, not operational approvals; `.env` is not automatically loaded.
+Keep `.frameseek-data/`, `.frameseek-eval/`, uploaded private media, session databases, `.env`, private runtime/approval records, caches, `.venv/` and `node_modules/` out of Git. `.env.example` and `docs/runtime.example.json` are templates, not operational approvals; `.env` is not automatically loaded.
 
 Inspect `git status` before edits and preserve unrelated work. Follow the user's authorized commit/push scope, keep the repository private, and never force-push or publish it without an explicit request. Update current docs when behavior changes, distinguish design history from current behavior, and report what passed plus material verification limits. Do not label the project a complete MVP or GO while live acceptance requirements remain open.

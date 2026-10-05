@@ -14,12 +14,13 @@
       crossorigin
     />
     <link rel="stylesheet" href="/static/styles.css?v=136d47b61d96" />
-    <link rel="stylesheet" href="/static/workbench.css?v=835bca46c810" />
+    <link rel="stylesheet" href="/static/workbench.css?v=94b0ce51ac5b" />
     <script src="/static/demo-conversation.js?v=fc40894c3313" defer></script>
-    <script src="/static/investigation-canvas.js?v=01e82b00b965" defer></script>
-    <script src="/static/workbench-model.js?v=8da809ccd95b" defer></script>
-    <script src="/static/workbench.js?v=c302f723c444" defer></script>
-    <script src="/static/workspace.js?v=4db42a7237e8" defer></script>
+    <script src="/static/investigation-canvas.js?v=b473f0d4decf" defer></script>
+    <script src="/static/workbench-model.js?v=792d4982e7d2" defer></script>
+    <script src="/static/investigation-report.js?v=6e024a187339" defer></script>
+    <script src="/static/workbench.js?v=46e4c7349867" defer></script>
+    <script src="/static/workspace.js?v=329504f75017" defer></script>
     <script src="/static/app.js?v=dbb11f2c7e4a" defer></script>
   </head>
   <body>
@@ -36,6 +37,7 @@
         <button id="resume-query" class="outline-button" type="button" hidden>恢复查询</button>
         <button id="open-investigations" class="outline-button" type="button">调查库</button>
         <button id="open-sources" class="outline-button" type="button">素材库</button>
+        <button id="open-agent-setup" class="outline-button" type="button" disabled>模型与预算</button>
         <span id="composer-mode-text" class="header-mode"
           >预设演示 · 未调用模型</span
         >
@@ -148,6 +150,7 @@
         </button>
         <div class="canvas-actions">
           <span id="board-label" class="board-label">调查画布</span>
+          <button id="canvas-search" class="outline-button" title="搜索画布（⌘ / Ctrl + K）">搜索</button>
           <span id="demo-current" class="demo-current" hidden></span>
           <button id="expand-paths" class="outline-button" hidden>
             展开全部
@@ -368,6 +371,9 @@
           <p id="canvas-hint">拖动空白平移 · ⌘ / Ctrl + 滚轮缩放</p>
         </div>
         <div class="view-controls">
+          <button id="canvas-undo" disabled title="撤销画布操作（⌘ / Ctrl + Z）">撤销</button>
+          <button id="canvas-redo" disabled title="重做画布操作（⌘ / Ctrl + Shift + Z）">重做</button>
+          <button id="canvas-shortcuts" title="画布快捷键">快捷键</button>
           <button
             id="toggle-minimap"
             aria-label="切换画布小地图"
@@ -392,6 +398,29 @@
         <nav id="task-list" aria-label="本次会话任务"></nav>
         <span>最近 12 轮 · 本次页面会话</span>
       </details>
+      <div id="canvas-selection-tools" class="canvas-selection-tools" hidden role="group" aria-label="多选对象操作">
+        <span id="canvas-selection-count"></span>
+        <button id="canvas-group">命名分组</button><button id="canvas-ungroup">取消分组</button>
+        <label class="sr-only" for="canvas-alignment">对齐方式</label>
+        <select id="canvas-alignment"><option value="left">左侧对齐</option><option value="top">顶部对齐</option><option value="horizontal">横向等距</option><option value="vertical">纵向等距</option></select>
+        <button id="canvas-align">对齐</button><button id="canvas-clear-selection">取消多选</button>
+      </div>
+      <dialog id="canvas-group-dialog" class="branch-name-dialog" aria-labelledby="canvas-group-title">
+        <form id="canvas-group-form"><h2 id="canvas-group-title">命名对象分组</h2><p>分组只整理画布，追问关系和证据来源保持原样。</p>
+          <label for="canvas-group-name">分组名称</label><input id="canvas-group-name" maxlength="60" required autocomplete="off" />
+          <div class="branch-name-actions"><button type="button" id="canvas-group-cancel" class="outline-button">取消</button><button type="submit" class="branch-save">建立分组</button></div>
+        </form>
+      </dialog>
+      <dialog id="canvas-search-dialog" class="canvas-search-dialog compare-dialog" aria-labelledby="canvas-search-title">
+        <header><h2 id="canvas-search-title">搜索当前调查</h2><button id="canvas-search-close" class="icon-button" aria-label="关闭搜索">×</button></header>
+        <label class="sr-only" for="canvas-search-input">搜索问题、答案、证据或分组</label><input id="canvas-search-input" placeholder="搜索问题、答案、证据或分组…" autocomplete="off" />
+        <p id="canvas-search-status" role="status"></p><div id="canvas-search-results" class="canvas-search-results"></div>
+      </dialog>
+      <dialog id="canvas-shortcuts-dialog" class="canvas-search-dialog compare-dialog" aria-labelledby="canvas-shortcuts-title">
+        <header><h2 id="canvas-shortcuts-title">画布快捷键</h2><button id="canvas-shortcuts-close" class="icon-button" aria-label="关闭快捷键">×</button></header>
+        <dl class="shortcut-list"><dt>搜索当前调查</dt><dd>⌘ / Ctrl + K</dd><dt>多选对象</dt><dd>Shift + 点击卡片的选中按钮</dd><dt>批量移动</dt><dd>拖动任一已选卡片的标题</dd><dt>撤销 / 重做</dt><dd>⌘ / Ctrl + Z / Shift + Z</dd><dt>全选 / 取消多选</dt><dd>画布内 ⌘ / Ctrl + A / Esc</dd><dt>移动卡片</dt><dd>标题聚焦时方向键 · Shift 加速</dd><dt>聚焦 / 全局视图</dt><dd>画布内 F / Home</dd><dt>平移 / 缩放</dt><dd>拖动空白 / ⌘ + 滚轮</dd></dl>
+        <p class="muted-text">撤销仅作用于本次会话的画布位置、分组和路径整理。刷新后布局仍保留，撤销历史重新开始。</p>
+      </dialog>
       <input id="file-input" type="file" accept="video/*" hidden />
       <dialog
         id="branch-name-dialog"
@@ -409,7 +438,7 @@
             autocomplete="off"
           />
           <p class="branch-name-note">
-            名称用于整理画布，原始问题与证据保持不变。本次页面会话内保留。
+            名称用于整理画布，原始问题与证据保持不变。随当前调查保存在本地。
           </p>
           <div class="branch-name-actions">
             <button
@@ -477,5 +506,21 @@
       role="status"
       aria-live="polite"
     ></div>
+    <dialog id="agent-setup-dialog" class="agent-setup-dialog" aria-labelledby="agent-setup-title">
+      <header><div><p class="inspector-kicker">FRAMESEEK / AGENT</p><h2 id="agent-setup-title">模型与预算</h2></div>
+        <button id="close-agent-setup" class="icon-button" type="button" aria-label="关闭模型与预算">×</button></header>
+      <p id="agent-setup-summary" role="status">正在读取本机配置…</p>
+      <div id="agent-readiness-checks" class="agent-readiness-checks"></div>
+      <details><summary>模型角色与版本</summary><div id="agent-model-roles"></div></details>
+      <details><summary>如何准备真实分析</summary>
+        <ol><li>按 <code>docs/runtime.example.json</code> 准备本机私有配置；模板中的占位值不可运行。</li>
+          <li>为自托管视觉、向量与重排服务配置模型版本；文本服务使用既定 Nebius 路径。凭据只放本机环境变量。</li>
+          <li>明确有限金额和调用次数，完成费用及资源截止校准，再由本机操作者记录两级批准预算。</li>
+          <li>设置 <code>FS_RUNTIME_FILE</code> 和 <code>FRAMESEEK_MODE=real</code>，重启服务后重新检查。素材库会按实际窗口数再做准入。</li></ol>
+        <p>只读检查命令：<code>uv run --frozen python -m frameseek.readiness</code>。预算检查可附带已存在的 <code>--owner</code>，这不是批准费用。</p>
+      </details>
+      <footer><button id="refresh-agent-setup" class="outline-button" type="button">重新检查</button>
+        <span class="muted-text">检查不会调用模型、创建 GPU 或批准费用。</span></footer>
+    </dialog>
   </body>
 </html>

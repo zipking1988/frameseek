@@ -4,7 +4,7 @@ A desktop video investigation workspace: ask questions, follow up on earlier ans
 
 FrameSeek connects conversation to its source video. Questions form investigation paths; evidence can be pinned, compared side by side, played at its original timestamp and exported with notes.
 
-![FrameSeek investigation canvas](docs/code-review-20261004/preview.png)
+![FrameSeek investigation canvas](docs/local-tools-20261005/canvas.png)
 
 ## Current status
 
@@ -41,8 +41,9 @@ Useful local endpoints:
 1. Open **演示库** (demo library) and choose an investigation path. The demo uses an 18-second synthetic video made from three static scenes, not a real continuous parcel movement.
 2. Select a question card and follow a suggested question, or start another supported demo question. Each card retains its own context and evidence.
 3. Click a time range or evidence frame to seek the original video. Pin evidence or a conclusion, compare two frames, and add notes.
-4. Rename, arrange, fold or move investigation paths. Use the minimap, **聚焦选中** (focus selected), and **适应视图** (fit canvas).
-5. Use **调查库** (investigations) to create or restore work. Use **素材库** (sources) to upload, rename, inspect or delete videos.
+4. Rename, arrange, fold or move investigation paths. Shift-click selects multiple cards for batch movement, named groups and alignment. Undo/redo restores layout operations; search locates questions, evidence and groups. Use the minimap, **聚焦选中** (focus selected), and **适应视图** (fit canvas).
+5. Export a captured investigation report from **发现 → 导出调查记录** as Markdown, JSON or HTML with optional offline evidence images. See [canvas and report controls](docs/CANVAS_AND_REPORTS.md).
+6. Use **调查库** (investigations) to create or restore work. Use **素材库** (sources) to upload, rename, inspect or delete videos.
 
 Each investigation stores its latest 12 questions, up to 8 findings, notes, layout, path metadata, viewport, draft and player position in local SQLite. Default retention is 24 hours. Ownership follows the browser's session cookie; clearing it does not transfer access to an old investigation. There is no account-based cross-device sync.
 
@@ -58,6 +59,8 @@ Node.js 20+ is needed only when developing the frontend; the server serves commi
 make test          # backend contracts, ownership, media, persistence and mocked agents
 make check         # Ruff lint/format and generated-contract drift
 make eval-fixture  # four synthetic output-contract examples; not a model evaluation
+make eval-check    # offline diagnostic templates; deliberately NOT_ACCEPTED
+make agent-check   # read-only local prerequisites; exit 2 until configured/approved
 
 npm ci --ignore-scripts
 npm test           # frontend state, canvas and asynchronous persistence regressions
@@ -66,7 +69,7 @@ npm run build      # React bundle and static asset content hashes
 
 Edit `frontend/workbench.jsx` for React components. Authored player, canvas and persistence code lives in `src/frameseek/static/`. Rebuild after changing JSX, JS or CSS; commit the generated bundle and updated `index.html` asset hashes. Do not edit the compiled `workbench.js` directly. Output-model changes require `make schema` followed by `make check`.
 
-The latest code review verified **109 backend and 71 frontend tests**, lint/format, contract exports and the frontend build. See [review findings, fixes and coverage limits](docs/CODE_REVIEW_20261004.md). These checks use isolated fixtures/mock transports and do not establish live model quality, GPU cost or hour-long performance.
+The initial import review verified **109 backend and 71 frontend tests**; see [its findings and coverage limits](docs/CODE_REVIEW_20261004.md). Current tooling verification is recorded in [the local-tools review](docs/LOCAL_TOOLS_REVIEW_20261005.md). These checks use isolated fixtures/mock transports and do not establish live model quality, GPU cost or hour-long performance.
 
 ## Architecture
 
@@ -91,7 +94,8 @@ BM25 + vector retrieval → rerank → bounded visual review → answer + eviden
 | `src/frameseek/api.py`, `routes.py`, `workspace.py` | App, owned APIs, workers and durable storage |
 | `src/frameseek/agent.py`, `attempts.py` | NVIDIA/Nebius adapters, retrieval and budget reservations |
 | `src/frameseek/media*.py`, `windows.py` | Media isolation, sampling and window planning |
-| `src/frameseek/schema.py`, `config.py`, `preflight.py` | Output contracts, settings and readiness |
+| `src/frameseek/schema.py`, `config.py`, `preflight.py`, `readiness.py` | Output contracts, settings, deployment blockers and local dispatch prerequisites |
+| `src/frameseek/evaluation.py`, `eval/` | Offline versioned evaluation and unrun diagnostic templates |
 | `frontend/workbench.jsx` | React workbench components |
 | `src/frameseek/static/` | Authored browser modules, styles and committed build |
 | `tests/` | Python and Node regression suites |
@@ -116,7 +120,7 @@ Live mode needs verified NVIDIA/self-hosted media endpoints, Nebius text configu
 FRAMESEEK_MODE=real make preflight
 ```
 
-The CLI currently always exits with code 2 in real mode and reports outstanding deployment acceptance blockers; it is not a dynamic readiness gate for a configured deployment. The app refuses unconfigured real mode rather than falling back to demo answers. FrameSeek does not provision or release GPU instances. Follow the [runtime guide](docs/WORKSPACE_RUNTIME.md) before any paid execution or deployment.
+The `preflight` CLI currently always exits with code 2 in real mode and reports outstanding deployment acceptance blockers; it is not a dynamic readiness gate for a configured deployment. The app refuses unconfigured real mode rather than falling back to demo answers. FrameSeek does not provision or release GPU instances. Use **模型与预算**, owned `GET /api/runtime/status`, or `make agent-check` for dynamic local prerequisites. The readiness command accepts `--owner EXISTING_OWNER_ID` to inspect existing owner/deployment approvals; it creates no records or model requests. Passing it does not verify live quality, billing cutoff or deployment. Follow the [runtime guide](docs/WORKSPACE_RUNTIME.md) before any paid execution or deployment.
 
 ## Project documentation
 
@@ -125,6 +129,7 @@ The CLI currently always exits with code 2 in real mode and reports outstanding 
 - [Product scope](profile.md) and [interface direction/history](DESIGN.md).
 - [API and schemas](docs/api.md), [configuration](docs/configuration.md), [errors](docs/errors.md).
 - [Current runtime/workflow](docs/WORKSPACE_RUNTIME.md) and [code review](docs/CODE_REVIEW_20261004.md).
+- [Offline evaluation](docs/evaluation.md), [canvas/report controls](docs/CANVAS_AND_REPORTS.md) and [local tools verification](docs/LOCAL_TOOLS_REVIEW_20261005.md).
 - [Implementation tasks](docs/autoplan/IMPLEMENTATION_TASKS.md), [test plan](docs/autoplan/test-plan-20261004.md) and [TODOS.md](TODOS.md).
 - [Design QA](design-qa.md) and dated screenshot/test folders under `docs/`.
 

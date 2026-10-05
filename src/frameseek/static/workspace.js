@@ -104,6 +104,31 @@
     button.onclick=()=>Promise.resolve(action()).catch(error=>libraryNotice(error.message));row.append(button);return row;
   }
   function libraryNotice(message) { $("library-notice").textContent=message; }
+  async function showRuntime() {
+    const dialog=$("agent-setup-dialog"), button=$("refresh-agent-setup");
+    if(!dialog.open) dialog.showModal();
+    button.disabled=true;$("agent-setup-summary").textContent="正在读取本机配置…";
+    try {
+      const data=await api("/api/runtime/status");
+      $("agent-setup-summary").textContent=data.dispatch_prerequisites_met
+        ? "本地准入条件齐备。可在素材库开始分析；模型连通性和效果仍需实跑验证。"
+        : "真实分析尚未就绪。演示、上传预检、播放和调查保存仍可使用。";
+      const list=$("agent-readiness-checks");list.replaceChildren();
+      for(const check of data.checks) {
+        const row=document.createElement("article");row.className="agent-check";
+        const heading=document.createElement("strong");heading.textContent=check.label;
+        const state=document.createElement("span");state.textContent=check.state==="available" ? "已提供" : "待准备";state.dataset.state=check.state;
+        const detail=document.createElement("p");detail.textContent=check.detail;
+        row.append(heading,state,detail);list.append(row);
+      }
+      const models=$("agent-model-roles");models.replaceChildren();
+      for(const model of data.models) {
+        const row=document.createElement("p");row.textContent=`${model.label}${model.optional ? "（可选）" : ""} · ${model.configured ? `${model.model} / ${model.revision} · ${model.key_present ? "凭据已配置" : "缺少凭据"}` : "未配置"}`;
+        models.append(row);
+      }
+    }catch(error){$("agent-setup-summary").textContent=`读取失败：${error.message}。可重新检查。`;}
+    finally {button.disabled=false;}
+  }
   async function library(kind="investigations") {
     const deskId=current?.id, epoch=requestEpoch, token=++libraryEpoch;
     const active=()=>owns(deskId,epoch) && token===libraryEpoch;
@@ -330,10 +355,15 @@
       if(id && desks.some(d=>d.id===id))await openDesk(id);
       else if(desks.length)await openDesk(desks[0].id);else await create(demo);
       store().subscribe(changed);
+      window.addEventListener("frameseek-canvas-changed",changed);
       ["pointerup","keyup","wheel"].forEach(event=>document.addEventListener(event,()=>{if(JSON.stringify(snapshot())!==lastSaved)changed();},{passive:true}));
       document.addEventListener("visibilitychange",()=>{if(document.hidden)flush().catch(()=>{});});
       $("open-investigations").onclick=()=>library().catch(e=>ui().notify(e.message));
       $("open-sources").onclick=()=>library("videos").catch(e=>ui().notify(e.message));
+      $("open-agent-setup").disabled=false;
+      $("open-agent-setup").onclick=showRuntime;
+      $("refresh-agent-setup").onclick=showRuntime;
+      $("close-agent-setup").onclick=()=>$("agent-setup-dialog").close();
       $("save-state").onclick=()=>conflict ? openDesk(current.id).catch(e=>ui().notify(e.message)) : flush().catch(()=>{});
       $("resume-query").onclick=()=>recover().catch(e=>ui().notify(e.message));
       $("close-library").onclick=()=>$("workspace-library").close();

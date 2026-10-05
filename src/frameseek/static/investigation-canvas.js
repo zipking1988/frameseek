@@ -11,14 +11,40 @@
   function createModel() {
     const items = new Map();
     const collapsed = new Set();
+    const groups = new Map();
+    const undoStack = [], redoStack = [];
+    const layout = () => { const {view, ...saved} = model.snapshot(); return saved; };
     let foldedLayout = false;
     let lastArrangement = "threads";
     let view = { x: 0, y: 0, scale: 1 };
     const model = {
       items,
       collapsed,
+      groups,
+      get canUndo() { return undoStack.length > 0; },
+      get canRedo() { return redoStack.length > 0; },
+      checkpoint: () => layout(),
+      commit(before, label = "画布操作") {
+        if (JSON.stringify(before) === JSON.stringify(layout())) return false;
+        undoStack.push({saved: before, label});
+        if (undoStack.length > 60) undoStack.shift();
+        redoStack.length = 0;
+        return true;
+      },
+      perform(label, action) { const before = layout(); action(); return model.commit(before, label); },
+      undo() {
+        const entry = undoStack.pop(); if (!entry) return null;
+        redoStack.push({saved:layout(), label:entry.label});
+        model.restore(entry.saved); return entry.label;
+      },
+      redo() {
+        const entry = redoStack.pop(); if (!entry) return null;
+        undoStack.push({saved:layout(), label:entry.label});
+        model.restore(entry.saved); return entry.label;
+      },
+      resetHistory() { undoStack.length=0; redoStack.length=0; },
       snapshot() {
-        return { view: { ...view }, collapsed: [...collapsed], lastArrangement, foldedLayout,
+        return { groups: [...groups.values()].map(g=>({...g,members:[...g.members]})), view: { ...view }, collapsed: [...collapsed], lastArrangement, foldedLayout,
           nodes: [...items.values()].map(({id,x,y,branchName}) => ({id,x,y,branchName})) };
       },
       restore(saved) {
@@ -27,8 +53,14 @@
           if (item && Number.isFinite(node.x) && Number.isFinite(node.y)) {
             item.x = clamp(node.x, -100000, 100000);
             item.y = clamp(node.y, -100000, 100000);
-            if (typeof node.branchName === "string") item.branchName = node.branchName.slice(0,60);
+            item.branchName = typeof node.branchName === "string" ? node.branchName.slice(0,60) : "";
           }
+        }
+        groups.clear();
+        for (const group of (Array.isArray(saved?.groups) ? saved.groups : []).slice(0,20)) {
+          if (typeof group.id !== "string" || typeof group.name !== "string" || !Array.isArray(group.members)) continue;
+          const members=[...new Set(group.members.filter(id=>items.has(id)))].slice(0,24);
+          if(members.length>1) groups.set(group.id.slice(0,100), {id:group.id.slice(0,100), name:group.name.slice(0,60), members});
         }
         foldedLayout = saved?.foldedLayout === true;
         collapsed.clear();
@@ -63,6 +95,10 @@
       },
       remove(id) {
         items.delete(id);
+        for(const [key,group] of groups) {
+          group.members=group.members.filter(member=>member!==id);
+          if(group.members.length<2)groups.delete(key);
+        }
         const wasFolded = collapsed.delete(id);
         for (const item of items.values())
           if (item.parent === id) item.parent = null;
@@ -136,6 +172,36 @@
               descendant.y += y - item.y;
             }
           Object.assign(item, { x, y });
+        }
+      },
+      moveMany(ids, dx, dy) {
+        if (![dx,dy].every(Number.isFinite)) return;
+        const moving = new Set([...ids].filter(id=>items.has(id)));
+        for (const id of [...moving]) if(collapsed.has(id)) for(const child of model.descendants(id))moving.add(child);
+        for(const id of moving) { const item=items.get(id); item.x=clamp(item.x+dx,-100000,100000); item.y=clamp(item.y+dy,-100000,100000); }
+      },
+      group(ids, name, id) {
+        const members=[...new Set([...ids].filter(key=>items.has(key)))].slice(0,24);
+        if(members.length<2 || groups.size>=20 || typeof name!=="string" || !name.trim() || typeof id!=="string" || groups.has(id)) return false;
+        groups.set(id,{id,name:name.trim().slice(0,60),members}); return true;
+      },
+      ungroup(ids) {
+        const selected=new Set(ids);
+        for(const [id,group] of groups) if(group.members.some(key=>selected.has(key)))groups.delete(id);
+      },
+      align(ids, mode) {
+        const visibleIds=new Set(model.visible().map(n=>n.id));
+        const nodes=[...new Set(ids)].filter(id=>visibleIds.has(id)).map(id=>items.get(id));
+        if(nodes.length<2) return;
+        const minimum=Math.min(...nodes.map(n=>mode==="left" ? n.x : n.y));
+        if(["left","top"].includes(mode)) for(const n of nodes)model.moveMany([n.id],mode==="left" ? minimum-n.x : 0,mode==="top" ? minimum-n.y : 0);
+        else if(nodes.length>2 && ["horizontal","vertical"].includes(mode)) {
+          const axis=mode==="horizontal" ? "x" : "y", dimension=axis==="x" ? "width" : "height";
+          nodes.sort((a,b)=>a[axis]-b[axis]);
+          const first=nodes[0][axis], end=nodes.at(-1)[axis]+nodes.at(-1)[dimension];
+          const gap=(end-first-nodes.reduce((sum,n)=>sum+n[dimension],0))/(nodes.length-1);
+          let at=first;
+          for(const n of nodes) {model.moveMany([n.id],axis==="x" ? at-n.x : 0,axis==="y" ? at-n.y : 0); at+=n[dimension]+gap;}
         }
       },
       snap(id, x, y, tolerance = 8) {
@@ -328,7 +394,7 @@
         };
       },
       clear() {
-        items.clear();
+        items.clear(); groups.clear(); model.resetHistory();
         collapsed.clear();
         foldedLayout = false;
         lastArrangement = "threads";
@@ -345,6 +411,21 @@
     const model = createModel();
     const records = new Map();
     let selected = null;
+    const selectedIds = new Set();
+    const groupElements = new Map();
+    const groupLayer = document.createElement("div");
+    groupLayer.className = "canvas-user-groups";
+    plane.prepend(groupLayer);
+    const layoutChanged = () => window.dispatchEvent(new Event("frameseek-canvas-changed"));
+    function perform(label, action) {
+      if(model.perform(label,action))layoutChanged();
+      draw();
+    }
+    function replay(redo = false) {
+      const label = redo ? model.redo() : model.undo();
+      if(!label)return;
+      draw();layoutChanged();callbacks.announce(`${redo ? "重做" : "撤销"}：${label}`);
+    }
     let gesture = null;
     let guides = [];
     let minimapPreference = null;
@@ -366,6 +447,7 @@
       });
     }
     function draw() {
+      for(const id of selectedIds)if(!model.items.has(id))selectedIds.delete(id);
       const { x, y, scale } = model.view;
       density = densityFor(scale, density);
       const related = model.related(selected);
@@ -414,13 +496,39 @@
         item.width = turn.offsetWidth;
         if (turn.dataset.density === "detail") item.detailHeight = item.height;
         turn.classList.toggle("selected", id === selected);
+        turn.classList.toggle("multi-selected", selectedIds.size>1 && selectedIds.has(id));
         turn.classList.toggle("connected", id !== selected && related.has(id));
         turn.classList.toggle(
           "unrelated",
           Boolean(selected) && !related.has(id),
         );
         const select = records.get(id).select;
-        select.textContent = id === selected ? "已选中" : "选中";
+        select.textContent = selectedIds.has(id) ? "已选中" : "选中";
+        select.setAttribute("aria-pressed",String(selectedIds.has(id)));
+      }
+      if($("canvas-undo"))$("canvas-undo").disabled=!model.canUndo;
+      if($("canvas-redo"))$("canvas-redo").disabled=!model.canRedo;
+      if($("canvas-selection-tools"))$("canvas-selection-tools").hidden=selectedIds.size<2;
+      if($("canvas-selection-count"))$("canvas-selection-count").textContent=`${selectedIds.size} 个对象`;
+      for(const [id,region] of groupElements)if(!model.groups.has(id)){region.remove();groupElements.delete(id);}
+      for(const group of model.groups.values()) {
+        const members=visible.filter(n=>group.members.includes(n.id));
+        let region=groupElements.get(group.id);
+        if(!region) {
+          region=document.createElement("div");region.className="canvas-user-group";
+          const label=document.createElement("button");
+          const id=group.id;
+          label.addEventListener("click",()=>{
+            const current=model.groups.get(id);if(!current)return;
+            choose(current.members.find(key=>records.has(key)));selectedIds.clear();for(const key of current.members)selectedIds.add(key);draw();
+          });
+          region.append(label);groupLayer.append(region);groupElements.set(id,region);
+        }
+        region.hidden=!members.length;if(!members.length)continue;
+        const left=Math.min(...members.map(n=>n.x))-22,top=Math.min(...members.map(n=>n.y))-54;
+        Object.assign(region.style,{left:`${left}px`,top:`${top}px`,width:`${Math.max(...members.map(n=>n.x+n.width))-left+22}px`,height:`${Math.max(...members.map(n=>n.y+n.height))-top+22}px`});
+        region.firstElementChild.textContent=`${group.name} · ${group.members.length}`;
+        region.firstElementChild.setAttribute("aria-label",`选中分组：${group.name}`);
       }
       $("zoom-reset").textContent = `${Math.round(scale * 100)}%`;
       $("arrange-canvas").disabled = model.items.size === 0;
@@ -613,7 +721,7 @@
     function toggleBranch(id) {
       const fold = !model.collapsed.has(id);
       const descendants = model.descendants(id);
-      model.fold(id, fold);
+      perform("折叠调查路径",()=>model.fold(id, fold));
       if (fold && descendants.has(selected)) choose(id);
       fit();
       callbacks.announce(
@@ -637,7 +745,7 @@
       if (!$("branch-name-input").reportValidity()) return;
       if (!name || !namingId || !model.items.has(namingId)) return;
       const record = records.get(namingId);
-      model.renameBranch(namingId, name);
+      perform("命名路径",()=>model.renameBranch(namingId, name));
       draw();
       $("branch-name-dialog").close();
       record.branchName.focus({ preventScroll: true });
@@ -653,7 +761,7 @@
       namingId = null;
     });
     $("expand-paths")?.addEventListener("click", () => {
-      model.expandAll();
+      perform("展开全部路径",()=>model.expandAll());
       fit();
       $("fit-canvas").focus({ preventScroll: true });
       callbacks.announce("已展开全部调查路径。");
@@ -671,11 +779,18 @@
       );
       draw();
     }
-    function choose(id, focus = false) {
+    function choose(id, focus = false, additive = false, preserve = false) {
       const record = records.get(id);
       if (!record) return;
       model.expandPath(id);
       if (detailFocus !== id) detailFocus = null;
+      if(additive && selectedIds.has(id)) {
+        selectedIds.delete(id);
+        if(selectedIds.size && selected===id) { choose([...selectedIds].at(-1),false,false,true); return; }
+        if(!selectedIds.size) {clearScope();return;}
+        draw(); return;
+      } else if(additive) selectedIds.add(id);
+      else if(!preserve || !selectedIds.has(id)) {selectedIds.clear();selectedIds.add(id);}
       selected = id;
       callbacks.select(record.query.response, record.history);
       const scope = records.get(record.query.sourceTurn)?.query || record.query;
@@ -687,7 +802,7 @@
       draw();
     }
     function clearScope() {
-      selected = null;
+      selected = null; selectedIds.clear();
       detailFocus = null;
       $("composer-label").textContent = "向 FrameSeek 提问";
       $("clear-context").hidden = true;
@@ -734,7 +849,7 @@
         "aria-label",
         `选中${query.kind === "evidence" ? "证据" : query.kind === "conclusion" ? "结论" : "问题"}：${query.question}`,
       );
-      select.addEventListener("click", () => choose(turn.id));
+      select.addEventListener("click", e => choose(turn.id,false,e.shiftKey));
       header.append(drag, select);
       turn.prepend(header);
       turn.dataset.status = query.response.status;
@@ -876,7 +991,11 @@
         if (e.button !== 0) return;
         e.preventDefault();
         const item = model.items.get(turn.id);
+        choose(turn.id,false,e.shiftKey,!e.shiftKey);
+        if(!selectedIds.has(turn.id))return;
         gesture = {
+          before:model.checkpoint(),
+          ids:[...selectedIds],
           kind: "card",
           id: turn.id,
           pointer: e.pointerId,
@@ -888,11 +1007,11 @@
         };
         drag.focus({ preventScroll: true });
         drag.setPointerCapture(e.pointerId);
-        choose(turn.id);
         turn.classList.add("dragging");
       });
       const end = () => {
         if (gesture?.id !== turn.id) return;
+        if(model.commit(gesture.before,"移动对象"))layoutChanged();
         gesture = null;
         guides = [];
         turn.classList.remove("dragging");
@@ -911,10 +1030,11 @@
           }
           const x = gesture.x + (e.clientX - gesture.px) / gesture.scale;
           const y = gesture.y + (e.clientY - gesture.py) / gesture.scale;
-          const next = e.shiftKey
+          const next = e.shiftKey || gesture.ids.length>1
             ? { x, y, guides: [] }
             : model.snap(turn.id, x, y, 7 / gesture.scale);
-          model.move(turn.id, next.x, next.y);
+          const item=model.items.get(turn.id);
+          model.moveMany(gesture.ids,next.x-item.x,next.y-item.y);
           guides = next.guides;
           scheduleDraw();
         },
@@ -935,13 +1055,9 @@
         };
         if (!steps[e.key]) return;
         e.preventDefault();
-        const item = model.items.get(turn.id),
-          step = e.shiftKey ? 50 : 10;
-        model.move(
-          turn.id,
-          item.x + steps[e.key][0] * step,
-          item.y + steps[e.key][1] * step,
-        );
+        const step = e.shiftKey ? 50 : 10;
+        choose(turn.id,false,false,true);
+        perform("键盘移动对象",()=>model.moveMany(selectedIds,steps[e.key][0]*step,steps[e.key][1]*step));
         draw();
         callbacks.announce("卡片位置已更新。");
       });
@@ -950,7 +1066,7 @@
         reveal(turn.id);
       });
       turn.addEventListener("click", (e) => {
-        if (!e.target.closest("button,summary,details")) choose(turn.id);
+        if (!e.target.closest("button,summary,details")) choose(turn.id,false,e.shiftKey);
       });
       turn.addEventListener("toggle", draw, true);
       choose(turn.id);
@@ -1132,7 +1248,7 @@
     function arrange(mode) {
       callbacks.close();
       $("arrange-mode").value = mode;
-      model.arrange(mode);
+      perform("自动整理",()=>model.arrange(mode));
       fit();
       callbacks.announce("已自动整理调查卡片。");
     }
@@ -1146,6 +1262,56 @@
     $("rail-canvas").addEventListener("click", () => {
       callbacks.close();
       fit();
+    });
+    $("canvas-undo")?.addEventListener("click",()=>replay());
+    $("canvas-redo")?.addEventListener("click",()=>replay(true));
+    $("canvas-align")?.addEventListener("click",()=>perform("对齐对象",()=>model.align(selectedIds,$("canvas-alignment").value)));
+    $("canvas-ungroup")?.addEventListener("click",()=>perform("取消对象分组",()=>model.ungroup(selectedIds)));
+    $("canvas-clear-selection")?.addEventListener("click",()=>{selectedIds.clear();if(selected)selectedIds.add(selected);draw();});
+    let groupingIds = [];
+    $("canvas-group")?.addEventListener("click",()=>{groupingIds=[...selectedIds];$("canvas-group-name").value="";$("canvas-group-dialog").showModal();$("canvas-group-name").focus();});
+    $("canvas-group-name")?.addEventListener("input",()=>$("canvas-group-name").setCustomValidity(""));
+    $("canvas-group-cancel")?.addEventListener("click",()=>$("canvas-group-dialog").close());
+    $("canvas-group-form")?.addEventListener("submit",e=>{
+      e.preventDefault(); const name=$("canvas-group-name").value.trim();
+      $("canvas-group-name").setCustomValidity(name ? "" : "请输入分组名称");
+      if(!$("canvas-group-name").reportValidity())return;
+      let created=false;
+      perform("建立对象分组",()=>{created=model.group(groupingIds,name,`group-${crypto.randomUUID()}`);});
+      if(created){$("canvas-group-dialog").close();callbacks.announce(`已建立分组：${name}`);}
+      else callbacks.announce("无法建立分组：至少需两个有效对象，最多保留20组。");
+    });
+    function searchResults() {
+      const text=$("canvas-search-input").value.trim().toLocaleLowerCase();
+      const results=$("canvas-search-results");results.replaceChildren();
+      const matches=[...records].filter(([id,r])=>{
+        const groups=[...model.groups.values()].filter(g=>g.members.includes(id)).map(g=>g.name);
+        const response=r.query.response;
+        return [r.query.question,response.answer,...(response.events||[]).flatMap(e=>[e.summary,...e.evidence.map(f=>f.caption)]),model.items.get(id)?.branchName,...groups].join(" ").toLocaleLowerCase().includes(text);
+      });
+      $("canvas-search-status").textContent=matches.length ? `${matches.length} 个对象 · Enter 定位首项` : "没有匹配对象。可搜索问题、答案、画面描述或分组名称。";
+      for(const [id,r] of matches) {
+        const button=document.createElement("button");button.type="button";
+        const title=document.createElement("strong");title.textContent=r.query.question;
+        const subtitle=document.createElement("span");subtitle.textContent=(r.query.response.answer||"").slice(0,100);
+        button.append(title,subtitle);button.addEventListener("click",()=>{$("canvas-search-dialog").close();choose(id);reveal(id,true);records.get(id).select.focus({preventScroll:true});});results.append(button);
+      }
+    }
+    function openSearch() {$("canvas-search-dialog").showModal();$("canvas-search-input").value="";searchResults();$("canvas-search-input").focus();}
+    $("canvas-search")?.addEventListener("click",openSearch);
+    $("canvas-search-close")?.addEventListener("click",()=>$("canvas-search-dialog").close());
+    $("canvas-search-input")?.addEventListener("input",searchResults);
+    $("canvas-search-input")?.addEventListener("keydown",e=>{if(e.key==="Enter"){$("canvas-search-results").querySelector("button")?.click();e.preventDefault();}if(e.key==="ArrowDown"){$("canvas-search-results").querySelector("button")?.focus();e.preventDefault();}});
+    $("canvas-shortcuts")?.addEventListener("click",()=>$("canvas-shortcuts-dialog").showModal());
+    $("canvas-shortcuts-close")?.addEventListener("click",()=>$("canvas-shortcuts-dialog").close());
+    document.addEventListener("keydown",e=>{
+      if(document.querySelector("dialog[open]"))return;
+      if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==="k") {e.preventDefault();openSearch();return;}
+      if(e.target.closest("input,textarea,select,[contenteditable=true]"))return;
+      if(!viewport.contains(e.target) && !e.target.closest(".view-controls,.canvas-selection-tools,.canvas-actions"))return;
+      if((e.metaKey||e.ctrlKey) && ["z","y"].includes(e.key.toLowerCase())) {e.preventDefault();replay(e.shiftKey||e.key.toLowerCase()==="y");}
+      else if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==="a") {e.preventDefault();selectedIds.clear();for(const n of model.visible())selectedIds.add(n.id);draw();}
+      else if(e.key==="Escape"){selectedIds.clear();if(selected)selectedIds.add(selected);draw();}
     });
     viewport.addEventListener("focusin", (e) => {
       if (gesture || pointerFocus) return;
@@ -1175,7 +1341,7 @@
     }).observe(viewport);
     return {
       snapshot: () => ({ ...model.snapshot(), selected }),
-      restore: (saved) => { model.restore(saved); if (saved?.selected && records.has(saved.selected)) choose(saved.selected); else if (saved?.selected === null) clearScope(); draw(); },
+      restore: (saved) => { model.restore(saved); model.resetHistory(); if (saved?.selected && records.has(saved.selected)) choose(saved.selected); else if (saved?.selected === null) clearScope(); draw(); },
       register,
       choose,
       arrange,

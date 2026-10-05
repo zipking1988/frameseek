@@ -256,6 +256,11 @@ function Inspector() {
   const report = useRef(null);
   const [reportText, setReportText] = useState("");
   const [reportStatus, setReportStatus] = useState("");
+  const [reportData, setReportData] = useState(null);
+  const [includeImages, setIncludeImages] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const exportController = useRef(null);
+  useEffect(() => () => exportController.current?.abort(), []);
   const drag = useRef(null);
   const skipClick = useRef(false);
   const selected = state.records.find((r) => r.id === state.selectedId);
@@ -283,21 +288,67 @@ function Inspector() {
     );
   };
   function exportNotes() {
-    setReportText(store.markdown());
+    const captured = window.FrameSeekReport.create(window.FrameSeekSessionUI.snapshot());
+    setReportData(captured);
+    setReportText(window.FrameSeekReport.markdown(captured));
     setReportStatus("");
     report.current.showModal();
   }
-  function downloadNotes() {
-    const blob = new Blob([store.markdown()], {
-      type: "text/markdown;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
+  function downloadFile(content, extension, type) {
+    const url = URL.createObjectURL(new Blob([content], {type}));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "FrameSeek-调查记录.md";
+    anchor.download = `FrameSeek-调查报告.${extension}`;
     anchor.click();
-    URL.revokeObjectURL(url);
-    setReportStatus("下载已发起。若浏览器未保存，可以复制这份记录。");
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  async function downloadReport(format) {
+    if (!reportData || exporting) return;
+    if (format === "md") downloadFile(reportText, "md", "text/markdown;charset=utf-8");
+    else if (format === "json") downloadFile(JSON.stringify(reportData, null, 2), "json", "application/json");
+    else {
+      const controller = new AbortController();
+      exportController.current = controller;
+      setExporting(true);
+      const images = {};
+      let bytes = 0;
+      try {
+        if (includeImages) for (const frame of reportData.evidence.slice(0, 24)) {
+          if (!window.FrameSeekReport.safeFrameUri(reportData.source.id, frame.uri)) continue;
+          setReportStatus(`正在收集证据画面 ${Object.keys(images).length} / ${reportData.evidence.length}…`);
+          try {
+            const response = await fetch(frame.uri, {credentials: "same-origin", signal: controller.signal});
+            if (!response.ok) continue;
+            const reader = response.body.getReader();
+            const chunks = []; let length = 0;
+            while (true) {
+              const {done, value} = await reader.read();
+              if (done) break;
+              length += value.byteLength;
+              if (length > 2 * 1024 * 1024 || bytes + length > 16 * 1024 * 1024) {
+                await reader.cancel(); break;
+              }
+              chunks.push(value);
+            }
+            const mime = response.headers.get("content-type")?.split(";")[0];
+            if (length > 2 * 1024 * 1024 || bytes + length > 16 * 1024 * 1024 || !["image/jpeg", "image/png", "image/webp"].includes(mime)) continue;
+            const blob = new Blob(chunks, {type:mime});
+            images[frame.id] = await new Promise((resolve, reject) => {
+              const fileReader = new FileReader();
+              fileReader.onload = () => resolve(fileReader.result);
+              fileReader.onerror = reject;
+              fileReader.readAsDataURL(blob);
+            });
+            bytes += length;
+          } catch (error) { if (controller.signal.aborted) throw error; }
+        }
+        if (controller.signal.aborted) return;
+        downloadFile(window.FrameSeekReport.html(reportData, images), "html", "text/html;charset=utf-8");
+        setReportStatus(`HTML 已导出，内嵌 ${Object.keys(images).length} / ${reportData.evidence.length} 张画面。未内嵌项保留说明；文件可离线打开或打印为 PDF。`);
+      } finally { setExporting(false); exportController.current = null; }
+      return;
+    }
+    setReportStatus("下载已发起。这份报告保留打开导出窗口时的调查快照。");
   }
   return (
     <>
@@ -781,11 +832,12 @@ function Inspector() {
         className="report-dialog compare-dialog"
         ref={report}
         aria-labelledby="report-title"
+        onClose={() => exportController.current?.abort()}
       >
         <header>
           <div>
             <p className="inspector-kicker">INVESTIGATION / RECORD</p>
-            <h2 id="report-title">调查记录</h2>
+            <h2 id="report-title">调查报告</h2>
           </div>
           <button
             className="icon-button"
@@ -795,7 +847,9 @@ function Inspector() {
             {icon("x")}
           </button>
         </header>
+        <p className="report-summary">{reportData?.questions.length || 0} 个问题 · {reportData?.findings.length || 0} 项发现 · {reportData?.evidence.length || 0} 张证据画面。包含当前保留的对话与发现来源；未确认项单独列出。</p>
         <textarea aria-label="调查记录 Markdown" value={reportText} readOnly />
+        <label className="report-image-option"><input type="checkbox" checked={includeImages} onChange={e => setIncludeImages(e.target.checked)} disabled={exporting} /> HTML 内嵌证据画面（最多 24 张、16 MB，形成可分享的本地副本）</label>
         <div className="report-actions">
           <button
             className="outline-button"
@@ -810,9 +864,9 @@ function Inspector() {
           >
             复制 Markdown
           </button>
-          <button className="outline-button" onClick={downloadNotes}>
-            下载 .md
-          </button>
+          <button className="outline-button" disabled={exporting} onClick={() => downloadReport("md")}>下载 Markdown</button>
+          <button className="outline-button" disabled={exporting} onClick={() => downloadReport("json")}>下载 JSON</button>
+          <button className="outline-button" disabled={exporting} onClick={() => downloadReport("html").catch(() => setReportStatus("导出已取消或失败，请重试。"))}>{exporting ? "收集画面…" : "下载 HTML"}</button>
         </div>
         <p className="muted-text" role="status">
           {reportStatus}

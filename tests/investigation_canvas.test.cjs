@@ -321,3 +321,49 @@ test("空间快照恢复位置、视角、路径名称与折叠，丢失对象�
   restored.remove("child"); restored.restore(saved);
   assert.equal(restored.items.has("child"), false);
 });
+
+test('one batch translation moves a folded subtree once even if a child is also selected',()=>{
+ const m=createModel();m.add('a',null);m.add('b','a');m.add('c','b');m.fold('a',true);
+ const before=m.snapshot();m.moveMany(['a','b'],20,-10);
+ for(const n of before.nodes){assert.equal(m.items.get(n.id).x,n.x+20);assert.equal(m.items.get(n.id).y,n.y-10);}
+});
+test('undo/redo restores groups, names and positions without reverting view, new answers or parents',()=>{
+ const m=createModel();m.add('a',null);m.add('b','a');const x=m.items.get('a').x;
+ m.perform('分组',()=>{m.group(['a','b'],'调查线索','g1');m.renameBranch('a','位置');m.moveMany(['a','b'],100,30);});
+ m.add('new','b');m.pan(18,25);const view=m.view;
+ assert.equal(m.undo(),'分组');assert.equal(m.groups.size,0);assert.equal(m.items.get('a').branchName,'');assert.equal(m.items.get('a').x,x);assert.equal(m.items.get('new').parent,'b');assert.deepEqual(m.view,view);
+ assert.equal(m.redo(),'分组');assert.equal(m.groups.get('g1').name,'调查线索');assert.equal(m.items.get('a').x,x+100);
+ m.undo();m.perform('另一次移动',()=>m.moveMany(['a'],10,0));assert.equal(m.canRedo,false);
+});
+test('group hydration filters missing nodes; deletion and clear cannot resurrect evidence objects',()=>{
+ const m=createModel();m.add('a',null);m.add('b',null);m.add('c',null);
+ m.perform('分组',()=>m.group(['a','b','c'],'核对','g1'));const saved=m.snapshot();m.remove('b');m.undo();m.redo();assert.deepEqual(m.groups.get('g1').members,['a','c']);
+ m.restore({...saved,groups:[{id:'g2',name:'恢复',members:['a','a','missing','c']}]});assert.deepEqual(m.groups.get('g2').members,['a','c']);
+ m.clear();assert.equal(m.groups.size,0);assert.equal(m.canUndo,false);assert.equal(m.canRedo,false);
+});
+test('alignment and spacing preserve evidence parents; history is bounded and no-op does not add entries',()=>{
+ const m=createModel();m.add('a',null);m.add('b','a');m.add('c','a');
+ m.perform('对齐',()=>m.align(['a','b','c'],'left'));assert.equal(m.items.get('a').x,m.items.get('b').x);assert.equal(m.items.get('c').parent,'a');
+ assert.equal(m.perform('不移动',()=>m.moveMany(['a'],0,0)),false);
+ for(let i=0;i<70;i++)m.perform('移动',()=>m.moveMany(['a'],1,0));let count=0;while(m.undo())count++;assert.equal(count,60);
+});
+
+
+test('Shift removing a nonprimary selection keeps follow-up anchored to the remaining checked card',()=>{
+ const fs=require('node:fs'),vm=require('node:vm');
+ const source=fs.readFileSync(require.resolve('../src/frameseek/static/investigation-canvas.js'),'utf8');
+ const chooser=source.slice(source.indexOf('    function choose('),source.indexOf('    function clearScope('));
+ const selectedIds=new Set(),elements=new Map();
+ const $=id=>{if(!elements.has(id))elements.set(id,{});return elements.get(id);};
+ const records=new Map(['A','B'].map(id=>[id,{query:{id,question:id,response:{id}},select:{setAttribute(){}}}]));
+ const ctx=vm.createContext({records,selectedIds,$,model:{expandPath(){}},detailFocus:null,selected:null,callbacks:{select(){}},draw(){},clearScope(){}});
+ vm.runInContext(chooser,ctx);vm.runInContext("choose('A');choose('B',false,true);choose('A',false,true)",ctx);
+ assert.equal(ctx.selected,'B');assert.equal(elements.get('composer-label').textContent,'继续追问：B');assert.deepEqual([...selectedIds],['B']);
+});
+
+
+test('aligning a folded parent ignores selected hidden children and preserves their relative positions',()=>{
+ const m=createModel();m.add('parent',null);m.add('child','parent');m.add('other',null);
+ m.move('parent',100,0);m.move('child',500,20);m.move('other',0,100);m.fold('parent',true);
+ m.align(['child','parent','other'],'left');assert.equal(m.items.get('parent').x,0);assert.equal(m.items.get('child').x,400);assert.equal(m.items.get('other').x,0);
+});

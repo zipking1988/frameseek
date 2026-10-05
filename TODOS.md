@@ -58,6 +58,11 @@
 **Priority:** P3
 **Depends on:** 可重复负载测量
 
+## Pending live acceptance and follow-up
+
+- 2026-10-05：评测CLI/模板和本机模型准备诊断已落地；真实基线/消融执行、raw/retrieval轨迹自动采集、四类八问真人标注与回放、1小时性能/费用及供应商停费证明仍待端点与有限数值授权。参见 docs/evaluation.md。
+- CI按用户本轮要求延期；当前运行所有本地检查，后续可在独立授权范围补GitHub Actions，无需由本次交付推断部署授权。
+
 ## Completed
 
 - 首轮浅色 Agent 工作台已完成技术验证，但用户拒绝视觉方向，已由下项取代。
@@ -66,3 +71,5 @@
 - 2026-10-04：概念1后续8项可用性发现已由 /design-review 修复（分支N/A，无Git）；详见 docs/DESIGN_REVIEW.md 当前有效报告。
 
 - 2026-10-04：调查与多素材持久化、上传预检、私有播放、预算守卫下的真实摄取/多轮接口及 mock 集成已实现；初始仓库代码评审修复了任务生命周期、模型输入边界与前端异步恢复问题。真实模型质量、费用、性能及部署隔离验收仍待完成；见 docs/WORKSPACE_RUNTIME.md 和 docs/CODE_REVIEW_20261004.md。
+
+- 2026-10-05：布局撤销/重做、多选/批量移动、命名对象分组、对齐/搜索/快捷键、Markdown/JSON/离线HTML报告、本机模型准备页面和离线评测框架已实现；验证与代码评审见 docs/LOCAL_TOOLS_REVIEW_20261005.md。

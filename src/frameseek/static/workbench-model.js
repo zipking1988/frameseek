@@ -120,6 +120,7 @@
         publish({ pins: state.pins.filter((p) => p.id !== id) });
       },
       markdown() {
+        if (root.FrameSeekReport) return root.FrameSeekReport.markdown(root.FrameSeekReport.create(state));
         const lines = [
           `# ${state.title.trim() || "未命名调查"}`,
           "",

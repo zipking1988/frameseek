@@ -1920,3 +1920,43 @@
 .delete-dialog .danger { color:#ee936c; }
 @media(max-width:1599px) { .header-mode { display:none; } .save-state { max-width:150px; overflow:hidden; text-overflow:ellipsis; } }
 #rename-source-input { display:block; box-sizing:border-box; width:100%; margin-top:12px; padding:12px; border:1px solid var(--line); border-radius:6px; background:#10212e; color:var(--text); font:inherit; }
+
+.agent-setup-dialog { width: min(680px, 80vw); max-height: 82vh; overflow: auto; padding: 28px; border: 1px solid #344a5d; border-radius: 16px; background: #13232f; color: #f1f4f7; }
+.agent-setup-dialog::backdrop { background: #071018bd; backdrop-filter: blur(5px); }
+.agent-setup-dialog header, .agent-setup-dialog footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.agent-setup-dialog h2 { margin: 4px 0 16px; font-size: 23px; }
+.agent-setup-dialog > p { color: #a7b8c8; line-height: 1.65; }
+.agent-readiness-checks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 20px 0; }
+.agent-check { padding: 16px; border: 1px solid #344a5d; border-radius: 9px; background: #192c39; }
+.agent-check strong { font-size: 14px; }
+.agent-check > span { float: right; color: #ff995d; font-size: 12px; }
+.agent-check > span[data-state="available"] { color: #a9d5ba; }
+.agent-check p { margin: 10px 0 0; color: #a7b8c8; font-size: 12px; line-height: 1.7; }
+.agent-setup-dialog details { padding: 14px 0; border-top: 1px solid #344a5d; font-size: 13px; line-height: 1.8; }
+.agent-setup-dialog summary { cursor: pointer; font-weight: 600; }
+.agent-setup-dialog code { overflow-wrap: anywhere; color: #cfdae1; }
+.agent-setup-dialog footer { border-top: 1px solid #344a5d; padding-top: 18px; }
+
+/* Desktop investigation tools keep batch actions close to the selected canvas. */
+.canvas-selection-tools { position:fixed; top:118px; left:50%; transform:translateX(-50%); z-index:25; display:flex; align-items:center; gap:8px; padding:9px 12px; border:1px solid #4d7989; border-radius:9px; background:#1b303e; box-shadow:0 12px 28px #0005; font-size:12px; white-space:nowrap; }
+.canvas-selection-tools[hidden] {display:none}
+.canvas-selection-tools button,.canvas-selection-tools select {padding:6px 8px;border:1px solid #355465;border-radius:5px;background:#152633;color:#dceaf0;font:inherit}
+.canvas-selection-tools span {color:#90cddb;padding-right:8px}
+.turn.multi-selected {outline:2px solid #80c9d8;outline-offset:3px}
+.canvas-user-groups {position:absolute;inset:0;pointer-events:none;z-index:0}
+.canvas-user-group {position:absolute;border:1px solid #426778;border-radius:16px;background:#47768b0c;pointer-events:none}
+.canvas-user-group button {position:absolute;top:10px;left:14px;border:0;border-radius:5px;padding:6px 9px;background:#193341;color:#a4d4de;pointer-events:auto;font-size:12px}
+.canvas-search-dialog {width:600px;max-width:80vw;max-height:80vh;background:#13232f;color:#dceaf0;border:1px solid #3c5b6b;border-radius:12px;padding:24px}
+.canvas-search-dialog input {width:100%;padding:13px;border:1px solid #456879;border-radius:7px;background:#0d1c27;color:#e1edf4;font:inherit}
+.canvas-search-dialog header {display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.canvas-search-dialog h2 {font-size:20px}
+.canvas-search-dialog p {font-size:12px;color:#8faab8}
+.canvas-search-results {display:grid;gap:7px;max-height:50vh;overflow:auto}
+.canvas-search-results button {display:grid;gap:6px;text-align:left;padding:12px;border:1px solid #294452;border-radius:7px;background:#182d3a;color:#dceaf0}
+.canvas-search-results button:hover,.canvas-search-results button:focus-visible {border-color:#83bfcd;background:#213b4b}
+.canvas-search-results span {font-size:12px;color:#9bb4c0}
+.shortcut-list {display:grid;grid-template-columns:1fr 1.6fr;gap:15px;font-size:13px}
+.shortcut-list dd {margin:0;color:#9dc2d0}
+.report-summary,.report-image-option {display:block;font-size:12px;color:#a8c0cc;margin:14px 0}
+.report-image-option input {width:auto;margin-right:8px;accent-color:#d27e48}
+.report-actions {flex-wrap:wrap}

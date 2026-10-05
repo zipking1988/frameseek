@@ -31,3 +31,5 @@ ttl_hours = 24
 账本的预算单位必须是明确币种的整数微单位（如`USD_MICRO`）；金额示例只用于合成测试，不是价格或批准额度。owner和部署总量同事务预留；unknown不释放。可信本机批准版本工具已实现；真实数值批准和费用上界验证仍待完成。
 
 运行配置：`FS_DATA_DIR` 指向私有存储（默认 `.frameseek-data/`），`FS_RUNTIME_FILE` 指向可信模型runtime文件，`FS_PUBLIC_ORIGIN` 是经评审的部署HTTPS origin。密钥通过runtime端点的 `key_env` 引用环境变量，不写入配置或Git。runtime模板不是批准记录。详见 [当前运行工作流与预算安装要求](WORKSPACE_RUNTIME.md)。
+
+`make agent-check`（`python -m frameseek.readiness`）是独立的动态本机前提检查；可加 `--owner EXISTING_OWNER_ID` 仅读已有两级审批。不创建私有存储、不读取/展示密钥值、不安装审批、不调用模型。API和UI的检查用当前会话主体。所有前提通过时CLI退出0，否则2；`live_verified` 始终false，原 `preflight` 的部署验收限制不受影响。

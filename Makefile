@@ -1,4 +1,4 @@
-.PHONY: setup test check preflight run demo eval-fixture schema
+.PHONY: setup test check preflight run demo eval-fixture eval-check agent-check schema
 
 setup:
 	uv sync --python 3.13
@@ -24,3 +24,10 @@ demo: run
 
 eval-fixture:
 	uv run --frozen python -m frameseek.fixtures
+
+eval-check:
+	uv run --frozen python -m frameseek.evaluation validate --dataset eval/diagnostics.template.json
+	uv run --frozen python -m frameseek.evaluation score --dataset eval/diagnostics.template.json --run eval/run.template.json
+
+agent-check:
+	uv run --frozen python -m frameseek.readiness

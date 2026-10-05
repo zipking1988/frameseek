@@ -18,6 +18,7 @@ for (const file of [
   "demo-conversation.js",
   "investigation-canvas.js",
   "workbench-model.js",
+  "investigation-report.js",
   "workbench.js",
   "styles.css",
   "workbench.css",

@@ -19,6 +19,7 @@ from frameseek.agent import Agent, AgentError
 from frameseek.attempts import BudgetDenied
 from frameseek.demo import catalog
 from frameseek.media import MAX_UPLOAD, MediaError, frames, probe, scene_windows
+from frameseek.readiness import budget_ready, readiness_report
 from frameseek.schema import Answer
 from frameseek.workspace import Workspace, digest, ident
 
@@ -119,6 +120,13 @@ def register(app, settings, root, runtime=None, transport=None):
         return session["id"]
 
     owner_dependency = Depends(owned)
+
+    @router.get("/api/runtime/status")
+    def runtime_status(response: Response, owner=owner_dependency):
+        with agent.ledger._connect() as connection:
+            approved = budget_ready(connection, owner, runtime)
+        response.headers["Cache-Control"] = "no-store"
+        return readiness_report(settings, runtime, approved)
 
     def run_job(video, owner, generation, analysis=False):
         directory = ws.root / video
