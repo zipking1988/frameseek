@@ -10,7 +10,7 @@ User selected items 2/3/4/5 on 2026-10-05. CI is deferred. No model service or n
 - [x] Reports: Markdown, JSON and offline HTML with evidence, provenance, unresolved items, optional embedded frames, safe escaping.
 - [x] Relevant regressions, full local checks, rebuilt hashes and browser verification.
 - [x] Documentation and code review/fixes.
-- [ ] Authorized private-dev push (latest user delivery target).
+- [x] Authorized private-dev push (latest user delivery target); code fix `4b53361` verified on the private remote.
 
 Live acceptance remains pending actual endpoints, finite numeric approval, real source videos and human annotations/playback review. Fixture/scorer tests are not live quality or GO evidence.
 
