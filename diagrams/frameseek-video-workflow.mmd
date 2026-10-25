@@ -1,0 +1,11 @@
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "Arial, sans-serif", "fontSize": "20px", "primaryColor": "#1c2d3b", "primaryTextColor": "#f1f4f7", "primaryBorderColor": "#344a5d", "lineColor": "#526574", "secondaryColor": "#fff1e8", "tertiaryColor": "#f3f6f8"}, "flowchart": {"curve": "linear", "nodeSpacing": 35, "rankSpacing": 40}}}%%
+graph LR
+  V["Upload video"] --> W["Video windows<br/>+ AI index"]
+  W --> S["Search<br/>candidate segments"]
+  Q["Your question"] --> S
+  S --> R["Targeted<br/>visual review"]
+  R --> A["Answer + timestamps<br/>+ evidence frames"]
+  classDef input fill:#f3f6f8,color:#111f2b,stroke:#a7b8c8,stroke-width:2px;
+  classDef result fill:#fff1e8,color:#111f2b,stroke:#ff702e,stroke-width:2px;
+  class V,Q input;
+  class A result;

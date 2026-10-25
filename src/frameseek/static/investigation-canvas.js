@@ -794,7 +794,9 @@
       selected = id;
       callbacks.select(record.query.response, record.history);
       const scope = records.get(record.query.sourceTurn)?.query || record.query;
-      $("composer-label").textContent = `继续追问：${scope.question}`;
+      $("composer-label").textContent = scope.mode === "real" && !scope.response.events.length
+        ? `重新提问：${scope.question}`
+        : `继续追问：${scope.question}`;
       $("clear-context").hidden = false;
       for (const [key, value] of records)
         value.select.setAttribute("aria-pressed", String(key === id));
@@ -851,6 +853,14 @@
       );
       select.addEventListener("click", e => choose(turn.id,false,e.shiftKey));
       header.append(drag, select);
+      if (!query.kind) {
+        const remove = document.createElement("button");
+        remove.type = "button"; remove.className = "card-delete";
+        remove.textContent = "删除"; remove.title = "删除问题（可在左侧恢复）";
+        remove.setAttribute("aria-label", `删除问题：${query.question}`);
+        remove.addEventListener("click", e => {e.stopPropagation();root.FrameSeekUI?.hideTurn(turn.id);});
+        header.append(remove);
+      }
       turn.prepend(header);
       turn.dataset.status = query.response.status;
       const branchTools = document.createElement("div");
@@ -920,8 +930,9 @@
       const follow = document.createElement("button");
       follow.type = "button";
       follow.className = "text-button card-followup";
-      follow.textContent = "继续追问";
-      follow.addEventListener("click", () => choose(turn.id, true));
+      follow.textContent = query.mode === "real" && !query.response.events.length ? "重新提问" : "继续追问";
+      follow.addEventListener("click", () => root.FrameSeekUI
+        ? root.FrameSeekUI.continueFrom(turn.id) : choose(turn.id, true));
       const replies =
         query.suggested_replies ||
         (query.id === "center"
@@ -934,10 +945,7 @@
         suggested.type = "button";
         suggested.className = "text-button";
         suggested.textContent = reply;
-        suggested.addEventListener("click", () => {
-          choose(turn.id);
-          callbacks.ask(reply);
-        });
+        suggested.addEventListener("click", () => callbacks.ask(reply, turn.id));
         actions.append(suggested);
       });
       if (!query.kind) actions.append(follow);
@@ -1348,9 +1356,11 @@
       clearScope,
       context: () => {
         const record = selected ? records.get(selected) : null;
-        return record?.query.sourceTurn
+        const scope = record?.query.sourceTurn
           ? records.get(record.query.sourceTurn) || record
           : record;
+        // A failed real turn is selectable for inspection, but cannot anchor a query.
+        return scope?.query.mode === "real" && !scope.query.response.events.length ? null : scope;
       },
       reveal,
       remove: (id) => {

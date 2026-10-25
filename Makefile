@@ -1,4 +1,4 @@
-.PHONY: setup test check preflight run demo eval-fixture eval-check agent-check schema
+.PHONY: setup test check preflight run run-tokenfactory-prepare tokenfactory-check demo eval-fixture eval-check agent-check schema
 
 setup:
 	uv sync --python 3.13
@@ -19,6 +19,13 @@ preflight:
 
 run:
 	uv run --frozen uvicorn frameseek.api:create_app --factory --host 127.0.0.1 --port 8765
+
+# Explicit local secret loading; preparation never enables paid dispatch.
+run-tokenfactory-prepare:
+	FS_RUNTIME_FILE="$(CURDIR)/.runtime.tokenfactory.local.json" FRAMESEEK_MODE=fixture uv run --frozen --env-file .env.tokenfactory uvicorn frameseek.api:create_app --factory --host 127.0.0.1 --port 8765
+
+tokenfactory-check:
+	FS_RUNTIME_FILE="$(CURDIR)/.runtime.tokenfactory.local.json" FRAMESEEK_MODE=fixture uv run --frozen --env-file .env.tokenfactory python -m frameseek.readiness
 
 demo: run
 

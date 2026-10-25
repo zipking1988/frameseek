@@ -384,3 +384,38 @@ test('holding Shift before title drag preserves selection and still begins a fre
  handler({button:0,shiftKey:true,pointerId:1,clientX:10,clientY:20,preventDefault(){}});
  assert.deepEqual([...selectedIds],['A','B']);assert.equal(ctx.selected,'A');assert.equal(ctx.gesture.kind,'card');assert.deepEqual(Array.from(ctx.gesture.ids),['A','B']);
 });
+
+test('failed real turns remain selectable but cannot anchor new queries; verified partial results can',()=>{
+ const fs=require('node:fs'),vm=require('node:vm');
+ const source=fs.readFileSync(require.resolve('../src/frameseek/static/investigation-canvas.js'),'utf8');
+ const chooser=source.slice(source.indexOf('    function choose('),source.indexOf('    function clearScope('));
+ const context=source.slice(source.indexOf('      context: () => {'),source.indexOf('      reveal,',source.indexOf('      context: () => {'))).trim().replace(/^context: /,'').replace(/,$/,'');
+ const selectedIds=new Set(),elements=new Map();
+ const $=id=>{if(!elements.has(id))elements.set(id,{});return elements.get(id);};
+ const records=new Map(['failed','partial','empty'].map(id=>[id,{query:{mode:'real',id,question:id,response:{status:id==='failed'?'error':'partial',events:id==='partial'?[{evidence:[{t:326.1}]}]:[]}},select:{setAttribute(){}}}]));
+ const ctx=vm.createContext({records,selectedIds,$,model:{expandPath(){}},detailFocus:null,selected:null,callbacks:{select(){}},draw(){},clearScope(){}});
+ vm.runInContext(chooser+'\nconst currentContext = '+context,ctx);
+ for(const id of ['failed','empty']) {
+   vm.runInContext(`choose('${id}')`,ctx);
+   assert.equal(ctx.selected,id);
+   assert.equal(vm.runInContext('currentContext()',ctx),null);
+   assert.match(elements.get('composer-label').textContent,/重新提问/);
+ }
+ vm.runInContext("choose('partial')",ctx);
+ assert.equal(vm.runInContext('currentContext().query.id',ctx),'partial');
+ assert.equal(elements.get('composer-label').textContent,'继续追问：partial');
+});
+
+test('card reply shortcut passes its originating turn to the fill-only composer callback',()=>{
+ const fs=require('node:fs'),vm=require('node:vm');
+ const source=fs.readFileSync(require.resolve('../src/frameseek/static/investigation-canvas.js'),'utf8');
+ const start=source.indexOf('      (query.kind ? [] : replies).slice(0, 2).forEach');
+ const end=source.indexOf('      if (!query.kind) actions.append(follow);',start);
+ const buttons=[],calls=[];
+ const ctx=vm.createContext({query:{},replies:['那后来呢？'],turn:{id:'task-A'},
+  document:{createElement:()=>({addEventListener:(name,callback)=>buttons.push(callback)})},
+  callbacks:{ask:(...args)=>calls.push(args)},actions:{append(){}}});
+ vm.runInContext(source.slice(start,end),ctx);
+ assert.equal(calls.length,0);buttons[0]();
+ assert.deepEqual(calls,[['那后来呢？','task-A']]);
+});

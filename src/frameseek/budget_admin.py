@@ -10,7 +10,7 @@ from frameseek.attempts import ApprovedBudget, AttemptLedger
 
 def main():
     parser = argparse.ArgumentParser(description="Local approved-budget ledger administration")
-    parser.add_argument("action", choices=["show", "install", "revoke"])
+    parser.add_argument("action", choices=["show", "install", "revoke", "settle", "resume"])
     parser.add_argument(
         "--data-dir", type=Path, default=Path(os.environ.get("FS_DATA_DIR", ".frameseek-data"))
     )
@@ -59,6 +59,26 @@ def main():
                     ),
                 )
         print("Approved records installed. No model request or GPU resource was started.")
+    elif args.action == "settle":
+        if not args.file or not args.confirm_approved_reference:
+            parser.error("settle requires an evidence file and its confirmed reference")
+        records = json.loads(args.file.read_text())
+        if (
+            not isinstance(records, list)
+            or not records
+            or any(r.get("reference") != args.confirm_approved_reference for r in records)
+        ):
+            parser.error("every settlement must name the confirmed evidence reference")
+        for record in records:
+            ledger.settle_completed(**record)
+        print("Completed reservations reconciled. Calls and unknown reservations retained.")
+    elif args.action == "resume":
+        if not args.scope or not args.version or not args.confirm_approved_reference:
+            parser.error(
+                "resume requires owner, existing version and human authorization reference"
+            )
+        ledger.resume_existing(args.scope, args.version, args.confirm_approved_reference)
+        print("Existing approval resumed. Original caps and consumed counters retained.")
     elif args.action == "revoke":
         if not args.scope or not args.version:
             parser.error("revoke requires --scope and --version")

@@ -1,6 +1,10 @@
 # 调查、素材与真实 Agent 实施状态
 
+2026-10-24: 用户授权新增 `provider=tokenfactory` 与 `allow_tokenfactory_media`，仅向固定 Token Factory API 发送本机抽帧 JPEG。使用 Nemotron 3.5 Super VL 公共 API 和 Qwen3 Embedding 8B 文本检索；不租 GPU、不自动启用付费请求。配置、预算待确认项与篮球测试见 [Token Factory 本地准备](TOKEN_FACTORY_LOCAL.md)。原自托管及 Gemini 路线保持独立。
+
 2026-10-05。新增功能已在本机运行；默认仍为 fixture。真实模型端点、数字预算、供应商权限与资源停费校准尚未提供，未发送真实模型请求，也未创建 GPU。
+
+2026-10-11 增量：按用户授权新增 Gemini / AI Builder Cup 路线，保留原 NVIDIA/Nebius。`FS_RUNTIME_FILE` 中 `provider=gemini` 选择 Google native REST 适配；省略为 `nvidia_nebius`。本轮仅本地实现与 mock 验证，不创建 GCP 或真实模型请求。Google 帧发送需明确 `allow_google_media`，同样受两级预算/校准/代际保护；仅视觉，不支持音轨转写。准备与限制见 [AI Builder Cup](AI_BUILDER_CUP.md) 和 [部署准备](deployment.md)。下方“自托管媒体/既定 Nebius”段落适用于原路线，Gemini 的已授权媒体边界以新文档与 ARCHITECTURE 增量为准。
 
 ## 可使用的工作流
 
@@ -59,3 +63,76 @@ mock 输入与回复仅存在测试中，未作为真实页面回答或质量指
 代码审查后的本地验证：109 项后端测试、71 项前端测试、lint/format、合同导出、构建通过。详见 [初始导入评审](CODE_REVIEW_20261004.md)。
 
 2026-10-05 本地工具及评审修复记录见 [LOCAL_TOOLS_REVIEW_20261005.md](LOCAL_TOOLS_REVIEW_20261005.md)。CI按用户要求延期；未提供服务器或数值预算，未执行付费模型。
+
+
+### Local source selector and recovery — 2026-10-25
+
+The source player now has an owned video dropdown plus the public box fixture.
+It reuses `openSource` / `openDesk` and saves existing edits before navigating.
+Each video's last chosen investigation is remembered in localStorage and validated
+against the authenticated investigation list before restoring; the browser hint
+never grants ownership. A failed switch resets the selected value and retains the
+current draft. Late list responses cannot mutate another desk's selector.
+
+The user's current local preview session could not see its basketball record,
+which remained under the earlier local session. Explicitly authorized, offline
+operator recovery moved that active basketball video and the earlier basketball
+and box investigations, with their query rows, to the current local owner. A
+private SQLite backup and before/after audit are retained under the ignored
+`.frameseek/local-source-recovery-20261025/`. No automatic cross-session discovery
+or public recovery endpoint was added. Query payloads, investigation state,
+revisions, expiries, source bytes, jobs, sessions and budget consumption were
+preserved. The local old paid approvals remain inactive; the preview runs fixture
+mode with no runtime key loaded. Restoration is not a spending authorization.
+The original box investigation has one turn; basketball has three. This local
+change does not synchronize source data with production.
+
+Verification: 109 frontend regressions, build and Ruff/schema checks; browser
+checks cover video switching and restoration. No model dispatch or re-ingestion.
+
+The local selector's visible control was subsequently upgraded to a thumbnail
+button and owned video popup, retaining the hidden native select as the adapter
+to existing navigation. Keyboard arrows/Home/End, selected-item focus, Escape and
+outside dismissal are supported; switching still uses the same save/restore path.
+Card headers now show a bordered 删除 label instead of ×. No user question was
+deleted as part of this visual adjustment. 110 frontend regressions passed.
+
+
+### Compact header and composer suggestions — local preview, 2026-10-25
+
+Investigation actions now live beside the editable title; source management lives
+in the source picker. Header persistence shows one saved indicator while errors
+retain their retry action; analysis mode lives by the source. Existing IDs and
+owned library/save/restore paths are retained.
+
+Composer chips use cached followups only from the selected, visible, same-video
+answer with evidence and an ok/partial status; at most three distinct questions.
+Fixture followups retain their synthetic label. Empty/failed/mismatched answers
+fall back to explicitly labelled examples, not newly generated recommendations.
+Clicks fill the composer only, guarded against drafts and disabled inputs; no
+auto-submit or context change. Legacy card/empty-state suggestions also fill only.
+Input events schedule normal draft persistence. Existing response schema already
+contains followups: no provider call, prompt/schema change or new indexing occurs.
+
+
+### Evidence-grounded recommendations — 2026-10-25
+
+The earlier generic fallback is replaced when valid saved evidence exists. Sources
+are selected from visible same-video ok/partial records, preferring the selected
+record then most recent usable record. Frames require matching event video IDs,
+owned relative media paths and finite in-range absolute timestamps. Existing
+followups remain preferred; without a selected context real cached followups get
+a concrete time-window prefix. Otherwise observations in saved answers/captions
+select bounded scoreboard, clock, jersey/court or box-position questions. Filename
+and investigation titles never determine the topic. UI distinguishes cached
+model followups, deterministic questions based on saved evidence, fixture paths
+and truly unanalysed generic fallback. No additional model call, prompt change,
+indexing, expiry or approval installation.
+
+A thumbnail/timestamp source control reuses the existing player seek path without
+filling or sending a question. Question chips remain fill-only and draft guarded.
+An additional text-only consistency check highlights explicit contradictory numeric
+trend phrases, such as 14 decreasing to23. It preserves the original answer and
+status, offers existing evidence for review, and does not claim video verification
+or rewrite historical queries. This is a targeted guard for the recorded QA defect,
+not a general correctness guarantee or a completed live-acceptance claim.

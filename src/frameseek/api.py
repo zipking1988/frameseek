@@ -2,12 +2,13 @@
 
 import asyncio
 import os
+import secrets
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -15,6 +16,7 @@ from frameseek import __version__
 from frameseek.agent import load_runtime
 from frameseek.config import Settings, load_settings
 from frameseek.demo import catalog
+from frameseek.gateway import gateway_token, https_origin
 from frameseek.preflight import report
 from frameseek.routes import register
 from frameseek.schema import Answer, QueryControl
@@ -22,6 +24,10 @@ from frameseek.schema import Answer, QueryControl
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings if settings is not None else load_settings()
+    if os.environ.get("K_SERVICE"):
+        raise RuntimeError(
+            "Use the stateless gateway on Cloud Run; workspace storage is not ephemeral"
+        )
     runtime = load_runtime()
     if settings.mode != "fixture" and (runtime is None or runtime.blockers()):
         raise RuntimeError("Real mode is blocked; run make preflight to see unmet prerequisites")
@@ -49,11 +55,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     hosts = ["127.0.0.1", "localhost", "[::1]", "test", "testserver"]
     public_origin = os.environ.get("FS_PUBLIC_ORIGIN")
     if public_origin:
-        parsed = urlparse(public_origin)
-        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-            raise RuntimeError("Public deployment requires an explicit HTTPS origin")
+        parsed = urlparse(https_origin(public_origin))
         hosts.append(parsed.hostname)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
+    token = os.environ.get("FS_GATEWAY_TOKEN")
+    if token:
+        token = gateway_token(token)
+
+        @app.middleware("http")
+        async def require_gateway(request, call_next):
+            supplied = request.headers.get("x-fs-gateway-token", "")
+            if not secrets.compare_digest(supplied.encode(), token.encode()):
+                return JSONResponse(
+                    {"detail": "gateway_auth_required"},
+                    status_code=401,
+                    headers={"Cache-Control": "no-store"},
+                )
+            return await call_next(request)
+
     static = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=static), name="static")
     # Only original public synthetic frames; no private user media is exposed here.
@@ -79,7 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     def health():
-        result = report(settings)
+        result = report(settings, runtime.provider if runtime else "nvidia_nebius")
         result["workspace"] = {
             "persistent": True,
             "ttl_hours": settings.ttl_hours,

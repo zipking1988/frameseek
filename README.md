@@ -1,5 +1,9 @@
 # FrameSeek
 
+2026-10-24: 用户授权新增 `provider=tokenfactory` 与 `allow_tokenfactory_media`，仅向固定 Token Factory API 发送本机抽帧 JPEG。使用 Nemotron 3.5 Super VL 公共 API 和 Qwen3 Embedding 8B 文本检索；不租 GPU、不自动启用付费请求。配置、预算待确认项与篮球测试见 [Token Factory 本地准备](docs/TOKEN_FACTORY_LOCAL.md)。原自托管及 Gemini 路线保持独立。
+
+2026-10-24 live smoke: Token Factory indexed the basketball source and produced two visually checked evidence answers, including a contextual follow-up. The USD1/30-call test stopped after 21 attempts; following the user’s reconciliation request, the same caps resumed with nine attempts remaining. Sparse sampling and one rejected planner response limit this result; see [test record](docs/TOKEN_FACTORY_LOCAL.md#final-smoke-result-2026-10-24).
+
 A desktop video investigation workspace: ask questions, follow up on earlier answers, and arrange verified frames and conclusions on a spatial canvas.
 
 FrameSeek connects conversation to its source video. Questions form investigation paths; evidence can be pinned, compared side by side, played at its original timestamp and exported with notes.
@@ -8,7 +12,21 @@ FrameSeek connects conversation to its source video. Questions form investigatio
 
 ## Current status
 
+2026-10-25: [code review and dev delivery](docs/CODE_REVIEW_20261025.md) fixes six
+admission/UI issues; 239 backend and 130 frontend tests pass. The private local
+runtime shares the existing cumulative $20 / 40-call ledger: 39 calls used, one
+remaining. The historical smoke results below do not describe a fresh budget.
+Latest local-only changes have not yet been deployed to framefix.net.
+
+2026-10-24: [framefix.net](https://framefix.net) is running on one Nebius CPU VM.
+The basketball source, index and original remaining Token Factory budget were
+migrated for the user's private browser test. One online vision request succeeded
+after transient upstream 503 responses. See [live deployment and budget status](docs/NEBIUS_LIVE_STATUS.md).
+Gift-credit expiry and no-card billing protection still await support confirmation.
+
 The local workspace supports multiple uploaded sources, media preflight, private playback, persistent investigations and the desktop canvas. NVIDIA/Nebius ingestion and multi-turn query adapters are implemented and tested with mock transports.
+
+The **AI Builder Cup edition** adds a selectable native Gemini adapter and a stateless Google Cloud ingress with a separate durable workspace backend. Both model routes use the same ownership, evidence and approved-budget contracts. Implementation is locally tested with mocked Gemini responses; no live Gemini calls or GCP resources have been started. See [AI Builder Cup setup and demo plan](docs/AI_BUILDER_CUP.md) and [Google Cloud deployment preparation](docs/deployment.md).
 
 **The default is `fixture`: no model requests and no GPU provisioning.** Demo answers are preset and visibly labeled. Uploaded sources can be checked and played in this mode; they cannot receive demo answers. Live model/revision permissions, approved numeric budgets, resource cutoff calibration, quality and performance acceptance remain pending. This is not complete-MVP or production-readiness acceptance.
 
@@ -93,6 +111,7 @@ BM25 + vector retrieval → rerank → bounded visual review → answer + eviden
 | --- | --- |
 | `src/frameseek/api.py`, `routes.py`, `workspace.py` | App, owned APIs, workers and durable storage |
 | `src/frameseek/agent.py`, `attempts.py` | NVIDIA/Nebius adapters, retrieval and budget reservations |
+| `src/frameseek/gemini.py`, `gateway.py`, `server.py` | Native Gemini wire format, stateless Google Cloud ingress and guarded container startup |
 | `src/frameseek/media*.py`, `windows.py` | Media isolation, sampling and window planning |
 | `src/frameseek/schema.py`, `config.py`, `preflight.py`, `readiness.py` | Output contracts, settings, deployment blockers and local dispatch prerequisites |
 | `src/frameseek/evaluation.py`, `eval/` | Offline versioned evaluation and unrun diagnostic templates |
@@ -115,6 +134,8 @@ FRAMESEEK_CONFIG=/absolute/path/config.toml make preflight
 `FS_DATA_DIR` selects private storage (default `.frameseek-data/`). `FS_RUNTIME_FILE` selects a trusted runtime configuration. Keep credentials and operational runtime/approval records outside Git. See [configuration](docs/configuration.md) and the [live runtime guide](docs/WORKSPACE_RUNTIME.md).
 
 Live mode needs verified NVIDIA/self-hosted media endpoints, Nebius text configuration, fixed model revisions, calibrated conservative costs, supplier-side resource cutoff evidence and explicitly approved owner/deployment budgets. `docs/runtime.example.json` is an intentionally blocked template; its placeholder values are neither prices nor approvals. Changing `FRAMESEEK_MODE`, ordinary settings or browser requests cannot authorize spending.
+
+For the Gemini route, choose `provider: "gemini"` in a private runtime based on `docs/runtime.gemini.example.json`; the template also remains blocked. This route sends locally sampled JPEGs to Google's Gemini API only when `allow_google_media` is explicitly enabled. It requires backend-only `GEMINI_API_KEY`, verified models/revisions/cost bounds and the same two-level approved budgets. It currently provides visual investigation, without audio transcription. Omitting `provider` retains the original NVIDIA/Nebius route. Changing providers requires rebuilding the source index; there is no automatic cross-provider fallback.
 
 ```sh
 FRAMESEEK_MODE=real make preflight

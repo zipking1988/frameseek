@@ -8,8 +8,45 @@
   const labels = { queued:"等待预检", probing:"检查素材", captioning:"理解画面", transcribing:"转写音轨", indexing:"建立索引", ready:"可以提问", failed:"处理失败", cancelled:"已取消", awaiting_configuration:"等待模型配置" };
   let session, current, currentVideo = demo, suspended = true, saving = null, lastSaved = "", lastSavedEdits = "", timer;
   let conflict = false, requestEpoch = 0, activeRequest = null, libraryEpoch = 0;
+  let lastVideoDesks = {};
+  try {
+    const saved = JSON.parse(localStorage.getItem("frameseek-video-desks") || "{}");
+    if (saved && typeof saved === "object" && !Array.isArray(saved)) lastVideoDesks = saved;
+  } catch {}
   const owns = (id, epoch) => current?.id === id && requestEpoch === epoch;
-  function status(text, kind="") { $("save-state").textContent = text; $("save-state").dataset.state = kind; }
+  let sourceChoices = new Map([[demo.id, demo]]), sourceListEpoch = 0, sourceSwitching = false;
+  function syncSourceSwitcher(videos) {
+    if (videos) sourceChoices = new Map([[demo.id, demo], ...videos.map(video => [video.id, video])]);
+    sourceChoices.set(currentVideo.id, currentVideo);
+    const select = $("source-switcher");
+    select.replaceChildren();
+    for (const video of sourceChoices.values()) {
+      const option = document.createElement("option");
+      option.value = video.id; option.textContent = video.id === demo.id ? "箱子 · 包裹移动（合成演示）" : video.name;
+      option.dataset.thumbnail = video.id === demo.id ? "/media/demo_parcel/frames/0.jpg" : video.metadata?.preview?.[0]?.uri || "";
+      const duration = Math.round(video.metadata?.duration || 0);
+      option.dataset.detail = `${Math.floor(duration / 60).toString().padStart(2,"0")}:${(duration % 60).toString().padStart(2,"0")} · ${video.id === demo.id ? "合成演示" : labels[video.job?.state] || "已上传"}`;
+      select.append(option);
+    }
+    select.value = currentVideo.id;
+    select.disabled = sourceSwitching;
+    if (select.dispatchEvent) select.dispatchEvent(new Event("frameseek-sources"));
+  }
+  async function refreshSourceSwitcher() {
+    const deskId = current?.id, epoch = requestEpoch, token = ++sourceListEpoch;
+    const data = await api("/api/videos");
+    if (owns(deskId, epoch) && token === sourceListEpoch) syncSourceSwitcher(data.items);
+  }
+  async function switchSelectedSource() {
+    const video = sourceChoices.get($("source-switcher").value);
+    if (!video || video.id === currentVideo.id || sourceSwitching) { syncSourceSwitcher(); return; }
+    sourceSwitching = true; syncSourceSwitcher();
+    try { await openSource(video); }
+    catch (error) { ui().notify(`切换视频失败：${error.message}。当前调查和输入已保留。`); }
+    finally { sourceSwitching = false; syncSourceSwitcher(); }
+  }
+
+  function status(text, kind="") { $("save-state").textContent = kind === "saved" ? "已保存 ✓" : text; $("save-state").title = text; $("save-state").dataset.state = kind; }
   async function api(path, method="GET", body) {
     const response = await fetch(path, {method, credentials:"same-origin", cache:"no-store",
       headers: body ? {"Content-Type":"application/json", "X-FS-CSRF":session.csrf} : method !== "GET" ? {"X-FS-CSRF":session.csrf} : {},
@@ -23,7 +60,13 @@
     const {playerTime, ...panelState}=state.ui || {};
     return JSON.stringify({...state,ui:panelState});
   }
-  function remember() { try { localStorage.setItem("frameseek-current", current.id); } catch {} }
+  function remember() {
+    lastVideoDesks[currentVideo.id] = current.id;
+    try {
+      localStorage.setItem("frameseek-current", current.id);
+      localStorage.setItem("frameseek-video-desks", JSON.stringify(lastVideoDesks));
+    } catch {}
+  }
   async function flush() {
     if (saving) {
       const desk=current;
@@ -66,12 +109,13 @@
       current=desk; currentVideo=video; conflict=false;
       ui().restore({...desk.state,title:desk.state.title || desk.title},video);
       const restored=snapshot();lastSaved=JSON.stringify(restored);lastSavedEdits=editSnapshot(restored);
-      remember(); status("已恢复调查","saved");
+      remember(); syncSourceSwitcher(); status("已恢复调查","saved");
       $("workspace-library").close();
       suspended=false;
       await recover();
       if (!owns(desk.id,epoch)) return false;
       if (["queued","probing","captioning","transcribing","indexing"].includes(video.job?.state)) watch(video.id,epoch);
+      refreshChatBudget();
       return true;
     } finally { if (epoch===requestEpoch) {suspended=false;ui().busy(false);} }
   }
@@ -88,11 +132,12 @@
       current=desk;
       currentVideo=video; conflict=false;
       ui().applySource(video); store().rename(current.title);
-      lastSaved=""; lastSavedEdits="";remember();
+      lastSaved=""; lastSavedEdits="";remember(); syncSourceSwitcher();
       suspended=false;
       await flush(); if (!owns(desk.id,epoch)) return false;
       $("workspace-library").close();
       if (["queued","probing","captioning","transcribing","indexing"].includes(video.job?.state)) watch(video.id,epoch);
+      refreshChatBudget();
       return true;
     } finally { if (epoch===requestEpoch) {suspended=false;ui().busy(false);} }
   }
@@ -104,15 +149,35 @@
     button.onclick=()=>Promise.resolve(action()).catch(error=>libraryNotice(error.message));row.append(button);return row;
   }
   function libraryNotice(message) { $("library-notice").textContent=message; }
+  let budgetEpoch=0,preflightNotice=false;
+  async function refreshChatBudget() {
+    const line=$('chat-budget-status');
+    if(!line)return;
+    const desk=current?.id,epoch=requestEpoch,check=++budgetEpoch;
+    if(currentVideo.id==='demo_parcel') {line.hidden=true;return;}
+    try {
+      const data=await api('/api/runtime/status');
+      if(check!==budgetEpoch || !owns(desk,epoch))return;
+      const b=data.budget;
+      line.hidden=false;
+      line.textContent=b && b.remaining_calls===0
+        ? `模型请求已用完 ${b.call_cap} / ${b.call_cap} 次；不会再调用模型，已有回答和证据仍可回看。`
+        : !data.dispatch_prerequisites_met
+        ? '真实聊天暂未就绪，可在「更多 → 模型与预算」检查；已有证据仍可回看。'
+        : b ? `剩余 ${b.remaining_calls} / ${b.call_cap} 次模型请求 · 指定不超过60秒的时段通常预留 ${b.short_window_calls} 次；跨时段检索需要更多。`
+        : '预算状态未确认，请先检查模型与预算；不代表可以发送。';
+    }catch(error){if(check===budgetEpoch && owns(desk,epoch)){line.hidden=false;line.textContent='预算状态读取失败，发送前仍需通过账本检查；不会自动调用模型。';}}
+  }
   async function showRuntime() {
     const dialog=$("agent-setup-dialog"), button=$("refresh-agent-setup");
     if(!dialog.open) dialog.showModal();
     button.disabled=true;$("agent-setup-summary").textContent="正在读取本机配置…";
     try {
       const data=await api("/api/runtime/status");
+      const provider=data.provider==="gemini" ? "Gemini · AI Builder Cup" : data.provider==="tokenfactory" ? "NVIDIA Nemotron · Token Factory" : "NVIDIA / Nebius";
       $("agent-setup-summary").textContent=data.dispatch_prerequisites_met
-        ? "本地准入条件齐备。可在素材库开始分析；模型连通性和效果仍需实跑验证。"
-        : "真实分析尚未就绪。演示、上传预检、播放和调查保存仍可使用。";
+        ? `${provider}：聊天准入条件齐备，已有索引的视频可直接提问，无需重新分析。检查仅读取配置和账本，不能证明每个回答准确。`
+        : `${provider}：真实分析尚未就绪。演示、上传预检、播放和调查保存仍可使用。`;
       const list=$("agent-readiness-checks");list.replaceChildren();
       for(const check of data.checks) {
         const row=document.createElement("article");row.className="agent-check";
@@ -146,6 +211,7 @@
       body.append(item(demo.name,"18 秒 · 公开合成演示 · 预设回答",()=>openSource(demo)));
       const data=await api("/api/videos");
       if (!active()) return;
+      syncSourceSwitcher(data.items);
       for (const video of data.items) {
         const job=video.job;
         const row=item(video.name,`${Math.round(video.bytes/1024/1024)} MB · ${labels[job?.state] || "已上传"}${job?.total ? ` · ${job.completed}/${job.total} 窗口` : ""}`,()=>openSource(video));
@@ -189,6 +255,7 @@
       try {
         const result=await api(`/api/videos/${video.id}`,"PATCH",{name:$("rename-source-input").value});
         if(currentVideo.id===video.id) {currentVideo={...currentVideo,name:result.name};ui().renameSource(result.name);}
+        syncSourceSwitcher();
         $("rename-source-dialog").close();await library("videos");
       } catch(error) {libraryNotice(error.message);}
     };
@@ -226,7 +293,10 @@
       await flush(); if (!owns(deskId,epoch)) return false;
       const desks=(await api("/api/investigations")).items.filter(d=>d.video===video.id);
       if (!owns(deskId,epoch)) return false;
-      if (desks.length) return await openDesk(desks[0].id);
+      if (desks.length) {
+        const remembered = desks.find(desk => desk.id === lastVideoDesks[video.id]);
+        return await openDesk((remembered || desks[0]).id);
+      }
       return await create(video);
     } finally {if (owns(deskId,epoch)) ui().busy(false);}
   }
@@ -263,6 +333,8 @@
           await flush(); if (!owns(deskId,epoch)) return;
           currentVideo=video; const saved=snapshot();suspended=true;
           try {ui().restore(saved,video);} finally {suspended=false;}
+          syncSourceSwitcher();
+          refreshChatBudget();
           changed();
           if (video.job?.state === "failed") ui().notify(`预检或分析失败：${video.job.error}。素材保留，可重新处理或删除。`);
           if (video.job?.state === "awaiting_configuration") ui().notify("预检完成，等待模型服务与预算配置。不会发送模型请求。");
@@ -319,7 +391,8 @@
       if (activeRequest) {await stopRequest();if (!owns(desk.id,epoch)) return;}
       const prepared=await api("/api/chat/prepare","POST",body);
       if(!owns(desk.id,epoch)) return;
-      if (prepared.kind!=="ready") {ui().notify(prepared.message);return;}
+      if (prepared.kind!=="ready") {preflightNotice=true;ui().notify(prepared.message);return;}
+      preflightNotice=false;
       pending={desk:desk.id,id:body.request_id,state:"running"};activeRequest=pending;
       status("正在查找证据…");
       let data;
@@ -333,11 +406,14 @@
         if (!owns(desk.id,epoch)) return;
       }
       if(data?.response) {
+        $('resume-query').hidden=true;
         if (!store().getSnapshot().records.some(r=>r.query.id===data.id)) ui().answer({...data,parentTurn},question);
         ui().notify("");await flush();if (!owns(desk.id,epoch)) return;
       } else {$('resume-query').hidden=false;ui().notify("查询仍在执行，保留原问题。请从当前请求恢复，勿发起重复尝试。");}
-    }catch(error){if(owns(desk.id,epoch)){if(activeRequest===pending && pending) $('resume-query').hidden=false;ui().notify(`${error.message} · 原问题已保留。`);status("查找未完成","error");}}
-    finally {if(owns(desk.id,epoch)) ui().busy(false);}
+    }catch(error){if(owns(desk.id,epoch)){if(activeRequest===pending && pending) $('resume-query').hidden=false;ui().notify(error.message === "context_has_no_verified_anchor"
+      ? "所选问题没有有效证据，请点击「另起问题」并写出完整问题。输入已保留。"
+      : `${error.message} · 原问题已保留。`);status("查找未完成","error");}}
+    finally {if(owns(desk.id,epoch)) {ui().busy(false);refreshChatBudget();}}
   }
   async function stopRequest() {
     const pending=activeRequest;
@@ -356,7 +432,8 @@
       else if(desks.length)await openDesk(desks[0].id);else await create(demo);
       store().subscribe(changed);
       window.addEventListener("frameseek-canvas-changed",changed);
-      ["pointerup","keyup","wheel"].forEach(event=>document.addEventListener(event,()=>{if(JSON.stringify(snapshot())!==lastSaved)changed();},{passive:true}));
+      ["pointerup","keyup","wheel","input"].forEach(event=>document.addEventListener(event,()=>{if(JSON.stringify(snapshot())!==lastSaved)changed();},{passive:true}));
+      $('question').addEventListener('input',()=>{if(preflightNotice){preflightNotice=false;ui().notify('');}});
       document.addEventListener("visibilitychange",()=>{if(document.hidden)flush().catch(()=>{});});
       $("open-investigations").onclick=()=>library().catch(e=>ui().notify(e.message));
       $("open-sources").onclick=()=>library("videos").catch(e=>ui().notify(e.message));
@@ -366,6 +443,8 @@
       $("close-agent-setup").onclick=()=>$("agent-setup-dialog").close();
       $("save-state").onclick=()=>conflict ? openDesk(current.id).catch(e=>ui().notify(e.message)) : flush().catch(()=>{});
       $("resume-query").onclick=()=>recover().catch(e=>ui().notify(e.message));
+      $("source-switcher").onchange=switchSelectedSource;
+      refreshSourceSwitcher().catch(error=>ui().notify(`视频列表读取失败：${error.message}。可在管理视频中重试。`));
       $("close-library").onclick=()=>$("workspace-library").close();
       $("delete-cancel").onclick=()=>$("delete-dialog").close();
     }catch(error){suspended=true;status("调查服务暂不可用","error");ui().notify(error.message);}

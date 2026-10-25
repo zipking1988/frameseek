@@ -36,6 +36,8 @@ def budget_ready(connection, owner, runtime):
 
 def readiness_report(settings, runtime, approved=False):
     checks = []
+    provider = runtime.provider if runtime else "nvidia_nebius"
+    gemini = provider == "gemini"
 
     def check(id, label, passed, detail):
         checks.append(
@@ -99,9 +101,25 @@ def readiness_report(settings, runtime, approved=False):
                 "media_endpoint_not_self_hosted",
                 "remote_endpoint_requires_tls",
                 "model_revision_missing",
+                "gemini_endpoint_not_allowed",
+                "invalid_gemini_model",
+                "google_media_not_enabled",
+                "gemini_asr_not_supported",
+                "tokenfactory_endpoint_not_allowed",
+                "tokenfactory_model_not_allowed",
+                "tokenfactory_media_not_enabled",
+                "tokenfactory_asr_not_supported",
             )
         ),
-        "帧和音频仅发送到已列出的自托管服务，远程服务需要 HTTPS，文本服务不接收媒体。",
+        (
+            "Gemini 路线将本机解码的 JPEG 帧发往 Google Gemini API；需在私有配置中明确启用。"
+            "文本和检索阶段不发送媒体；当前不支持音轨转写。"
+            if gemini
+            else "Token Factory 路线仅向固定官方 API 发送本机抽取的 JPEG；"
+            "检索、重排和回答只发送文本。尚未批准预算时不会调用；不支持音轨转写。"
+            if provider == "tokenfactory"
+            else "帧和音频仅发送到已列出的自托管服务，远程服务需要 HTTPS，文本服务不接收媒体。"
+        ),
     )
     calibrated = bool(
         runtime
@@ -123,6 +141,7 @@ def readiness_report(settings, runtime, approved=False):
     )
     return {
         "mode": settings.mode,
+        "provider": provider,
         "checks": checks,
         "models": roles,
         "runtime_blockers": blockers,

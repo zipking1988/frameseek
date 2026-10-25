@@ -1,0 +1,7 @@
+# Ubuntu 24.04: permit user namespaces only for the decoder sandbox executable.
+# The machine-wide unprivileged-userns restriction remains enabled.
+abi <abi/4.0>,
+include <tunables/global>
+profile frameseek-bwrap /usr/bin/bwrap flags=(unconfined) {
+    userns,
+}

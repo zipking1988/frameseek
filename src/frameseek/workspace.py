@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import math
 import re
 import secrets
 import sqlite3
@@ -49,6 +50,9 @@ class Workspace:
               generation INTEGER NOT NULL, hash TEXT NOT NULL, state TEXT NOT NULL,
               result TEXT, http INTEGER DEFAULT 200, updated REAL NOT NULL,
               PRIMARY KEY(owner,id));
+            CREATE TABLE IF NOT EXISTS retention_extensions(
+              reference TEXT PRIMARY KEY, owner TEXT NOT NULL, video TEXT NOT NULL,
+              until REAL NOT NULL, created REAL NOT NULL, previous TEXT NOT NULL);
             """)
             columns = {row[1] for row in c.execute("PRAGMA table_info(queries)")}
             if "input" not in columns:
@@ -108,6 +112,59 @@ class Workspace:
             row = c.execute("SELECT expires FROM sessions WHERE id=?", (owner,)).fetchone()
         return bool(row and row["expires"] > time.time())
 
+    def extend_retention(self, owner, video, until, reference):
+        """Trusted operator only; never exposed as an HTTP/configuration operation."""
+        now = time.time()
+        if (
+            isinstance(until, bool)
+            or not isinstance(until, (int, float))
+            or not math.isfinite(until)
+            or not now < until <= now + 120 * 86400
+            or not isinstance(reference, str)
+            or not 1 <= len(reference) <= 500
+        ):
+            raise ValueError("Finite retention cutoff and authorization reference required")
+        with self.db() as c:
+            c.execute("BEGIN IMMEDIATE")
+            prior = c.execute(
+                "SELECT * FROM retention_extensions WHERE reference=?", (reference,)
+            ).fetchone()
+            if prior:
+                if (prior["owner"], prior["video"], prior["until"]) != (owner, video, until):
+                    raise ValueError("Retention authorization reference already used")
+                return
+            session = c.execute("SELECT expires FROM sessions WHERE id=?", (owner,)).fetchone()
+            source = c.execute(
+                "SELECT expires,deleted FROM videos WHERE id=? AND owner=?", (video, owner)
+            ).fetchone()
+            if not session or session["expires"] <= now or not source:
+                raise ValueError("Active existing owner and owned source required")
+            if source["deleted"] or source["expires"] <= now:
+                raise ValueError("Expired or deleted sources cannot be revived")
+            if until < max(session["expires"], source["expires"]):
+                raise ValueError("Retention extension must not shorten existing validity")
+            desks = c.execute(
+                "SELECT id,expires FROM investigations WHERE owner=? AND video=? "
+                "AND deleted=0 AND expires>?",
+                (owner, video, now),
+            ).fetchall()
+            previous = {
+                "session": session["expires"],
+                "source": source["expires"],
+                "investigations": [dict(r) for r in desks],
+            }
+            c.execute("UPDATE sessions SET expires=? WHERE id=?", (until, owner))
+            c.execute("UPDATE videos SET expires=? WHERE id=? AND owner=?", (until, video, owner))
+            c.execute(
+                "UPDATE investigations SET expires=MAX(expires,?) WHERE owner=? AND video=? "
+                "AND deleted=0 AND expires>?",
+                (until, owner, video, now),
+            )
+            c.execute(
+                "INSERT INTO retention_extensions VALUES(?,?,?,?,?,?)",
+                (reference, owner, video, until, now, json.dumps(previous)),
+            )
+
     def owned(self, table, key, owner):
         if table not in {"videos", "investigations"}:
             raise ValueError("Invalid owned table")
@@ -127,6 +184,15 @@ class Workspace:
             expiry = min(expiry, self.owned("videos", video, owner)["expires"])
         key = ident("desk_")
         with self.db() as c:
+            extension = c.execute(
+                "SELECT v.expires FROM videos v WHERE v.id=? AND v.owner=? "
+                "AND v.deleted=0 AND v.expires>? AND EXISTS "
+                "(SELECT 1 FROM retention_extensions e WHERE e.owner=v.owner "
+                "AND e.video=v.id AND e.until>=v.expires)",
+                (video, owner, time.time()),
+            ).fetchone()
+            if extension:
+                expiry = extension["expires"]
             if (
                 c.execute(
                     "SELECT count(*) FROM investigations WHERE owner=? AND deleted=0 AND expires>?",

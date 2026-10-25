@@ -3,6 +3,7 @@
 import asyncio
 import fcntl
 import json
+import math
 import os
 import re
 import shutil
@@ -111,7 +112,8 @@ def register(app, settings, root, runtime=None, transport=None):
         session = ws.authenticate(request.cookies.get("fs_session"))
         if request.method not in {"GET", "HEAD"}:
             origin = request.headers.get("origin")
-            if origin and origin != str(request.base_url).rstrip("/"):
+            expected_origin = os.environ.get("FS_PUBLIC_ORIGIN", str(request.base_url)).rstrip("/")
+            if origin and origin != expected_origin:
                 raise HTTPException(403, "origin_rejected")
             if not request.headers.get("x-fs-csrf") or not __import__("secrets").compare_digest(
                 request.headers["x-fs-csrf"], session["csrf"]
@@ -123,10 +125,32 @@ def register(app, settings, root, runtime=None, transport=None):
 
     @router.get("/api/runtime/status")
     def runtime_status(response: Response, owner=owner_dependency):
-        with agent.ledger._connect() as connection:
-            approved = budget_ready(connection, owner, runtime)
         response.headers["Cache-Control"] = "no-store"
-        return readiness_report(settings, runtime, approved)
+        try:
+            with agent.ledger._connect() as connection:
+                approved = budget_ready(connection, owner, runtime)
+                rows = connection.execute(
+                    "SELECT call_cap,used_calls,money_cap,used_money FROM budgets "
+                    "WHERE version=? AND scope IN (?, '*')",
+                    (runtime.budget_version if runtime else "", owner),
+                ).fetchall()
+        except BudgetDenied:
+            report = readiness_report(settings, runtime, False)
+            report["budget_status"] = "unavailable"
+            return report
+        report = readiness_report(settings, runtime, approved)
+        if len(rows) == 2:
+            report["budget"] = {
+                "call_cap": min(r["call_cap"] for r in rows),
+                "used_calls": max(r["used_calls"] for r in rows),
+                "remaining_calls": max(0, min(r["call_cap"] - r["used_calls"] for r in rows)),
+                "short_window_calls": 1
+                if getattr(agent.ledger, "direct_observations", False)
+                else 2
+                if not getattr(agent.ledger, "allow_repairs", True)
+                else 3,
+            }
+        return report
 
     def run_job(video, owner, generation, analysis=False):
         directory = ws.root / video
@@ -219,15 +243,17 @@ def register(app, settings, root, runtime=None, transport=None):
 
     @router.get("/api/session")
     def session(request: Request, response: Response):
-        row, token = ws.session(request.cookies.get("fs_session"))
-        if token:
+        existing_token = request.cookies.get("fs_session")
+        row, token = ws.session(existing_token)
+        cookie_token = token or existing_token
+        if cookie_token:
             response.set_cookie(
                 "fs_session",
-                token,
+                cookie_token,
                 httponly=True,
                 samesite="strict",
-                secure=request.url.scheme == "https",
-                max_age=ws.ttl,
+                secure=bool(os.environ.get("FS_PUBLIC_ORIGIN")) or request.url.scheme == "https",
+                max_age=max(1, math.ceil(row["expires"] - time.time())),
             )
         response.headers["Cache-Control"] = "no-store"
         blockers = runtime.blockers() if runtime else ["model_endpoints_missing"]
@@ -247,6 +273,7 @@ def register(app, settings, root, runtime=None, transport=None):
             "owner_id": row["id"],
             "expires": row["expires"],
             "real_ready": not blockers,
+            "provider": runtime.provider if runtime else "nvidia_nebius",
             "blockers": sorted(set(blockers)),
             "ttl_hours": settings.ttl_hours,
         }
@@ -495,7 +522,19 @@ def register(app, settings, root, runtime=None, transport=None):
     @router.get("/media/{video}/video")
     def private_video(video: str, owner=owner_dependency):
         ws.owned("videos", video, owner)
-        return FileResponse(ws.root / video / "original", headers={"Cache-Control": "no-store"})
+        path = ws.root / video / "original"
+        # Originals have no extension; do not let that select a generic MIME type.
+        # Inspect only the bounded container header, not the mutable display name.
+        with path.open("rb") as source:
+            header = source.read(64)
+        media_type = "application/octet-stream"
+        if header[4:8] == b"ftyp":
+            media_type = "video/quicktime" if header[8:12] == b"qt  " else "video/mp4"
+        elif header[:4] == b"\x1aE\xdf\xa3":
+            media_type = "video/webm" if b"webm" in header else "video/x-matroska"
+        elif header[:4] == b"RIFF" and header[8:12] == b"AVI ":
+            media_type = "video/x-msvideo"
+        return FileResponse(path, media_type=media_type, headers={"Cache-Control": "no-store"})
 
     @router.get("/media/{video}/frames/{file}")
     def private_frame(video: str, file: str, owner=owner_dependency):
@@ -545,13 +584,50 @@ def register(app, settings, root, runtime=None, transport=None):
             ]
         }
 
-    @router.post("/api/chat/prepare")
-    def prepare(body: ChatInput, owner=owner_dependency):
+    def prepare(body: ChatInput, owner, check_budget=True):
         desk = ws.owned("investigations", body.investigation_id, owner)
         state = json.loads(desk["state"])
         if body.generation != state.get("epoch", 0):
             raise HTTPException(409, "stale_chat_generation")
+        with ws.db() as connection:
+            existing = connection.execute(
+                "SELECT hash FROM queries WHERE id=? AND owner=?",
+                (body.request_id, owner),
+            ).fetchone()
+        if existing:
+            if existing["hash"] != digest(body.model_dump_json()):
+                raise HTTPException(409, "request_payload_conflict")
+            # Restoring an existing pending/unknown/terminal request must not need
+            # a fresh budget or trigger another model dispatch.
+            return {"kind": "ready", "request_id": body.request_id}
+        if desk["video"] != "demo_parcel" and (
+            settings.mode != "real" or not runtime or runtime.blockers()
+        ):
+            return {
+                "kind": "runtime_blocked",
+                "message": "当前服务未启用真实模型，或模型配置未就绪。"
+                "已保存的回答可以回看，但本次问题尚未发送给模型。"
+                "原问题已保留；请在「更多 → 模型与预算」查看配置。",
+            }
         context = prior(body, owner, desk)
+        if re.search(r"谁|哪位|哪名|哪队", body.question) and re.search(
+            r"(?:三分|3分|进球|得分|命中).*(?:最多|排名)", body.question
+        ):
+            return {
+                "kind": "capability_blocked",
+                "message": "当前仅支持抽样画面的核对，尚未完成全片球员身份、投篮命中和次数追踪，"
+                "不能可靠回答谁命中最多。可以改问指定时段可见的球衣、位置或记分牌。"
+                "本次尚未调用模型，输入已保留。",
+            }
+        if re.fullmatch(
+            r"\s*(?:请)?(?:继续|接着)(?:这个|刚才的|上个|上一[轮个])?(?:问题|提问)?[。！？?！\s]*",
+            body.question,
+        ):
+            return {
+                "kind": "clarification_required",
+                "message": "请补充这次想核对的具体内容，例如「这张画面的比赛还剩多少秒？」。"
+                "本次尚未调用模型，输入已保留。",
+            }
         if (
             re.search(r"^(它|他|她|那里|那之后|然后呢|后来呢|中间呢|那个)", body.question)
             and not context
@@ -560,7 +636,53 @@ def register(app, settings, root, runtime=None, transport=None):
                 "kind": "clarification_required",
                 "message": "请选中有证据的问题，或明确要查找的物体与时间。",
             }
+        if check_budget and desk["video"] != "demo_parcel":
+            video = ws.owned("videos", desk["video"], owner)
+            if video["manifest"]:
+                manifest = json.loads(video["manifest"])
+                try:
+                    _, calls, cost = agent.query_budget(
+                        manifest, json.loads(video["metadata"]), body.question, context
+                    )
+                except AgentError as error:
+                    if str(error) != "invalid_time_window":
+                        raise
+                    return {
+                        "kind": "clarification_required",
+                        "message": "视频时间段无效：开始时间须早于结束时间，且都在视频长度以内。"
+                        "本次尚未调用模型，输入已保留。",
+                    }
+                try:
+                    agent.ledger.admit_cost(
+                        owner, runtime.budget_version, calls, cost, runtime.currency_unit
+                    )
+                except BudgetDenied:
+                    try:
+                        with agent.ledger._connect() as connection:
+                            rows = connection.execute(
+                                "SELECT call_cap-used_calls FROM budgets "
+                                "WHERE version=? AND scope IN (?, '*')",
+                                (runtime.budget_version, owner),
+                            ).fetchall()
+                    except BudgetDenied:
+                        return {
+                            "kind": "budget_unavailable",
+                            "message": "无法读取当前预算账本，本次尚未发送给模型。"
+                            "输入已保留；不会自动重试或启用其他额度。",
+                        }
+                    remaining = min((row[0] for row in rows), default=0)
+                    return {
+                        "kind": "budget_blocked",
+                        "message": f"本问题的处理路径需预留最多{calls}次模型请求，"
+                        f"目前最多剩{remaining}次；"
+                        "也可能因金额或审批状态未通过准入。尚未调用模型，输入已保留。"
+                        "可指定不超过60秒的具体视频时间段以减少检索调用。",
+                    }
         return {"kind": "ready", "request_id": body.request_id}
+
+    @router.post("/api/chat/prepare")
+    def prepare_chat(body: ChatInput, owner=owner_dependency):
+        return prepare(body, owner)
 
     @router.post("/api/investigations/{key}/requests/{request_id}/cancel")
     def cancel_query(key: str, request_id: Key, owner=owner_dependency):
@@ -605,7 +727,7 @@ def register(app, settings, root, runtime=None, transport=None):
         if generation != body.generation:
             raise HTTPException(409, "stale_chat_generation")
         context = prior(body, owner, desk)
-        if prepare(body, owner)["kind"] != "ready":
+        if prepare(body, owner, check_budget=False)["kind"] != "ready":
             raise HTTPException(409, "clarification_required")
         payload_hash = digest(body.model_dump_json())
         with ws.db() as c:
@@ -707,7 +829,11 @@ def register(app, settings, root, runtime=None, transport=None):
             TypeError,
             IndexError,
         ) as error:
-            code = str(error) if isinstance(error, AgentError) else "analysis_failed"
+            code = (
+                "budget_blocked"
+                if isinstance(error, BudgetDenied)
+                else (str(error) if isinstance(error, AgentError) else "analysis_failed")
+            )
             if code in {"model_unknown", "unknown_attempt_do_not_resend"}:
                 with ws.db() as c:
                     c.execute(
@@ -733,12 +859,20 @@ def register(app, settings, root, runtime=None, transport=None):
                     },
                     status_code=409,
                 )
-            status = 409 if code in {"video_not_ready", "real_blocked"} else 502
+            status = 409 if code in {"video_not_ready", "real_blocked", "budget_blocked"} else 502
+            budget_blocked = code == "budget_blocked"
+            audio_unavailable = code == "audio_channel_unavailable"
             answer = {
                 "schema_version": "0.1",
                 "status": "error",
                 "timebase": "video_absolute_seconds",
-                "answer": "本轮查找未完成，未生成有效证据。",
+                "answer": "本轮被预算检查拦截：审批已暂停，或剩余请求次数/金额不足。"
+                "未完成新的视觉复核。"
+                if budget_blocked
+                else "这段视频的音轨尚未完成可靠转写，无法回答解说内容。"
+                "本轮未调用模型，也未产生新的模型费用。"
+                if audio_unavailable
+                else "本轮查找未完成，未生成有效证据。",
                 "events": [],
                 "unresolved": [],
                 "followups": [],
@@ -750,10 +884,20 @@ def register(app, settings, root, runtime=None, transport=None):
                     {
                         "code": code if re.fullmatch(r"[a-z_]+", code) else "analysis_failed",
                         "stage": "query",
-                        "message": "查找未完成",
-                        "cause": "unknown",
+                        "message": "预算审批已暂停或余额不足"
+                        if budget_blocked
+                        else "音轨尚未完成可靠转写"
+                        if audio_unavailable
+                        else "查找未完成",
+                        "cause": "approved_budget_unavailable"
+                        if budget_blocked
+                        else "audio_channel_unavailable"
+                        if audio_unavailable
+                        else "unknown",
                         "retryable": False,
-                        "suggested_action": "检查素材就绪状态、模型配置和剩余预算。",
+                        "suggested_action": "可以改问画面中可见的内容；目前不能依据音轨回答。"
+                        if audio_unavailable
+                        else "检查素材就绪状态、模型配置和剩余预算。",
                         "docs_url": "/docs/errors",
                         "request_id": body.request_id,
                     }

@@ -21,202 +21,204 @@ const labels = {
   error: "未完成",
 };
 
-function WorkspaceNavigation() {
+// Synchronize the persistent header controls without remounting their listeners.
+function WorkspaceChrome() {
   const state = useDesk();
   useEffect(() => {
     const count = document.getElementById("rail-findings-count");
     count.textContent = state.pins.length;
     count.hidden = !state.pins.length;
   }, [state.pins.length]);
-  const [open, setOpen] = useState(false);
-  const root = useRef(null);
-  const trigger = useRef(null);
   useEffect(() => {
-    if (!open) return;
-    root.current.querySelector(".workspace-menu button").focus();
+    const menu = document.getElementById("header-more");
+    const trigger = menu.querySelector("summary");
     const dismiss = (event) => {
-      if (!root.current.contains(event.target)) setOpen(false);
+      if (!menu.contains(event.target)) menu.open = false;
     };
     const escape = (event) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || !menu.open) return;
       event.preventDefault();
-      setOpen(false);
-      trigger.current.focus();
+      menu.open = false;
+      trigger.focus();
+    };
+    const activate = (event) => {
+      if (event.target.closest("button, a")) menu.open = false;
     };
     document.addEventListener("pointerdown", dismiss);
     document.addEventListener("keydown", escape);
+    menu.addEventListener("click", activate);
     return () => {
       document.removeEventListener("pointerdown", dismiss);
       document.removeEventListener("keydown", escape);
+      menu.removeEventListener("click", activate);
+    };
+  }, []);
+  useEffect(() => {
+    const menu = document.getElementById("investigation-menu");
+    if (!menu?.querySelector) return;
+    const closeOutside = event => {if (!menu.contains(event.target)) menu.open = false;};
+    const escape = event => {
+      if (event.key === "Escape" && menu.open) {event.preventDefault(); menu.open = false; menu.querySelector("summary").focus();}
+    };
+    const activate = event => {if (event.target.closest("button")) menu.open = false;};
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", escape);
+    menu.addEventListener("click", activate);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", escape);
+      menu.removeEventListener("click", activate);
+    };
+  }, []);
+  return null;
+}
+
+function SourcePicker() {
+  const [sources, setSources] = useState({items: [], selected: "", busy: true});
+  const [open, setOpen] = useState(false);
+  const root = useRef(null), trigger = useRef(null), panel = useRef(null);
+  const returnFocus = useRef(false);
+  useEffect(() => {
+    const select = document.getElementById("source-switcher");
+    const read = () => setSources({
+      selected: select.value, busy: select.disabled,
+      items: Array.from(select.options, option => ({
+        id: option.value, name: option.textContent,
+        thumbnail: option.dataset.thumbnail, detail: option.dataset.detail,
+      })),
+    });
+    read();
+    select.addEventListener("frameseek-sources", read);
+    return () => select.removeEventListener("frameseek-sources", read);
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    (panel.current.querySelector('[aria-current="true"]') || panel.current.querySelector("button"))?.focus();
+    const outside = event => { if (!root.current.contains(event.target)) setOpen(false); };
+    const escape = event => {
+      if (event.key !== "Escape") return;
+      event.preventDefault(); setOpen(false); trigger.current.focus();
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape);
     };
   }, [open]);
-  const run = (action) => {
-    setOpen(false);
-    trigger.current.focus();
-    action();
+  useEffect(() => {
+    if (sources.busy || !returnFocus.current) return;
+    returnFocus.current = false;
+    if (document.activeElement === document.body) trigger.current.focus();
+  }, [sources.busy]);
+  const current = sources.items.find(item => item.id === sources.selected);
+  const thumb = item => item?.thumbnail
+    ? <img className="source-picker-thumb" src={item.thumbnail} alt="" onError={event => {event.currentTarget.style.visibility = "hidden";}} />
+    : <span className="source-picker-thumb source-picker-placeholder">{icon("play")}</span>;
+  const choose = id => {
+    returnFocus.current = id !== sources.selected;
+    setOpen(false); trigger.current.focus();
+    const select = document.getElementById("source-switcher");
+    select.value = id;
+    select.dispatchEvent(new Event("change", {bubbles: true}));
   };
-  return (
-    <div ref={root} className="workspace-navigation">
-      <button
-        ref={trigger}
-        className="rail-button menu-trigger"
-        aria-label="工作区菜单"
-        aria-expanded={open}
-        aria-controls="workspace-menu"
-        title={open ? "收起工作区菜单" : "展开工作区菜单"}
-        onClick={() => setOpen(!open)}
-      >
-        {icon("list")}
-        <span>菜单</span>
-      </button>
-      {open && (
-        <section
-          id="workspace-menu"
-          className="workspace-menu"
-          role="dialog"
-          aria-label="工作区菜单"
-        >
-          <div className="workspace-menu-heading">
-            <div>
-              <span>本次调查</span>
-              <strong>{state.title || "未命名调查"}</strong>
-            </div>
-            <button
-              className="icon-button"
-              aria-label="关闭工作区菜单"
-              onClick={() => run(() => {})}
-            >
-              {icon("x")}
-            </button>
-          </div>
-          <p className="workspace-summary">
-            {state.records.length} 轮问题 · {state.pins.length} 项发现
-          </p>
-          <p className="menu-section-label">工作区</p>
-          <button
-            className="workspace-menu-item"
-            onClick={() => run(() => ui()?.canvas())}
-          >
-            {icon("chats-circle")}
-            <span>
-              调查画布<small>回到当前调查</small>
-            </span>
-            {icon("arrow-right")}
-          </button>
-          <button
-            className="workspace-menu-item"
-            onClick={() => run(() => ui()?.toggleSource())}
-          >
-            {icon("folder-open")}
-            <span>
-              素材与视频<small>展开或收起素材面板</small>
-            </span>
-          </button>
-          <button
-            className="workspace-menu-item"
-            onClick={() => run(() => ui()?.openInspector("findings"))}
-          >
-            {icon("stack")}
-            <span>
-              发现集合<small>证据、结论与调查笔记</small>
-            </span>
-            <span className="menu-count">{state.pins.length}</span>
-          </button>
-          <button
-            className="workspace-menu-item"
-            onClick={() => run(() => ui()?.openInspector("context"))}
-          >
-            {icon("paperclip")}
-            <span>
-              问题详情<small>查看所选问题的依据</small>
-            </span>
-          </button>
-          <p className="menu-section-label">调查操作</p>
-          <button
-            className="workspace-menu-item"
-            onClick={() => run(() => ui()?.newTask())}
-          >
-            {icon("plus")}
-            <span>
-              新调查<small>清空当前画布，重新开始</small>
-            </span>
-          </button>
-          <button
-            className="workspace-menu-item"
-            onClick={() => run(() => ui()?.demos())}
-          >
-            {icon("play")}
-            <span>
-              演示库<small>探索 6 条预设调查路径</small>
-            </span>
-          </button>
-          <button
-            className="workspace-menu-item"
-            onClick={() => run(() => ui()?.openLocal())}
-          >
-            {icon("folder-open")}
-            <span>
-              上传视频<small>保存素材并检查可分析状态</small>
-            </span>
-          </button>
-          <button className="workspace-menu-item" onClick={() => run(() => window.FrameSeekPersistence?.library())}>{icon("chats-circle")}<span>调查库<small>恢复、切换与管理调查</small></span></button>
-          <button className="workspace-menu-item" onClick={() => run(() => window.FrameSeekPersistence?.library("videos"))}>{icon("folder-open")}<span>素材库<small>上传、分析与管理视频</small></span></button>
-          <a
-            className="workspace-menu-item"
-            href="/docs"
-            target="_blank"
-            rel="noopener"
-            onClick={() => setOpen(false)}
-          >
-            {icon("code")}
-            <span>API 文档</span>
-            {icon("arrow-right")}
-          </a>
-          <div className="menu-footnote">
-            保存在本机<small>默认保留 24 小时 · 可恢复调查</small>
-          </div>
-        </section>
-      )}
-    </div>
-  );
+  const navigate = event => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const buttons = Array.from(panel.current.querySelectorAll("button"));
+    const index = buttons.indexOf(document.activeElement);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
+      : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[next]?.focus();
+  };
+  return <div className="source-picker" ref={root}>
+    <button type="button" className="source-picker-trigger" ref={trigger}
+      aria-label={`切换视频：${current?.name || "正在读取"}`} aria-haspopup="dialog"
+      aria-expanded={open} aria-controls="source-picker-panel" disabled={sources.busy}
+      onClick={() => setOpen(value => !value)} onKeyDown={event => {
+        if (event.key === "ArrowDown") {event.preventDefault(); setOpen(true);}
+      }}>
+      {thumb(current)}
+      <span className="source-picker-copy"><small>{sources.busy ? "正在切换…" : "当前视频"}</small>
+        <strong>{current?.name || "正在读取视频…"}</strong></span>
+      <span className="source-picker-chevron" aria-hidden="true">⌄</span>
+    </button>
+    {open && <section id="source-picker-panel" className="source-picker-panel" role="dialog"
+      aria-label="切换视频" ref={panel} onKeyDown={navigate}>
+      <div className="source-picker-heading">切换视频 <span>{sources.items.length} 个视频</span></div>
+      {sources.items.map(item => <button type="button" className="source-picker-item" key={item.id}
+        aria-current={item.id === sources.selected ? "true" : undefined} onClick={() => choose(item.id)}>
+        {thumb(item)}<span className="source-picker-copy"><strong>{item.name}</strong><small>{item.detail}</small></span>
+        <span className="source-picker-check" aria-hidden="true">{item.id === sources.selected ? "✓" : ""}</span>
+      </button>)}
+      <button className="source-picker-manage" type="button" onClick={() => {
+        setOpen(false); document.getElementById("open-sources").click();
+      }}>管理视频 <span aria-hidden="true">↗</span></button>
+      <p className="source-picker-footnote">切换会保存当前调查，保留各自聊天记录。</p>
+    </section>}
+  </div>;
 }
 
 function ProjectTitle() {
   const state = useDesk();
-  return (
-    <div className="project-name">
-      <span>工作区 /</span>
-      <input
-        aria-label="调查名称"
-        value={state.title}
-        onChange={(e) => store.rename(e.target.value)}
-        onBlur={() =>
-          !store.getSnapshot().title.trim() && store.rename("未命名调查")
-        }
-        maxLength={80}
-      />
-      <span className="session-label">自动保存</span>
-    </div>
-  );
+  return <div className="project-name" data-title={state.title || "未命名调查"}>
+    <input aria-label="调查名称" title="点击修改调查名称" value={state.title}
+      onChange={event => store.rename(event.target.value)}
+      onBlur={() => !store.getSnapshot().title.trim() && store.rename("未命名调查")}
+      maxLength={80} />
+  </div>;
 }
+function ComposerSuggestions() {
+  const state = useDesk();
+  const [hasDraft, setHasDraft] = useState(false);
+  useEffect(() => {
+    const input = document.getElementById("question");
+    const read = () => setHasDraft(!!input.value.trim());
+    read(); input.addEventListener("input", read);
+    return () => input.removeEventListener("input", read);
+  }, [state.epoch, state.sourceInfo?.id, state.title, state.records, state.selectedId]);
+  const suggestions = window.FrameSeekWorkbenchModel.composerSuggestions(state);
+  const shortLabels = suggestions.titles || (suggestions.label.startsWith("示例问题")
+    ? ["概括可见场景", "查找清晰片段", "哪些内容无法确认？"]
+    : suggestions.label === "演示示例" ? ["包裹何时在中央？", "什么时候移到右侧？", "画面里有叉车吗？"] : null);
+  return <section className="composer-suggestions" aria-label="建议问题">
+    <div className="suggestion-heading"><span>{suggestions.label}</span><small>{hasDraft ? "已有草稿 · 清空后可选" : "点击填入，修改后发送"}</small></div>
+    <div className="suggestion-buttons">{suggestions.items.map((question, index) =>
+      <button key={question} type="button" title={question} disabled={hasDraft || state.local}
+        onClick={() => ui()?.fillSuggestedQuestion(question)}>{shortLabels?.[index] || question}</button>
+    )}</div>
+    {suggestions.basis && <div className="suggestion-basis">
+      <button type="button" title="回看已有证据，不发送问题、不调用模型" onClick={() => {
+        const current = store.getSnapshot();
+        const source = current.records.find(item => item.id === suggestions.basis.turnId && !item.hidden && item.query.id === suggestions.basis.queryId);
+        if (source && (current.sourceInfo?.id || "demo_parcel") === suggestions.basis.videoId)
+          ui()?.seek(suggestions.basis.t, source.query);
+      }}><img src={suggestions.basis.uri} alt="" /><span>回看依据 {clock(suggestions.basis.t)}</span></button>
+      <small>{suggestions.label === "基于已有证据" ? "依据已有画面整理，未新增模型分析" : "复用已有回答，不增加模型请求"}</small>
+    </div>}
+  </section>;
+}
+
 function Outline() {
   const state = useDesk();
+  const visible = state.records.filter(r => !r.hidden);
+  const hidden = state.records.filter(r => r.hidden);
   return (
     <section className="investigation-outline">
       <div className="section-line">
         <h2>调查脉络</h2>
-        <span>{state.records.length} 轮</span>
+        <span>{visible.length} 轮</span>
       </div>
-      {state.records.length ? (
+      {visible.length ? (
         <ol>
-          {state.records.map((record, index) => (
+          {visible.map(record => (
             <li key={record.id}>
               <button
                 className={record.id === state.selectedId ? "active" : ""}
                 onClick={() => ui()?.select(record.id)}
               >
                 <span className="outline-number">
-                  {String(index + 1).padStart(2, "0")}
+                  {String(state.records.indexOf(record) + 1).padStart(2, "0")}
                 </span>
                 <span>{record.query.question}</span>
                 <span
@@ -231,6 +233,13 @@ function Outline() {
           每次追问会留在画布上。选中旧问题，可以从那里继续。
         </p>
       )}
+      {!!hidden.length && <details className="deleted-turns">
+        <summary>已删除的问题（{hidden.length}）</summary>
+        {hidden.map(record => <div key={record.id}>
+          <span>{record.query.question}</span>
+          <button className="text-button" onClick={() => ui()?.restoreTurn(record.id)}>恢复问题 {record.id.split("-")[1]}</button>
+        </div>)}
+      </details>}
       <p className="session-footnote">素材与问题独立保存 · 可继续上次调查</p>
     </section>
   );
@@ -263,7 +272,7 @@ function Inspector() {
   useEffect(() => () => exportController.current?.abort(), []);
   const drag = useRef(null);
   const skipClick = useRef(false);
-  const selected = state.records.find((r) => r.id === state.selectedId);
+  const selected = state.records.find((r) => r.id === state.selectedId && !r.hidden);
   const frames = selected
     ? [
         ...new Map(
@@ -432,7 +441,7 @@ function Inspector() {
                   disabled={state.local}
                   onClick={() => ui()?.continueFrom(selected.id)}
                 >
-                  继续追问 {icon("arrow-right")}
+                  {selected.query.mode === "real" && !selected.query.response.events.length ? "重新提问" : "继续追问"} {icon("arrow-right")}
                 </button>
                 <button
                   className="text-button"
@@ -440,6 +449,7 @@ function Inspector() {
                 >
                   定位画布
                 </button>
+                <button className="text-button danger" onClick={() => ui()?.hideTurn(selected.id)}>删除问题</button>
               </div>
               <div className="inspector-conclusion">
                 <div className="section-line">
@@ -461,6 +471,18 @@ function Inspector() {
                   )}
                 </div>
                 <p>{selected.query.response.answer}</p>
+                {window.FrameSeekWorkbenchModel.queryFailureReason(selected.query) &&
+                  <div className="answer-review-note" role="note">
+                    <strong>为什么没有回答</strong>
+                    <p>{window.FrameSeekWorkbenchModel.queryFailureReason(selected.query)}</p>
+                    <p>可点击「重新提问」取回原问题，编辑后自行发送；不会自动重试。</p>
+                  </div>}
+                {window.FrameSeekWorkbenchModel.answerReviewNotes(selected.query.response.answer).map(note =>
+                  <div className="answer-review-note" key={note} role="note">
+                    <strong>数字变化需要复核</strong><p>{note}</p>
+                    {!!frames.length && <button type="button" onClick={() => ui()?.seek(frames[0].t, selected.query)}>回看对应证据 {clock(frames[0].t)}</button>}
+                  </div>
+                )}
               </div>
               {!!selected.query.response.unresolved.length && (
                 <div className="open-questions">
@@ -578,7 +600,7 @@ function Inspector() {
               )}
               <details className="basis-section">
                 <summary>
-                  这轮依据<span>{frames.length} 张证据 · {selected.query.mode === "real" ? "模型回看" : "预设匹配"}</span>
+                  这轮依据<span>{frames.length} 张证据 · {selected.query.mode === "real" ? (frames.length ? "画面证据" : "未生成有效证据") : "预设匹配"}</span>
                 </summary>
                 <ol className="basis-steps">
                   <li>
@@ -590,7 +612,7 @@ function Inspector() {
                   <li>
                     <span>02</span>
                     <div>
-                      {selected.query.mode === "real" ? "检索与模型回看" : "固定样例匹配"}
+                      {selected.query.mode === "real" ? "证据检查" : "固定样例匹配"}
                       <small>
                         {selected.query.response.events.length} 段事件 ·{" "}
                         {frames.length} 张证据帧
@@ -875,9 +897,11 @@ function Inspector() {
     </>
   );
 }
-createRoot(document.getElementById("workspace-navigation")).render(
-  <WorkspaceNavigation />,
+createRoot(document.getElementById("workspace-chrome")).render(
+  <WorkspaceChrome />,
 );
+createRoot(document.getElementById("composer-suggestions")).render(<ComposerSuggestions />);
+createRoot(document.getElementById("source-picker-root")).render(<SourcePicker />);
 createRoot(document.getElementById("project-title")).render(<ProjectTitle />);
 createRoot(document.getElementById("investigation-outline")).render(
   <Outline />,

@@ -146,3 +146,122 @@ def test_existing_unversioned_database_requires_explicit_migration(tmp_path):
         conn.execute("CREATE TABLE foreign_data(id TEXT)")
     with pytest.raises(BudgetDenied, match="explicit migration"):
         AttemptLedger(path)
+
+
+def settlement(**changes):
+    return dict(
+        attempt_id="a1",
+        owner="owner1",
+        version="test-v1",
+        payload_hash="test-payload",
+        money_units=10,
+        currency_unit="USD_MICRO",
+        reference="verified-provider-usage-bound",
+        **changes,
+    )
+
+
+def budget_rows(ledger):
+    with ledger._connect() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM budgets ORDER BY scope")]
+
+
+def test_completed_settlement_is_idempotent_keeps_identity_calls_and_revocation(ledger):
+    reserve(ledger, money=100)
+    ledger.transition("a1", "dispatched")
+    ledger.transition("a1", "completed")
+    ledger.restrict("*", "test-v1")
+    ledger.restrict("owner1", "test-v1")
+    ledger.settle_completed(**settlement())
+    ledger.settle_completed(**settlement())
+    for b in budget_rows(ledger):
+        assert (b["active"], b["used_calls"], b["used_primary"], b["used_money"]) == (0, 1, 1, 10)
+        assert b["money_cap"] == 100
+    assert reserve(ledger) == "completed"
+    with pytest.raises(BudgetDenied):
+        ledger.settle_completed(**{**settlement(), "money_units": 9})
+    restarted = AttemptLedger(ledger.path)
+    restarted.resume_existing("owner1", "test-v1", "human-resume-without-more-budget")
+    for b in budget_rows(restarted):
+        assert b["active"] == 1 and b["used_money"] == 10 and b["used_calls"] == 1
+        assert b["money_cap"] == 100 and b["call_cap"] == 40
+    reserve(restarted, id="a2", money=90)
+    with pytest.raises(BudgetDenied):
+        reserve(restarted, id="a3", money=1)
+
+
+@pytest.mark.parametrize("state", ["reserved", "dispatched", "unknown"])
+def test_non_completed_settlement_cannot_release_budget(ledger, state):
+    reserve(ledger)
+    if state != "reserved":
+        ledger.transition("a1", state)
+    before = budget_rows(ledger)
+    with pytest.raises(BudgetDenied):
+        ledger.settle_completed(**settlement())
+    assert budget_rows(ledger) == before
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"owner": "foreign"},
+        {"payload_hash": "different"},
+        {"currency_unit": "EUR_MICRO"},
+        {"version": "other"},
+        {"money_units": 101},
+        {"money_units": -1},
+        {"money_units": True},
+        {"reference": ""},
+    ],
+)
+def test_settlement_requires_matching_identity_and_finite_downward_bound(ledger, change):
+    reserve(ledger)
+    ledger.transition("a1", "dispatched")
+    ledger.transition("a1", "completed")
+    before = budget_rows(ledger)
+    with pytest.raises(BudgetDenied):
+        ledger.settle_completed(**{**settlement(), **change})
+    assert budget_rows(ledger) == before
+
+
+def test_settlement_two_scope_failure_rolls_back(ledger):
+    reserve(ledger)
+    ledger.transition("a1", "dispatched")
+    ledger.transition("a1", "completed")
+    with ledger._connect() as c:
+        c.execute("DELETE FROM budgets WHERE scope='owner1'")
+    before = budget_rows(ledger)
+    with pytest.raises(BudgetDenied):
+        ledger.settle_completed(**settlement())
+    assert budget_rows(ledger) == before
+    with ledger._connect() as c:
+        assert c.execute("SELECT count(*) FROM settlements").fetchone()[0] == 0
+
+
+def test_concurrent_duplicate_settlement_reduces_once(ledger):
+    reserve(ledger)
+    ledger.transition("a1", "dispatched")
+    ledger.transition("a1", "completed")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda _: ledger.settle_completed(**settlement()), range(2)))
+    assert all(b["used_money"] == 10 and b["used_calls"] == 1 for b in budget_rows(ledger))
+
+
+def test_resume_missing_owner_does_not_activate_deployment(ledger):
+    ledger.restrict("*", "test-v1")
+    with pytest.raises(BudgetDenied):
+        ledger.resume_existing("missing", "test-v1", "human")
+    assert budget_rows(ledger)[0]["active"] == 0
+
+
+def test_version_one_upgrade_keeps_approval_and_attempts(ledger):
+    reserve(ledger)
+    with ledger._connect() as c:
+        c.execute("DROP TABLE settlements")
+        c.execute("DROP TABLE resumptions")
+        c.execute("PRAGMA user_version=1")
+    upgraded = AttemptLedger(ledger.path)
+    assert upgraded.read_attempt("a1", "owner1")["money"] == 100
+    assert all(b["used_calls"] == 1 for b in budget_rows(upgraded))
+    with upgraded._connect() as c:
+        assert c.execute("PRAGMA user_version").fetchone()[0] == 2

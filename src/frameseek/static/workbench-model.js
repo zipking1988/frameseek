@@ -47,7 +47,7 @@
         });
       },
       select(id) {
-        if (state.records.some((r) => r.id === id) && state.selectedId !== id)
+        if (state.records.some((r) => r.id === id && !r.hidden) && state.selectedId !== id)
           publish({ selectedId: id });
       },
       showPanel(tab) {
@@ -170,7 +170,97 @@
       );
     return result;
   }
-  const api = { createStore, clock, visiblePins };
+  function toggleTurn(state, id, hidden) {
+    const record = state.records.find(r => r.id === id);
+    if (!record || !!record.hidden === hidden) return null;
+    const node = state.canvas?.nodes?.find(n => n.id === id) || record.hiddenNode;
+    const nodes = (state.canvas?.nodes || []).filter(n => n.id !== id);
+    if (!hidden && node) nodes.push(node);
+    return { ...state,
+      selectedId: hidden ? null : id,
+      records: state.records.map(r => r.id === id ? {...r, hidden, hiddenNode: node} : r),
+      canvas: {...state.canvas, nodes, selected: hidden ? null : id},
+    };
+  }
+  function panelWidth(value, side, viewport, other) {
+    const minimum = side === "source" ? 280 : 260;
+    const maximum = Math.max(minimum, Math.min(side === "source" ? 900 : 600, viewport - 56 - 420 - other));
+    return Math.round(Math.max(minimum, Math.min(maximum, Number.isFinite(value) ? value : minimum)));
+  }
+  function composerSuggestions(state) {
+    const videoId = state.sourceInfo?.id || "demo_parcel";
+    const real = videoId !== "demo_parcel";
+    const duration = state.sourceInfo?.metadata?.duration;
+    const candidates = (state.records || []).filter(record => {
+      const q = record.query, r = q?.response;
+      return !record.hidden && (real ? q?.mode === "real" && q.video_id === videoId : q?.mode !== "real")
+        && ["ok", "partial"].includes(r?.status);
+    });
+    const framesFor = record => (record.query.response.events || []).filter(event => event.video_id === videoId)
+      .flatMap(event => event.evidence || []).filter(frame =>
+        Number.isFinite(frame.t) && frame.t >= 0 && (!Number.isFinite(duration) || frame.t <= duration)
+        && typeof frame.uri === "string" && frame.uri.startsWith(`/media/${videoId}/frames/`));
+    const selected = candidates.find(record => record.id === state.selectedId);
+    const ordered = [...(selected ? [selected] : []), ...candidates.slice().reverse().filter(record => record !== selected)];
+    const record = ordered.find(item => framesFor(item).length);
+    if (record) {
+      const frames = framesFor(record), anchor = frames[0];
+      const basis = {t:anchor.t, uri:anchor.uri, queryId:record.query.id, turnId:record.id, videoId};
+      const start = clock(Math.max(0, Math.floor(anchor.t - 6)));
+      const end = clock(Math.ceil(Math.min(Number.isFinite(duration) ? duration : anchor.t + 6, anchor.t + 6)));
+      const window = `请查看视频${start}至${end}，`;
+      const cached = [...new Set((record.query.response.followups || []).filter(text => typeof text === "string" && text.trim() && text.length <= 900))].slice(0, 3);
+      if (cached.length) return {label:real ? "已有回答建议" : "演示追问", basis,
+        items:cached.map(text => real && record !== selected ? `${window}${text}` : text)};
+      if (real) {
+        const text = [record.query.response.answer, ...frames.map(frame => frame.caption)].join(" ");
+        const items = [], titles = [];
+        const add = (title, question) => {titles.push(title); items.push(`${window}${question}`);};
+        if (/记分牌|比分|scoreboard|\bscore\b/i.test(text))
+          add("核对记分牌", "核对记分牌上可见的球队缩写和比分，引用清晰画面；看不清就说明。");
+        if (/比赛时间|计时|第[一二三四]节|game clock|quarter|remaining/i.test(text))
+          add("读取比赛计时", "读取比赛计时和节次，只报告清楚可见的数字，并引用画面证据。");
+        if (/球衣|球场|篮球|basketball|jersey|court/i.test(text))
+          add("描述球衣与站位", "描述球衣颜色和球员站位，不推测身份，并引用画面证据。");
+        if (/纸箱|包裹|箱子|carton|parcel|cardboard|\bpackage\b/i.test(text)) {
+          add("箱子有没有移动？", "核对箱子的位置是否发生变化；若有变化给出时间与画面证据，不清楚就说明。");
+          add("箱子周围有什么？", "描述箱子与附近物体的可见位置关系，并引用画面证据。");
+        }
+        add("回看前后变化", "描述这张已保存画面前后有哪些可见变化，并引用对应时间的画面；不要补全未看见的动作。");
+        add("哪些细节看不清？", "指出这张画面中不能可靠确认的细节，说明证据局限。");
+        add("核对当前场景", "只描述该时段可见的场景与对象，并给出画面证据。");
+        return {label:"基于已有证据", basis, titles:titles.slice(0,3), items:items.slice(0,3)};
+      }
+    }
+    return real ? {label:"示例问题 · 尚无可用画面",items:[
+      "概括这段视频里可见的场景和主要对象，并引用画面证据。",
+      "找出一个画面清晰的片段，描述可见动作并给出视频时间。",
+      "这段视频有哪些内容无法从画面中确认？请说明证据局限。",
+    ]} : {label:"演示示例",items:["包裹什么时候出现在中央？","包裹什么时候移到右侧？","视频中有没有叉车？"]};
+  }
+  function queryFailureReason(query) {
+    if (query?.mode !== "real" || query.response?.status !== "error") return "";
+    const codes = (query.response.errors || []).map(error => error.code);
+    if (codes.includes("budget_blocked")) return "预算准入未通过：该处理路径需要预留的请求次数或金额可能超过剩余额度，也可能是审批已暂停；不能据此判断模型没有找到画面。没有完成本轮视觉复核。";
+    if (codes.includes("real_blocked")) return "这次请求在模型调用前被拦截：当时的服务未启用真实模型，或模型配置未就绪。不是模型看过视频后没有找到答案；可在「更多 → 模型与预算」检查当前配置。";
+    if (codes.includes("audio_channel_unavailable")) return "尚无可靠音轨转写，无法回答解说内容；这不是问题写得不完整。";
+    if (codes.includes("query_cancelled")) return "这次查找已取消，没有完成分析；不代表视频中没有相关内容。";
+    if (codes.includes("invalid_tool_request")) return "分析工具请求未通过校验，未完成本轮查找；不是你的提问格式错误。";
+    return "本轮分析未完成，系统没有保留足够信息来确认具体原因；不能据此判断视频中没有相关内容。";
+  }
+  function answerReviewNotes(answer) {
+    const notes = [];
+    for (const match of String(answer || "").matchAll(/从\s*(\d+(?:\.\d+)?)\s*(递减|下降|减少|递增|上升|增加)(?:至|到)\s*(\d+(?:\.\d+)?)/g)) {
+      const before = Number(match[1]), after = Number(match[3]);
+      if (!Number.isFinite(before) || !Number.isFinite(after)) continue;
+      const decreases = ["递减", "下降", "减少"].includes(match[2]);
+      if ((decreases && after > before) || (!decreases && after < before))
+        notes.push(`文本一致性待核对：${match[1]} → ${match[3]} 与“${match[2]}”不一致。可能涉及计时重置或描述错误，请回看证据；原回答保留。`);
+      if (notes.length >= 2) break;
+    }
+    return notes;
+  }
+  const api = { createStore, clock, visiblePins, toggleTurn, panelWidth, composerSuggestions, answerReviewNotes, queryFailureReason };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.FrameSeekWorkbenchModel = api;
 })(typeof window !== "undefined" ? window : globalThis);

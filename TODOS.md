@@ -1,5 +1,14 @@
 # TODOS
 
+## AI Builder Cup（2026-10-11 增量）
+
+- [x] 保留 NVIDIA/Nebius，增加 native Gemini provider、只读准备状态和明确媒体边界；本地 mock 合同验证，不是实跑验收。
+- [x] 准备有界无状态 Cloud Run gateway、单持久后端容器与惰性配置模板；禁止 workspace 使用 Cloud Run 临时盘。
+- [ ] 凭据/模型版本/有限校准及执行费用授权后，以真实短视频完成 Gemini 问答、追问与人工播放核对。
+- [ ] GCP项目/有限资源开支授权后，验证容器、Linux解码隔离、持久盘、TLS、恢复与入口部署；本轮禁止启动GCP。
+- [ ] 确认赛事接受分离式Cloud Run入口/GCP后端；准备英文deck、<3分钟真实演示和公开源码/部署URL，公开操作仍待用户授权。
+- 详见 [AI Builder Cup准备](docs/AI_BUILDER_CUP.md) 与 [部署准备](docs/deployment.md)。原26项任务与小时级验收保持开放。
+
 ## V1/V2（来源profile.md既定范围）
 
 ### 多视频与复杂上下文

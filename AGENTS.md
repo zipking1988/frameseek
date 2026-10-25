@@ -6,6 +6,16 @@ FrameSeek is a desktop video investigation agent. Its central workspace is a spa
 
 The default `fixture` mode uses explicitly labeled synthetic demo answers and sends no model requests. Upload, media preflight, private playback and durable investigation storage work locally. NVIDIA/Nebius agent integration is covered by mock transports; live model quality, paid resource calibration and production deployment are still unverified.
 
+The user authorized a separate Gemini / AI Builder Cup route on 2026-10-11 while preserving NVIDIA/Nebius. See `docs/AI_BUILDER_CUP.md` and `docs/deployment.md`. This authorizes implementation and deployment preparation only: no GCP startup/provisioning, paid model execution, approval installation or repository publication. The explicit Gemini media exception is limited to locally decoded JPEGs sent to Google's fixed Gemini API origin when enabled in trusted runtime configuration; original NVIDIA/Nebius self-hosted media rules remain intact.
+
+The user authorized a Token Factory public API route on 2026-10-24: Nemotron 3.5
+Super VL with locally decoded JPEGs sent only to the fixed official Token Factory
+API origin when `allow_tokenfactory_media` is explicitly enabled. Text retrieval
+uses Qwen3 Embedding 8B. See `docs/TOKEN_FACTORY_LOCAL.md`. This authorizes local
+implementation and basketball-video preparation only. No GPU rental, live model
+execution or spending approval installation before a separate numeric budget confirmation.
+The original self-hosted route remains available and keeps its media restrictions.
+
 ## Read before changing behavior
 
 - [README.md](README.md): setup, workflow and repository map.

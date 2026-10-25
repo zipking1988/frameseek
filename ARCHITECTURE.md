@@ -3,6 +3,7 @@
 > 定位：**任意视频**上传后用白话对话检索与理解，输出带时间戳的结构化结果，支持多轮上下文。不限行业场景。
 > 目标赛事：Nebius × NVIDIA Global AI Hackathon（提交截止 2026-10-30）
 > 状态：架构v3，D55:A已批准；桌面调查/素材/Agent接口已实施，D1真实权限与预算校准待完成。实现与验收边界见docs/WORKSPACE_RUNTIME.md。
+> 2026-10-11：用户另行授权 AI Builder Cup / Gemini 版本，同时保留 NVIDIA/Nebius 原路线，禁止本轮启动 GCP。新增路线的适用契约见下方“AI Builder Cup 增量”；下文原模型/云/权限条款继续约束 `nvidia_nebius`，不作为 Gemini 路线的模型或自托管要求。
 > 当前解释规则：C/G/X/E保留评审时的原文；预算政策以E13–E18为准。D55:A已接受C1–C7默认选择并完成整体批准，历史“暂定/待最终门”不再是未答方向；具体付费数值仍未批准。
 
 **权威版本声明**：本文件是技术契约的唯一权威来源。已按用户D55:A批准并同步完整C/G/X/E01–E18义务（2026-10-04）；评审过程保留于docs/IMPLEMENTATION_PLAN.md的Review record。数字预算未确认前仍执行E13–E18保护，批准计划不等于实现或性能通过。
@@ -11,6 +12,21 @@
 ---
 
 ## 0. 已核实事实与当前假设
+
+### Token Factory JPEG 例外（2026-10-24）
+
+用户明确批准 Nemotron 3.5 Super VL 本地聊天集成，以及把本机解码的 JPEG 发往 Token Factory；实际花额度前另行确认有限数字预算，禁止租 GPU。新增独立 `provider=tokenfactory`，默认不启用 `allow_tokenfactory_media`。唯一允许 origin/path 是 `https://api.tokenfactory.nebius.com/v1`，不跟随重定向；视觉仅 inline JPEG，禁止原视频/音频/远程媒体 URL。2026-10-24 实测公共端点每请求最多8图；该路线粗抽帧与回看遵守8帧上限并明确稀疏采样限制。原 `nvidia_nebius` 的自托管规则不因此扩大。视觉、规划、合成与生成式重排用指定 Nemotron，文本向量用 Qwen3 Embedding 8B 公共 API。保留两级预算、校准、unknown 不重发、代际与真实帧证据合同；不同 provider 必须重建索引。仅 mock 验证，不代表真实质量或费用验收。详情见 [本地准备](docs/TOKEN_FACTORY_LOCAL.md)。
+
+### AI Builder Cup 增量（2026-10-11）
+
+- runtime 增加显式 `provider=gemini`；省略仍为 `nvidia_nebius`。默认 `fixture`、schema0.1、四状态、拥有权/CSRF/Origin、CAS、代际、幂等、取消、有限预算账本和 unknown 不重发/不退款约束均不变。此授权覆盖代码与部署准备，不覆盖任何付费模型实跑、数字审批安装、GCP资源创建或公开仓库。
+- Gemini 的视觉粗标注/回看使用本机有界解码的 JPEG 与实际帧ID/绝对时间，经明确 `allow_google_media=true` 后可发往唯一允许的 Google Gemini API HTTPS origin。原视频仍保存在私有后端；不用外链/Files API。该路线是原“媒体仅自托管”规则的已授权、明确限定例外，不扩大 NVIDIA/Nebius 媒体发送范围。
+- Gemini 生成调用负责候选描述重排、文本规划与合成；向量由 Gemini embedding 生成。所有模型请求复用原账本/公平调度/有限调用预算，无 SDK 自动重试。视觉1FPS/128帧、120秒窗口/5秒重叠、最多3次zoom、最多1次repair仍保留。每次inline请求最多19MiB，输出4096tokens；embedding每批最多100完整窗口，超限在摄取模型调用前拒绝，不截尾，且禁止供应商静默截短embedding输入。
+- 新索引 manifest 记录 provider，跨路线必须重建；旧无provider的manifest按 NVIDIA/Nebius 解释。Gemini 当前仅视觉，不提供 ASR/说话人/身份确认。字幕和可见文字属于视觉证据，不冒充音轨理解。
+- Google Cloud 准备采用无状态 Cloud Run 入口 → 单 GCP 持久磁盘后端，入口不保存数据库、不运行worker、不持有模型密钥。使用 HTTPS、私有入口令牌、Secure cookie 与原拥有权控制；HTTP/1入口上传最多30MiB。不能把原 SQLite/WAL 与预算账本直接放入 Cloud Run 临时盘/NFS；workspace在Cloud Run环境拒绝启动。Linux隔离/费用/TLS/恢复/赛事平台符合性仍待实证。
+- 实现/准备文档：[AI_BUILDER_CUP.md](docs/AI_BUILDER_CUP.md)、[deployment.md](docs/deployment.md)。mock 合同测试不证明 Gemini 质量、账单或部署；原小时级 NVIDIA/Nebius MVP/验收义务仍开放。
+
+### 原 NVIDIA/Nebius 事实与假设
 
 > ⚠️ 本节区分「已读源」与「待验证」。凡标注**待确认 / 待实跑**者，均为假设，不得作为设计承诺使用。
 

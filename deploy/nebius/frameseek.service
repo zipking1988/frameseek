@@ -1,0 +1,37 @@
+[Unit]
+Description=FrameSeek single workspace (Nebius CPU VM)
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/srv/frameseek
+ConditionPathExists=/etc/frameseek/deployment-reviewed
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=frameseek
+Group=frameseek
+WorkingDirectory=/opt/frameseek
+EnvironmentFile=/etc/frameseek/workspace.env
+# Create this private file only during separately authorized live setup.
+EnvironmentFile=-/etc/frameseek/secrets.env
+ExecStartPre=/usr/bin/mountpoint -q /srv/frameseek
+ExecStart=/opt/frameseek/.venv/bin/python -m uvicorn frameseek.api:create_app --factory --host 127.0.0.1 --port 8765 --workers 1 --no-proxy-headers --no-access-log
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=150
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/frameseek
+MemoryMax=6G
+TasksMax=128
+LimitNOFILE=4096
+# Do not add RestrictNamespaces: the decoder requires unprivileged namespaces.
+# Validate bubblewrap under this exact unit before admitting uploads.
+
+[Install]
+WantedBy=multi-user.target

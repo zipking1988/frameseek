@@ -24,3 +24,28 @@ Open **发现 → 导出调查记录**. The dialog captures a fixed snapshot of 
 HTML can embed up to 24 available frames, 2 MiB each and 16 MiB total. Fetches stay on owned `/media/{video}/frames/` references. Expired/unavailable/oversized images remain labeled missing, with timestamps and source references preserved. Closing the dialog aborts collection. Audio evidence text is retained, but source audio/video streams are not embedded.
 
 The downloaded file is a local copy and may contain private source frames. Original service references still require the owner session and can expire with retention/deletion; an embedded copy remains readable independently. Reports distinguish synthetic preset demos, unindexed local media and real sources. Support levels describe evidence support, not measured correctness. Partial/no-result/error statuses and unresolved items remain visible.
+
+## 删除问题与调整面板（2026-10-25）
+
+问题卡片右上角的 × 和检查器里的「删除问题」会将该轮从画布和调查脉络
+移除。左侧「已删除的问题」可恢复卡片及其原位置；草稿、子问题和已保存
+发现不随父卡片删除。刷新后保持删除状态，恢复请求历史不会将它重新插入。
+这属于当前调查最近12轮范围内的可恢复删除，不删除原视频、模型调用和预算
+审计记录。导出不包含已删除的普通问题；已明确保存的发现仍保留其来源。
+
+拖动素材面板右边界或检查器左边界可调整宽度。手柄支持方向键微调，双击
+恢复默认宽度；宽度跟随调查自动保存和恢复。拖动范围为素材280–900像素、
+检查器260–600像素，并在可用桌面空间内为中间画布留白。
+
+
+The inspector's basis summary describes evidence, not inferred billing activity:
+real answers with frames show “画面证据”; empty results show “未生成有效证据”.
+Synthetic fixtures retain “预设匹配”. A real source alone does not prove a model
+was called; the approved-budget ledger remains the authority for paid attempts.
+
+Evidence seeking now shows “正在定位…等待画面加载” until the media element finishes
+seeking with decoded target data (`seeked` / `loadeddata`, readyState at least2,
+within0.25s of the requested timestamp). Changing currentTime alone is not a
+completed seek. Playback remains paused when it was paused; errors, new sources
+and reloads clear the pending target. A native scrub can replace a buffering
+request without announcing completion of the old target.

@@ -113,13 +113,21 @@ def handler(calls, fail_zoom=False):
     return respond
 
 
-async def setup_real(tmp_path, monkeypatch, calls, fail_zoom=False):
+async def setup_real(
+    tmp_path,
+    monkeypatch,
+    calls,
+    fail_zoom=False,
+    *,
+    runtime_factory=configuration,
+    response_handler=None,
+):
     import frameseek.api
 
     monkeypatch.setenv("FS_DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(frameseek.api, "load_runtime", configuration)
+    monkeypatch.setattr(frameseek.api, "load_runtime", runtime_factory)
     app = create_app(Settings(mode="real"))
-    app.state.agent.transport = httpx.MockTransport(handler(calls, fail_zoom))
+    app.state.agent.transport = httpx.MockTransport(response_handler or handler(calls, fail_zoom))
     client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
     session = (await client.get("/api/session")).json()
     client.headers["x-fs-csrf"] = session["csrf"]
@@ -431,8 +439,9 @@ def test_embedding_response_requires_unique_complete_indices_and_dimensions(tmp_
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("legacy_runtime", [False, True])
 async def test_exact_initial_budget_allows_cache_only_ingest_resume_and_checks_revocation(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, legacy_runtime
 ):
     import frameseek.api
 
@@ -478,6 +487,13 @@ async def test_exact_initial_budget_allows_cache_only_ingest_resume_and_checks_r
                 break
             await asyncio.sleep(0.03)
         assert detail["job"]["state"] == "failed"
+        if legacy_runtime:
+            generation = app.state.workspace.owned("videos", video, owner)["generation"]
+            frozen = tmp_path / video / f"run-config-{generation}.json"
+            saved = json.loads(frozen.read_text())
+            saved["runtime"].pop("provider")
+            saved["runtime"].pop("allow_google_media")
+            frozen.write_text(json.dumps(saved))
         before = len(calls)
         app.state.agent.admit_ingest(video, owner)
         response = await client.post(f"/api/videos/{video}/analyze")

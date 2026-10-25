@@ -171,9 +171,24 @@ async def test_real_upload_probe_private_frames_range_delete_and_cascade(app):
         assert (await a.get(preview[0]["uri"])).status_code == 200
         assert (await b.get(preview[0]["uri"])).status_code == 404
         media = "/media/" + video + "/video"
-        assert (await a.get(media, headers={"range": "bytes=0-31"})).status_code == 206
+        ranged = await a.get(media, headers={"range": "bytes=0-31"})
+        assert ranged.status_code == 206
+        assert ranged.headers["content-type"] == "video/mp4"
+        assert ranged.content == content[:32]
         assert (await b.get(media)).status_code == 404
         desk = (await a.post("/api/investigations", json={"video_id": video})).json()
+        question = {
+            "investigation_id": desk["id"],
+            "request_id": "blocked_basketball_question",
+            "generation": 0,
+            "question": "谁投的3分最多？",
+        }
+        prepared = (await a.post("/api/chat/prepare", json=question)).json()
+        assert prepared["kind"] == "runtime_blocked"
+        assert "尚未发送给模型" in prepared["message"]
+        assert (await a.post("/api/chat", json=question)).status_code == 409
+        with app.state.workspace.db() as c:
+            assert c.execute("SELECT count(*) FROM queries").fetchone()[0] == 0
         assert (await a.post(f"/api/videos/{video}/analyze")).status_code == 409
         assert (await a.delete("/api/videos/" + video)).status_code == 204
         assert (await a.get(media)).status_code == 410

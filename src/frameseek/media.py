@@ -38,8 +38,13 @@ def sandbox_command(directory: Path, args: list[str]):
         )
         return ["/usr/bin/sandbox-exec", "-p", profile, *args]
     if platform.system() == "Linux" and shutil.which("bwrap"):
-        command = ["bwrap", "--unshare-all", "--die-with-parent", "--new-session"]
+        command = [shutil.which("bwrap"), "--unshare-all", "--die-with-parent", "--new-session"]
         for path in ("/usr", "/lib", "/lib64", "/bin"):
+            if Path(path).exists():
+                command += ["--ro-bind", path, path]
+        # Debian/Ubuntu multimedia libraries use the loader cache and alternatives
+        # symlinks. Expose only these runtime paths, never the whole /etc tree.
+        for path in ("/etc/ld.so.cache", "/etc/alternatives"):
             if Path(path).exists():
                 command += ["--ro-bind", path, path]
         return command + [
@@ -186,10 +191,12 @@ def frames(directory, video_id, metadata, window, count=12, prefix="c"):
             "-copyts",
             "-ss",
             str(start),
-            "-i",
-            str(directory / "original"),
+            # Bound input decoding relative to the seek. An output -t would be
+            # compared with copyts absolute PTS and truncate later windows.
             "-t",
             str(end - start + 1),
+            "-i",
+            str(directory / "original"),
             "-map",
             "0:v:0",
             "-an",

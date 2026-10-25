@@ -251,7 +251,7 @@ test("source rail toggles the open panel and evidence restores its state without
   rail.click();
   assert.equal(h.shell.classList.contains("source-collapsed"), true);
   assert.equal(rail.getAttribute("aria-expanded"), "false");
-  assert.equal(rail.getAttribute("aria-label"), "打开素材");
+  assert.equal(rail.getAttribute("aria-label"), "打开视频面板");
   rail.click();
   assert.equal(h.shell.classList.contains("source-collapsed"), false);
   assert.equal(rail.getAttribute("aria-expanded"), "true");
@@ -261,7 +261,7 @@ test("source rail toggles the open panel and evidence restores its state without
   h.run("seek(13)");
   assert.equal(h.shell.classList.contains("source-collapsed"), false);
   assert.equal(rail.getAttribute("aria-expanded"), "true");
-  assert.equal(rail.getAttribute("aria-label"), "收起素材");
+  assert.equal(rail.getAttribute("aria-label"), "收起视频面板");
   assert.equal(h.player.currentTime, 13);
   assert.equal(h.get("question").value, "保留当前追问");
 });
@@ -280,4 +280,93 @@ test("发现导航显式展开小桌面检查器并保留输入", async () => {
   assert.equal(h.get("toggle-inspector").getAttribute("aria-expanded"), "true");
   assert.equal(h.get("inspector-findings-tab").focused, true);
   assert.equal(h.get("question").value, "保留追问");
+});
+
+test("a remote seek reports loading until the target frame is ready, preserving pause", async () => {
+  const h = await harness();
+  h.player.duration = 384; h.player.seeking = true;
+  h.run("seek(60)");
+  assert.match(h.get("seek-status").textContent, /正在定位 01:00/);
+  assert.equal(h.get("evidence-step-state").textContent, "加载中");
+  h.player.readyState = 4;
+  h.player.dispatch("seeked");
+  assert.match(h.get("seek-status").textContent, /正在定位/);
+  h.player.seeking = false;
+  h.player.dispatch("seeked");
+  assert.match(h.get("seek-status").textContent, /已定位 01:00 · 保持暂停/);
+  assert.equal(h.player.paused, true);
+});
+
+test("an old seek completion cannot announce the new target before its frame arrives", async () => {
+  const h = await harness();
+  h.player.duration = 384; h.player.seeking = true;
+  h.run("seek(60); seek(180)");
+  h.player.currentTime = 60; h.player.readyState = 4; h.player.seeking = false;
+  h.player.dispatch("seeked");
+  assert.match(h.get("seek-status").textContent, /正在定位 03:00/);
+  h.player.currentTime = 180; h.player.dispatch("seeked");
+  assert.match(h.get("seek-status").textContent, /已定位 03:00/);
+});
+
+test("a failed source cannot complete an old seek from a late data event", async () => {
+  const h = await harness();
+  h.player.duration = 384; h.player.seeking = true; h.run("seek(60)");
+  h.player.dispatch("error");
+  h.player.seeking = false; h.player.readyState = 4;
+  h.player.dispatch("loadeddata");
+  assert.match(h.get("seek-status").textContent, /视频无法播放/);
+});
+
+test("native scrubbing can replace an evidence seek that is still buffering", async () => {
+  const h = await harness();
+  h.player.duration = 384; h.player.seeking = true;
+  h.run("seek(60)");
+  h.player.currentTime = 90; h.player.dispatch("seeking");
+  assert.match(h.get("seek-status").textContent, /正在定位 01:30/);
+  h.player.seeking = false; h.player.readyState = 4; h.player.dispatch("seeked");
+  assert.match(h.get("seek-status").textContent, /已定位 01:30/);
+});
+
+
+test('suggestion clicks fill the composer without submitting or replacing an existing draft', async()=>{
+  const h=await harness();
+  h.run('ask=()=>{throw new Error("Suggestion must not submit")};');
+  assert.equal(h.run('fillSuggestedQuestion("Describe the visible scene")'),true);
+  assert.equal(h.get('question').value,'Describe the visible scene');
+  assert.equal(h.run('fillSuggestedQuestion("Replace draft")'),false);
+  assert.equal(h.get('question').value,'Describe the visible scene');
+  assert.match(h.get('form-notice').textContent,/已有草稿/);
+  assert.equal(h.get('question').focused,true);
+});
+
+test('card suggestions anchor their originating turn only after a successful fill', async()=>{
+  const h=await harness();
+  h.run('globalThis.chosen="task-B"; investigation={choose:id=>{chosen=id;}}; ask=()=>{throw new Error("must not send")};');
+  assert.equal(h.run('fillSuggestedQuestion("那后来呢？", "task-A")'),true);
+  assert.equal(h.run('chosen'),'task-A');
+  assert.equal(h.get('question').value,'那后来呢？');
+  assert.equal(h.run('fillSuggestedQuestion("谁搬的？", "task-B")'),false);
+  assert.equal(h.run('chosen'),'task-A');
+  assert.equal(h.get('question').value,'那后来呢？');
+});
+
+test('inspector visibility restores independently across narrow and wide desktop desks', async()=>{
+  for(const width of [1280,2337]) {
+    const h=await harness(1,width);
+    h.run('window.FrameSeekWorkbench={getSnapshot:()=>({records:[]})}');
+    h.run('restoreInspector(false)');
+    assert.equal(h.run('inspectorIsOpen()'),false);
+    assert.equal(h.run('window.FrameSeekSessionUI.snapshot().ui.inspectorOpen'),false);
+    assert.equal(h.get('toggle-inspector').getAttribute('aria-expanded'),'false');
+    h.run('toggleInspector()');
+    assert.equal(h.run('inspectorIsOpen()'),true);
+    assert.equal(h.run('window.FrameSeekSessionUI.snapshot().ui.inspectorOpen'),true);
+    assert.equal(h.shell.classList.contains('inspector-collapsed'),false);
+    h.run('restoreInspector(false)');
+    assert.equal(h.run('inspectorIsOpen()'),false);
+    assert.equal(h.shell.classList.contains('inspector-open'),false);
+    h.run('restoreInspector(true)');
+    assert.equal(h.run('inspectorIsOpen()'),true);
+    assert.equal(h.get('toggle-inspector').getAttribute('aria-expanded'),'true');
+  }
 });

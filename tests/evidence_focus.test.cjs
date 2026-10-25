@@ -73,6 +73,7 @@ class Element {
     for (const fn of this.listeners[name] ?? [])
       fn({ currentTarget: this, preventDefault() {} });
   }
+  dispatchEvent(event) { this.dispatch(event.type); }
   click() {
     this.dispatch("click");
   }
@@ -142,6 +143,7 @@ async function harness(readyState = 1, width = 1440) {
   const context = vm.createContext({
     document,
     window: {
+      FrameSeekWorkbenchModel: require('../src/frameseek/static/workbench-model.js'),
       innerWidth: width,
       matchMedia: () => ({ matches: true }),
       addEventListener() {},
@@ -149,6 +151,7 @@ async function harness(readyState = 1, width = 1440) {
     navigator: { clipboard: { writeText: async () => {} } },
     fetch: async () => ({ ok: true, json: async () => ({ queries: [] }) }),
     URL: {},
+    Event,
     console,
   });
   vm.runInContext(
@@ -232,4 +235,36 @@ test("unsupported follow-up on another topic gives a supported recovery question
   assert.doesNotMatch(h.get("form-notice").textContent, /演示支持「那后来呢/);
   h.run('lastQueryId = "center"; ask("不支持的问题")');
   assert.match(h.get("form-notice").textContent, /演示支持「那后来呢/);
+});
+
+test("uploaded source uses its own preview poster before analysis and replaces it on navigation", async () => {
+  const h = await harness();
+  h.run("window.FrameSeekWorkbench = { source() {}, describe() {}, clear() {} }");
+  h.run('window.FrameSeekSessionUI.applySource({id:"vid_a", name:"A", job:{state:"awaiting_configuration"}, metadata:{preview:[{uri:"/media/vid_a/frames/preview_001.jpg"}]}})');
+  h.get('evidence-question').textContent='上一个视频的问题';
+  assert.equal(h.player.poster, "/media/vid_a/frames/preview_001.jpg");
+  assert.equal(h.player.src, "/media/vid_a/video");
+  assert.equal(h.get("question").disabled, true);
+  h.run('window.FrameSeekSessionUI.applySource({id:"vid_b", name:"B", job:{state:"ready"}, metadata:{preview:[{uri:"/media/vid_b/frames/preview_001.jpg"}]}})');
+  assert.equal(h.get('evidence-question').textContent,'素材预览');
+  assert.equal(h.player.poster, "/media/vid_b/frames/preview_001.jpg");
+  assert.equal(h.get("question").disabled, false);
+});
+
+test("retrying a failed real turn preserves the draft and explains a fresh question without dispatch", async () => {
+  const h = await harness();
+  h.run(`window.FrameSeekWorkbench = {getSnapshot: () => ({records: [{id: 'failed', query: {mode: 'real', question: '请查看视频05:20至05:40', response: {events: []}}}]})};
+    investigation = {choose(id) { window.chosen = id; }};
+    window.FrameSeekPersistence = {ask() { throw new Error('must not dispatch'); }};`);
+  h.get('question').value = '继续问题4';
+  h.run("window.FrameSeekUI.continueFrom('failed')");
+  assert.equal(h.get('question').value, '继续问题4');
+  assert.match(h.get('form-notice').textContent, /不会自动重试/);
+  assert.doesNotMatch(h.get('form-notice').textContent, /请写出完整问题/);
+  assert.equal(h.document.activeElement, h.get('question'));
+  h.get('question').value = '';
+  let changes=0; h.get('question').addEventListener('input',()=>changes++);
+  h.run("window.FrameSeekUI.continueFrom('failed')");
+  assert.equal(h.get('question').value, '请查看视频05:20至05:40');
+  assert.equal(changes,1,'restored original question participates in draft autosave');
 });

@@ -33,6 +33,7 @@ class Element {
   getAttribute(key) { return this.attributes[key] ?? null; }
   removeAttribute(key) { delete this.attributes[key]; }
   addEventListener(key, fn) { (this.listeners[key] ||= []).push(fn); }
+  dispatchEvent(event) { (this.listeners[event.type] || []).forEach(fn => fn(event)); }
   close() { this.open = false; }
   showModal() { this.open = true; }
   focus() {}
@@ -93,13 +94,13 @@ async function harness({ state = {}, requests = [], job = "ready", realReady = t
     throw new Error(`Unexpected request: ${call.method} ${url}`);
   };
   const window = { FrameSeekSessionUI: ui, FrameSeekWorkbench: store, addEventListener() {} };
-  const sandbox = vm.createContext({ window, document: { getElementById: get, createElement: () => new Element(), addEventListener() {} }, fetch,
+  const sandbox = vm.createContext({ Event: class { constructor(type) { this.type=type; } }, window, document: { getElementById: get, createElement: () => new Element(), addEventListener() {} }, fetch,
     localStorage: { getItem: () => "desk-A", setItem() {} }, crypto: { randomUUID: () => `request-${++seq}` },
     setTimeout: (fn, delay) => { const id = ++timerSeq; timers.set(id, { fn, delay }); return id; }, clearTimeout: id => timers.delete(id),
   });
   // Expose closure entry points in the VM only; production source is unchanged.
   const source = fs.readFileSync(require.resolve("../src/frameseek/static/workspace.js"), "utf8")
-    .replace("window.FrameSeekPersistence={flush,", "window.testWorkspace={start,openDesk,openSource,recover,confirmDelete,get:()=>({current,currentVideo,activeRequest,requestEpoch})}; window.FrameSeekPersistence={flush,");
+    .replace("window.FrameSeekPersistence={flush,", "window.testWorkspace={start,openDesk,openSource,refreshSourceSwitcher,recover,confirmDelete,get:()=>({current,currentVideo,activeRequest,requestEpoch})}; window.FrameSeekPersistence={flush,");
   vm.runInContext(source, sandbox);
   ready = true; await window.testWorkspace.start();
   return { store, get, calls, answers, desks, videos, requestLists, ui, window, timers,
@@ -107,6 +108,19 @@ async function harness({ state = {}, requests = [], job = "ready", realReady = t
     async timer(delay) { const entry = [...timers].find(([, timer]) => timer.delay === delay); assert.ok(entry, `Missing ${delay}ms timer`); timers.delete(entry[0]); entry[1].fn(); await tick(); },
   };
 }
+
+test("a fresh completed question clears recovery left by a prior unknown request", async () => {
+  const h = await harness({ requests: [{ id: "old-unknown", state: "unknown", input: { question: "old question" } }] });
+  assert.equal(h.get("resume-query").hidden, false);
+  h.get("question").value = "new question";
+  h.setOverride(c => c.url.endsWith("/cancel") ? response({})
+    : c.url === "/api/chat" ? response(answer(c.body.request_id)) : undefined);
+  await h.window.FrameSeekPersistence.ask("new question");
+  assert.equal(h.get("resume-query").hidden, true);
+  assert.equal(h.window.testWorkspace.get().activeRequest, null);
+  assert.equal(h.calls.filter(c => c.url === "/api/chat").length, 1);
+  assert.equal(h.calls.filter(c => c.url.endsWith("/cancel")).length, 1);
+});
 
 test("failed deletion retains the active investigation and subsequent autosave", async () => {
   const h = await harness();
@@ -117,6 +131,36 @@ test("failed deletion retains the active investigation and subsequent autosave",
   h.store.annotate("saved after failed deletion"); await h.window.FrameSeekPersistence.flush();
   assert.equal(h.desks.get("desk-A").state.note, "saved after failed deletion");
   assert.equal(h.busy, false);
+});
+
+test('budget and capability preflight preserve the draft without a query or failure card', async()=>{
+ const h=await harness();
+ for(const kind of ['budget_blocked','capability_blocked','clarification_required']) {
+  h.setOverride(c=>c.url==='/api/chat/prepare' ? response({kind,message:'尚未调用模型，输入已保留。'}) : undefined);
+  h.get('question').value='我的原问题';
+  await h.window.FrameSeekPersistence.ask('我的原问题');
+  assert.equal(h.get('question').value,'我的原问题');
+  assert.equal(h.answers.length,0);assert.equal(h.calls.filter(c=>c.url==='/api/chat').length,0);
+  assert.equal(h.window.testWorkspace.get().activeRequest,null);
+  assert.match(h.get('notice').textContent,/尚未调用模型/);
+  h.get('question').dispatchEvent({type:'input'});
+  assert.equal(h.get('notice').textContent,'','editing clears a stale preflight explanation');
+ }
+});
+
+test('a late budget snapshot cannot replace the current desk budget or draft', async()=>{
+ const h=await harness(),old=deferred();let reads=0;
+ h.setOverride(c=>c.url==='/api/runtime/status' ? (++reads===1 ? old.promise : response({
+  dispatch_prerequisites_met:false,budget:{remaining_calls:0,call_cap:40,short_window_calls:1}
+ })) : undefined);
+ await h.window.testWorkspace.openDesk('desk-A');
+ await h.window.testWorkspace.openDesk('desk-B');await tick();
+ h.get('question').value='B的草稿';
+ assert.match(h.get('chat-budget-status').textContent,/已用完 40/);
+ old.resolve(response({dispatch_prerequisites_met:true,budget:{remaining_calls:1,call_cap:40,short_window_calls:1}}));
+ await tick();
+ assert.match(h.get('chat-budget-status').textContent,/已用完 40/);
+ assert.equal(h.get('question').value,'B的草稿');
 });
 
 test("navigation drains note and draft edits made while the first save is pending", async () => {
@@ -352,9 +396,15 @@ test("a watcher rechecks ownership after its awaited save before restoring a sou
 
 test("reopening a processing source starts a new watcher and enables it when ready", async () => {
   const h = await harness(); h.videos.get("video-B").job.state = "indexing";
-  await h.window.testWorkspace.openDesk("desk-B"); h.videos.get("video-B").job.state = "ready";
+  await h.window.testWorkspace.openDesk("desk-B");
+  const checks=h.calls.filter(c=>c.url==='/api/runtime/status').length;
+  h.videos.get("video-B").job.state = "ready";
+  h.videos.get("video-B").metadata.duration=65;
   await h.timer(2000);
   assert.equal(h.store.getSnapshot().local, false); assert.equal(h.window.testWorkspace.get().currentVideo.job.state, "ready");
+  assert.equal(h.get('source-switcher').children.find(option=>option.value==='video-B').dataset.detail,'01:05 · 可以提问');
+  assert.equal(h.calls.filter(c=>c.url==='/api/runtime/status').length,checks+1);
+  assert.equal(h.calls.filter(c=>c.url==='/api/chat').length,0);
 });
 
 test("failed or cancelled preflight can be retried in fixture mode; indexed cancellation uses budget-gated analysis", async () => {
@@ -393,4 +443,88 @@ test("app answers keep edits made while busy and recovery preserves an existing 
   get("question").value = "submitted";
   vm.runInContext(`window.FrameSeekSessionUI.answer(${JSON.stringify(answer("clear"))},"submitted")`, sandbox);
   assert.equal(get("question").value, "");
+});
+
+test('removed question tombstone survives recovery and navigation without redispatch or resurrection', async()=>{
+  const query=answer('hidden-answer');
+  const state={records:[{id:'task-4',query,hidden:true}],selectedId:null};
+  const h=await harness({state,requests:[{id:query.id,state:'done',result:query}]});
+  assert.equal(h.answers.length,0);
+  assert.equal(h.store.getSnapshot().records[0].hidden,true);
+  await h.window.testWorkspace.openDesk('desk-B');
+  await h.window.testWorkspace.openDesk('desk-A');
+  assert.equal(h.answers.length,0);
+  assert.equal(h.store.getSnapshot().records[0].hidden,true);
+  assert.equal(h.calls.some(c=>c.url==='/api/chat'),false);
+});
+
+test('player source dropdown restores each video chat and draft without model requests', async()=>{
+  const h=await harness({state:{records:[{id:'task-1',query:answer('saved-A')}],ui:{draft:'draft A'}}});
+  await tick();
+  assert.deepEqual(h.get('source-switcher').children.map(o=>o.value),['demo_parcel','video-A','video-B']);
+  h.get('source-switcher').value='video-B';
+  await h.get('source-switcher').onchange();
+  assert.equal(h.window.testWorkspace.get().current.id,'desk-B');
+  assert.equal(h.get('question').value,'');
+  h.get('question').value='draft B';
+  h.get('source-switcher').value='video-A';
+  await h.get('source-switcher').onchange();
+  assert.equal(h.get('question').value,'draft A');
+  assert.equal(h.store.getSnapshot().records[0].query.id,'saved-A');
+  h.get('source-switcher').value='video-B';await h.get('source-switcher').onchange();
+  assert.equal(h.get('question').value,'draft B');
+  assert.equal(h.calls.some(c=>c.url==='/api/chat' || /\/ingest$/.test(c.url)),false);
+  assert.equal(h.calls.some(c=>c.url==='/api/investigations' && c.method==='POST'),false);
+});
+
+test('failed dropdown navigation restores its selection and retains the current draft', async()=>{
+  const h=await harness({state:{ui:{draft:'keep A'}}});await tick();
+  h.setOverride(call=>call.url==='/api/investigations/desk-B'?response({detail:'unavailable'},503):undefined);
+  h.get('source-switcher').value='video-B';await h.get('source-switcher').onchange();
+  assert.equal(h.get('source-switcher').value,'video-A');
+  assert.equal(h.get('source-switcher').disabled,false);
+  assert.equal(h.get('question').value,'keep A');
+  assert.match(h.get('notice').textContent,/切换视频失败/);
+});
+
+test('selecting the current video does not save or create another desk',async()=>{
+  const h=await harness();await tick();const before=h.calls.length;
+  h.get('source-switcher').value='video-A';await h.get('source-switcher').onchange();
+  assert.equal(h.calls.length,before);
+});
+
+
+test('a stale video-list response cannot replace the new desk selection',async()=>{
+  const h=await harness();await tick();const gate=deferred();
+  h.setOverride(call=>call.url==='/api/videos'?gate.promise:undefined);
+  const pending=h.window.testWorkspace.refreshSourceSwitcher();
+  await h.window.testWorkspace.openDesk('desk-B');
+  gate.resolve(response({items:[h.videos.get('video-A')]}));await pending;
+  assert.equal(h.get('source-switcher').value,'video-B');
+  assert.equal(h.get('source-switcher').children.some(o=>o.value==='video-B'),true);
+});
+
+test('switching video returns to the last explicitly chosen investigation for that video',async()=>{
+  const h=await harness();await tick();
+  h.desks.set('other-A',{id:'other-A',video:'video-A',title:'Another A',revision:1,state:{}});
+  await h.window.testWorkspace.openDesk('other-A');
+  h.get('source-switcher').value='video-B';await h.get('source-switcher').onchange();
+  h.get('source-switcher').value='video-A';await h.get('source-switcher').onchange();
+  assert.equal(h.window.testWorkspace.get().current.id,'other-A');
+});
+
+
+test('custom picker receives busy and restored selection notifications around async navigation',async()=>{
+  const h=await harness();await tick();const gate=deferred(), states=[];
+  const select=h.get('source-switcher');
+  select.addEventListener('frameseek-sources',()=>states.push({busy:select.disabled,id:select.value}));
+  h.setOverride(call=>call.url==='/api/investigations/desk-B'?gate.promise:undefined);
+  select.value='video-B';const pending=select.onchange();
+  assert.equal(states[0].busy,true);
+  assert.equal(select.disabled,true);
+  gate.resolve(response({...h.desks.get('desk-B')}));await pending;
+  assert.deepEqual(states.at(-1),{busy:false,id:'video-B'});
+  assert.equal(select.children[0].dataset.thumbnail,'/media/demo_parcel/frames/0.jpg');
+  assert.match(select.children[0].dataset.detail,/00:18/);
+  assert.equal(h.calls.some(c=>c.url==='/api/chat'),false);
 });

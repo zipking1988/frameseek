@@ -11,19 +11,100 @@ let mediaFailed = false;
 let pendingSeek = null;
 let pendingSeekRestore = false;
 let pendingSeekTrigger = null;
+let locatingSeek = null;
 let turns = 0;
 let taskSequence = 0;
 let lastQueryId = null;
 let evidenceReturnFocus = null;
 let investigation = null;
+const panelWidths = {source: null, inspector: null};
+function restorePanelWidths(saved = {}) {
+  const shell = document.querySelector(".agent-shell");
+  for (const [side, key] of [["source", "sourceWidth"], ["inspector", "inspectorWidth"]]) {
+    const value = saved[key];
+    panelWidths[side] = Number.isFinite(value) ? Math.max(side === "source" ? 280 : 260, Math.min(side === "source" ? 900 : 600, value)) : null;
+    if (panelWidths[side] === null) shell.style.removeProperty?.(`--${side}-user-width`);
+    else shell.style.setProperty?.(`--${side}-user-width`, `${panelWidths[side]}px`);
+  }
+  for (const side of ["source", "inspector"]) {
+    const otherSide = side === "source" ? "inspector" : "source";
+    const other = $(side === "source" ? "workbench-inspector" : "source-dock");
+    if (panelWidths[side] !== null) {
+      panelWidths[side] = window.FrameSeekWorkbenchModel.panelWidth(panelWidths[side], side, window.innerWidth,
+        shell.classList.contains(`${otherSide}-collapsed`) ? 0 : other.getBoundingClientRect().width);
+      shell.style.setProperty(`--${side}-user-width`, `${panelWidths[side]}px`);
+    }
+    const actual = panelWidths[side] ?? $(side === "source" ? "source-dock" : "workbench-inspector").getBoundingClientRect?.().width;
+    if (Number.isFinite(actual)) document.querySelector(`.${side}-resizer`)?.setAttribute("aria-valuenow", String(Math.round(actual)));
+  }
+}
+function setupPanelResize() {
+  if (!window.FrameSeekWorkbenchModel?.panelWidth) return;
+  const shell = document.querySelector(".agent-shell");
+  for (const side of ["source", "inspector"]) {
+    const handle = node("div", `panel-resizer ${side}-resizer`);
+    handle.tabIndex = 0;
+    handle.setAttribute("role", "separator");
+    handle.setAttribute("aria-orientation", "vertical");
+    handle.setAttribute("aria-label", side === "source" ? "调整素材面板宽度" : "调整检查器宽度");
+    handle.title = "拖动调整宽度 · 方向键微调 · 双击恢复默认";
+    const panel = $(side === "source" ? "source-dock" : "workbench-inspector");
+    const width = () => panel.getBoundingClientRect().width;
+    handle.setAttribute("aria-valuemin", side === "source" ? "280" : "260");
+    handle.setAttribute("aria-valuemax", side === "source" ? "900" : "600");
+    handle.setAttribute("aria-valuenow", String(Math.round(width())));
+    const apply = value => {
+      const other = $(side === "source" ? "workbench-inspector" : "source-dock");
+      const hidden = side === "source" ? shell.classList.contains("inspector-collapsed") : shell.classList.contains("source-collapsed");
+      const next = window.FrameSeekWorkbenchModel.panelWidth(value, side, window.innerWidth, hidden ? 0 : other.getBoundingClientRect().width);
+      panelWidths[side] = next;
+      shell.style.setProperty(`--${side}-user-width`, `${next}px`);
+      handle.setAttribute("aria-valuenow", String(next));
+      handle.setAttribute("aria-valuetext", `${next} 像素`);
+    };
+    let drag = null;
+    handle.addEventListener("pointerdown", e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      handle.focus();
+      drag = {x: e.clientX, width: width(), id: e.pointerId};
+      handle.setPointerCapture(e.pointerId);
+      shell.classList.add("resizing-panels");
+    });
+    handle.addEventListener("pointermove", e => {
+      if (drag && drag.id === e.pointerId) apply(drag.width + (e.clientX - drag.x) * (side === "source" ? 1 : -1));
+    });
+    const finish = () => {
+      if (!drag) return;
+      drag = null; shell.classList.remove("resizing-panels");
+      window.dispatchEvent(new Event("frameseek-canvas-changed"));
+    };
+    handle.addEventListener("pointerup", finish);
+    handle.addEventListener("pointercancel", finish);
+    handle.addEventListener("lostpointercapture", finish);
+    handle.addEventListener("keydown", e => {
+      if (!["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+      e.preventDefault();
+      apply(width() + (e.key === "ArrowRight" ? 16 : -16) * (side === "source" ? 1 : -1));
+      window.dispatchEvent(new Event("frameseek-canvas-changed"));
+    });
+    handle.addEventListener("dblclick", () => {
+      panelWidths[side] = null; shell.style.removeProperty(`--${side}-user-width`);
+      window.dispatchEvent(new Event("frameseek-canvas-changed"));
+    });
+    shell.append(handle);
+    window.addEventListener("resize", () => {if (panelWidths[side] !== null) apply(panelWidths[side]);});
+  }
+}
+
 
 function setSourceOpen(open) {
   document
     .querySelector(".agent-shell")
     .classList.toggle("source-collapsed", !open);
   $("rail-source").setAttribute("aria-expanded", String(open));
-  $("rail-source").setAttribute("aria-label", open ? "收起素材" : "打开素材");
-  $("rail-source").title = open ? "收起素材面板" : "展开素材面板";
+  $("rail-source").setAttribute("aria-label", open ? "收起视频面板" : "打开视频面板");
+  $("rail-source").title = open ? "收起视频面板" : "展开视频面板";
 }
 
 function showEvidence(open, trigger = document.activeElement) {
@@ -191,6 +272,9 @@ function seek(seconds, trigger = document.activeElement) {
     return;
   }
   const wasPaused = player.paused;
+  locatingSeek = seconds;
+  $("seek-status").textContent = `正在定位 ${clock(seconds)} · 等待画面加载…`;
+  announce($("seek-status").textContent);
   player.currentTime = seconds;
   if (wasPaused) player.pause();
   if (investigation) {
@@ -206,15 +290,23 @@ function seek(seconds, trigger = document.activeElement) {
         : "smooth",
     });
   }
-  $("seek-status").textContent =
-    `已定位 ${clock(seconds)} · ${wasPaused ? "保持暂停" : "继续播放"}`;
-  announce($("seek-status").textContent);
+  $("evidence-step").textContent = `正在定位 ${clock(seconds)}`;
+  $("evidence-step-state").textContent = "加载中";
+  document.querySelector(".run-steps li:last-child").classList.remove("complete");
+  completeSeek();
+}
+function completeSeek() {
+  if (locatingSeek === null || player.seeking || player.readyState < 2 || Math.abs(player.currentTime - locatingSeek) > 0.25) return;
+  const seconds = locatingSeek;
+  locatingSeek = null;
+  $("seek-status").textContent = `已定位 ${clock(seconds)} · ${player.paused ? "保持暂停" : "继续播放"}`;
   $("evidence-step").textContent = `已定位到 ${clock(seconds)}`;
   $("evidence-step-state").textContent = "已定位";
   document.querySelector(".run-steps li:last-child").classList.add("complete");
+  announce($("seek-status").textContent);
 }
 function updateTime() {
-  if (investigation && mediaReady)
+  if (investigation && mediaReady && locatingSeek === null)
     $("seek-status").textContent =
       `当前 ${clock(player.currentTime)} · ${player.paused ? "已暂停" : "播放中"}`;
   $("playback-time").textContent =
@@ -240,7 +332,7 @@ function updateTime() {
 function renderAnswer(query) {
   if ((activeVideo && (query.mode !== "real" || query.video_id !== activeVideo.id)) || (!activeVideo && query.mode === "real")) return;
   if (localMode || !demo) return;
-  if (++turns > 12) {
+  if (++turns > 12 && !window.FrameSeekWorkbench) {
     const oldestId = $("messages").firstElementChild?.id;
     if (oldestId) document.querySelector(`[data-turn="${oldestId}"]`)?.remove();
     $("messages").firstElementChild?.remove();
@@ -342,9 +434,12 @@ function renderAnswer(query) {
   if (data.errors.length) {
     turn.append(
       node("p", "trace-note", data.errors[0].message),
-      button("选择其他示例问题", "text-button", () => {
-        $("question").focus();
-        notice("可以尝试：包裹什么时候出现在中央？");
+      button(query.mode === "real" ? "编辑问题重新提问" : "选择其他示例问题", "text-button", () => {
+        if (query.mode === "real") window.FrameSeekUI.continueFrom(turn.id);
+        else {
+          $("question").focus();
+          notice("可以尝试：包裹什么时候出现在中央？");
+        }
       }),
     );
   } else {
@@ -366,8 +461,7 @@ function renderAnswer(query) {
   data.followups.forEach((question) =>
     actions.append(
       button(question, "text-button", () => {
-        investigation?.choose(turn.id);
-        ask(question);
+        fillSuggestedQuestion(question, turn.id);
       }),
     ),
   );
@@ -394,8 +488,30 @@ function renderAnswer(query) {
   const chatContent = $("chat-content");
   if (!investigation) chatContent.scrollTop = chatContent.scrollHeight;
   window.FrameSeekWorkbench?.record(turn.id, query);
+  if (window.FrameSeekWorkbench) {
+    const retained = new Set(window.FrameSeekWorkbench.getSnapshot().records.map(r => r.id));
+    for (const old of [...$("messages").children]) if (!retained.has(old.id)) {
+      investigation?.remove(old.id);
+      document.querySelector(`[data-turn="${old.id}"]`)?.remove();
+      old.remove();
+    }
+    $("task-count").textContent = $("messages").children.length;
+  }
   investigation?.register(turn, query, historyButton);
   announce(`${query.mode === "real" ? "回答" : "演示回答"}：${stateLabels[data.status]}。${data.answer}`);
+}
+function fillSuggestedQuestion(question, turnId = null) {
+  const input = $("question");
+  if (input.value.trim()) {
+    notice("已有草稿，未覆盖。可先编辑或清空输入，再选择建议问题。");
+    input.focus(); return false;
+  }
+  if (input.disabled || realBusy) return false;
+  input.value = question;
+  if (turnId) investigation?.choose(turnId);
+  updateSend();
+  if (input.dispatchEvent) input.dispatchEvent(new Event("input", {bubbles:true}));
+  input.focus(); return true;
 }
 function ask(question) {
   if (localMode || realBusy) return;
@@ -481,6 +597,7 @@ async function startScenario(id) {
   if (localMode) $("restore-demo").click();
   $("demo-library").close();
   player.pause();
+  locatingSeek = null;
   pendingSeek = null;
   pendingSeekTrigger = null;
   if (mediaReady) player.currentTime = 0;
@@ -588,10 +705,21 @@ function setLocalMode(enabled) {
     notice("已打开本地视频。真实索引和问答尚未接入，可返回演示体验证据跳转。");
   }
 }
+function inspectorIsOpen() {
+  const shell = document.querySelector(".agent-shell");
+  return window.innerWidth < 1600
+    ? shell.classList.contains("inspector-open")
+    : !shell.classList.contains("inspector-collapsed");
+}
+function restoreInspector(open) {
+  const shell = document.querySelector(".agent-shell");
+  shell.classList.toggle("inspector-open", open);
+  shell.classList.toggle("inspector-collapsed", !open);
+  syncInspectorToggle();
+}
 function toggleInspector() {
   const shell = document.querySelector(".agent-shell");
-  if (window.innerWidth < 1600) shell.classList.toggle("inspector-open");
-  else shell.classList.toggle("inspector-collapsed");
+  restoreInspector(!inspectorIsOpen());
   $("toggle-inspector").setAttribute(
     "aria-expanded",
     String(
@@ -752,17 +880,60 @@ window.FrameSeekUI = {
   canvas: () => $("rail-canvas").click(),
   openLocal: () => $("open-local").click(),
   newTask,
+  fillSuggestedQuestion,
+  hideTurn: (id) => requestTurnDeletion(id),
+  restoreTurn: (id) => changeTurnVisibility(id, false),
   continueFrom: (id) => {
     investigation?.choose(id);
+    const query = window.FrameSeekWorkbench?.getSnapshot().records.find(record => record.id === id)?.query;
+    if (query?.mode === "real" && !query.response.events.length) {
+      if (!$("question").value.trim()) {
+        $("question").value = query.question;
+        $("question").dispatchEvent(new Event("input", {bubbles:true}));
+      }
+      notice(`${window.FrameSeekWorkbenchModel.queryFailureReason(query)} 原问题已保留，可编辑后自行发送；不会自动重试，发送仍需预算检查。`);
+      updateSend();
+    }
     $("question").focus();
   },
 };
+let pendingTurnDeletion = null;
+function requestTurnDeletion(id) {
+  const record = window.FrameSeekWorkbench?.getSnapshot().records.find(item => item.id === id && !item.hidden);
+  if (!record) return;
+  pendingTurnDeletion = {id, queryId: record.query.id, trigger: document.activeElement};
+  $("delete-turn-question").textContent = record.query.question;
+  $("delete-turn-dialog").showModal();
+  $("delete-turn-cancel").focus();
+}
+function cancelTurnDeletion() {
+  const trigger = pendingTurnDeletion?.trigger;
+  pendingTurnDeletion = null;
+  $("delete-turn-dialog").close();
+  if (trigger?.isConnected) trigger.focus();
+}
+$("delete-turn-cancel").addEventListener("click", cancelTurnDeletion);
+$("delete-turn-dialog").addEventListener("cancel", event => {event.preventDefault(); cancelTurnDeletion();});
+$("delete-turn-dialog").addEventListener("close", () => {pendingTurnDeletion = null;});
+$("delete-turn-confirm").addEventListener("click", () => {
+  const pending = pendingTurnDeletion;
+  const record = window.FrameSeekWorkbench?.getSnapshot().records.find(item => item.id === pending?.id && !item.hidden);
+  pendingTurnDeletion = null;
+  $("delete-turn-dialog").close();
+  if (record && record.query.id === pending.queryId) changeTurnVisibility(pending.id, true);
+});
+function changeTurnVisibility(id, hidden) {
+  const saved = window.FrameSeekSessionUI.snapshot();
+  const next = window.FrameSeekWorkbenchModel.toggleTurn(saved, id, hidden);
+  if (!next) return;
+  window.FrameSeekSessionUI.restore(next, activeVideo || {id: "demo_parcel"});
+  notice(hidden ? "问题已从画布删除。可在左侧「已删除的问题」中恢复；已保存证据保留。" : "问题已恢复。输入和画布位置已保留。");
+  $("question").focus();
+}
+
 function openInspector(tab = "context") {
   window.FrameSeekWorkbench?.showPanel(tab);
-  const shell = document.querySelector(".agent-shell");
-  shell.classList.remove("inspector-collapsed");
-  if (window.innerWidth < 1600) shell.classList.add("inspector-open");
-  syncInspectorToggle();
+  restoreInspector(true);
   investigation?.fit();
   $(
     tab === "findings" ? "inspector-findings-tab" : "inspector-context-tab",
@@ -802,7 +973,7 @@ document.querySelectorAll("[data-query]").forEach((element) =>
     const query = demo?.queries.find(
       (item) => item.id === element.dataset.query,
     );
-    if (query) ask(query.question);
+    if (query) fillSuggestedQuestion(query.question);
   }),
 );
 document
@@ -847,6 +1018,7 @@ $("restore-demo").addEventListener("click", () => {
   localUrl = null;
   mediaReady = false;
   mediaFailed = false;
+  locatingSeek = null;
   pendingSeek = null;
   player.src = "/demo/video";
   player.preload = "auto";
@@ -882,6 +1054,7 @@ player.addEventListener("loadedmetadata", mediaLoaded);
 if (player.readyState >= 1) mediaLoaded();
 else updateMediaContext();
 player.addEventListener("error", () => {
+  locatingSeek = null;
   mediaReady = false;
   mediaFailed = true;
   updateMediaContext();
@@ -892,6 +1065,7 @@ player.addEventListener("error", () => {
   announce($("seek-status").textContent);
 });
 $("reload-video").addEventListener("click", () => {
+  locatingSeek = null;
   mediaFailed = false;
   mediaReady = false;
   updateMediaContext();
@@ -899,6 +1073,15 @@ $("reload-video").addEventListener("click", () => {
   $("seek-status").textContent = "正在重新加载视频…";
 });
 player.addEventListener("timeupdate", updateTime);
+player.addEventListener("seeking", () => {
+  if (locatingSeek !== null && Math.abs(player.currentTime - locatingSeek) > 0.25) {
+    locatingSeek = player.currentTime;
+    $("seek-status").textContent = `正在定位 ${clock(locatingSeek)} · 等待画面加载…`;
+    $("evidence-step").textContent = `正在定位 ${clock(locatingSeek)}`;
+  }
+});
+player.addEventListener("seeked", completeSeek);
+player.addEventListener("loadeddata", completeSeek);
 player.addEventListener("play", updateTime);
 player.addEventListener("pause", updateTime);
 window.addEventListener("beforeunload", () => {
@@ -910,7 +1093,7 @@ document.querySelectorAll("[data-query]").forEach((element) => {
 if (window.FrameSeekCanvas)
   investigation = window.FrameSeekCanvas.start({
     select: selectTask,
-    ask,
+    ask: fillSuggestedQuestion,
     announce,
     close: () => showEvidence(false),
   });
@@ -936,7 +1119,8 @@ fetch("/demo/catalog")
 window.FrameSeekSessionUI = {
   snapshot: () => ({ ...window.FrameSeekWorkbench.getSnapshot(), canvas: investigation?.snapshot(),
     ui: { sourceOpen: !document.querySelector(".agent-shell").classList.contains("source-collapsed"),
-      inspectorOpen: !document.querySelector(".agent-shell").classList.contains("inspector-collapsed"),
+      inspectorOpen: inspectorIsOpen(),
+      sourceWidth: panelWidths.source, inspectorWidth: panelWidths.inspector,
       playerTime: player.currentTime, draft: $("question").value } }),
   renameSource(name) {
     if(!activeVideo) return;
@@ -958,12 +1142,20 @@ window.FrameSeekSessionUI = {
     updateSend();
   },
   applySource(video) {
+    $("evidence-question").textContent = "素材预览";
+    notice("");
+    pendingTurnDeletion = null;
+    if ($("delete-turn-dialog").open) $("delete-turn-dialog").close();
+    locatingSeek = null;
     $("resume-query").hidden = true;
     activeVideo = video?.id === "demo_parcel" ? null : video;
     player.pause(); mediaReady = false; mediaFailed = false; pendingSeek = null;
     if (activeVideo) {
       setLocalMode(true);
-      player.src = `/media/${video.id}/video`; player.removeAttribute("poster");
+      player.src = `/media/${video.id}/video`;
+      const preview = video.metadata?.preview?.[0];
+      if (preview) player.poster = preview.uri;
+      else player.removeAttribute("poster");
       localMode = video.job?.state !== "ready";
       window.FrameSeekWorkbench.source(localMode);
       window.FrameSeekWorkbench.describe(video);
@@ -998,17 +1190,20 @@ window.FrameSeekSessionUI = {
   },
   restore(saved, video) {
     this.applySource(video);
-    for (const record of saved.records || []) renderAnswer({ ...record.query, savedTurn: record.id });
+    taskSequence = Math.max(0, ...(saved.records || []).map(r => Number(r.id.split("-")[1]) || 0));
+    for (const record of saved.records || []) if (!record.hidden) renderAnswer({ ...record.query, savedTurn: record.id });
     window.FrameSeekWorkbench.hydrate({ ...saved, local: localMode, sourceInfo: video });
     for (const pin of saved.pins || []) placeFinding(pin);
     if (saved.selectedId) investigation?.choose(saved.selectedId);
     investigation?.restore(saved.canvas);
     if (saved.ui) {
       setSourceOpen(saved.ui.sourceOpen !== false);
-      document.querySelector(".agent-shell").classList.toggle("inspector-collapsed", saved.ui.inspectorOpen === false);
-      syncInspectorToggle();
+      restoreInspector(saved.ui.inspectorOpen !== false);
       $("question").value = saved.ui.draft || ""; updateSend();
       if (saved.ui.playerTime > 0) { pendingSeek = saved.ui.playerTime; pendingSeekRestore = true; }
     }
+    restorePanelWidths(saved.ui);
   },
 };
+
+setupPanelResize();

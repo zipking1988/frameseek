@@ -1,5 +1,7 @@
 # API与输出契约
 
+2026-10-11：Gemini 与 NVIDIA/Nebius 复用同一组私有上传/分析/查询/恢复接口及 schema0.1。`GET /api/session`、`GET /api/runtime/status`、`GET /health` 新增 `provider`（`gemini` / `nvidia_nebius`）。准备状态仍只读，不证明真实模型调用或云部署；provider只能由可信runtime配置选择，客户端请求不能覆盖。Google Cloud入口保持相同接口，`GET /gateway/health` 只报告入口存活、不探测后端；具体部署边界见 [deployment.md](deployment.md)。
+
 当前本地服务包含公开合成演示、拥有权保护的会话/调查/上传/任务/查询操作，以及私有媒体读取。具体端点和输入模型见运行服务的 `/docs` 与 `/openapi.json`；下文workspace接口与 [运行指南](WORKSPACE_RUNTIME.md) 描述当前实现。默认fixture不发送模型请求，上传素材未就绪时禁止问答，不使用演示答案。
 
 仅 `demo_parcel` 合成媒体公开。私有素材、帧、任务、查询和调查校验会话拥有权及到期时间；写入还校验CSRF/Origin。浏览器选择文件后以原始视频字节上传并预检，不是仅blob播放。
@@ -33,3 +35,37 @@ See [runtime/workflow](WORKSPACE_RUNTIME.md). GET /api/session initializes cooki
 ## Local readiness status
 
 Owned `GET /api/runtime/status` returns mode, local checks/model roles, runtime blockers, `dispatch_prerequisites_met`, `live_verified:false` and `model_requests_sent_by_check:0`; responses use `Cache-Control: no-store`. It reveals credential presence, never values or endpoint URLs, and reads existing current-owner/deployment budget records without authorizing calls. `dispatch_prerequisites_met` is a local prerequisite summary; each real operation still checks actual required calls/resources atomically. It is not provider connectivity, quality, billing or deployment acceptance. Use the workspace **模型与预算** dialog or the CLI in [WORKSPACE_RUNTIME](WORKSPACE_RUNTIME.md).
+
+## Token Factory provider (2026-10-24)
+
+Session/runtime status may return `provider: "tokenfactory"`. No new write endpoint
+or spending approval API is introduced. The existing upload → preflight → explicit
+analysis → chat workflow uses public Nemotron vision/text and Qwen text embeddings,
+with the same ownership, evidence, idempotency and two-level approved budget ledger.
+See [local preparation](TOKEN_FACTORY_LOCAL.md). Media consent in trusted runtime
+is independent of numeric spending approval; both are required before dispatch.
+
+`GET /api/session` also refreshes the existing valid session cookie to the remaining
+lifetime of its server record. It does not roll server expiry or ownership forward.
+An explicitly authorized offline source-retention extension is recorded separately;
+there is no HTTP endpoint for extending retention or approving spend. Default TTL
+remains unchanged. See [configuration](configuration.md#explicit-retention-for-an-existing-source).
+
+
+`POST /api/chat/prepare` returns `kind: runtime_blocked` with a displayable
+message for an owned real-video investigation if real mode/runtime prerequisites
+are unavailable. No query or model attempt is created. Fixture investigations
+remain separate; saved results can still be restored without enabling models.
+
+New chat preparation may return `clarification_required`, `capability_blocked`,
+`budget_unavailable` or `budget_blocked`
+without creating a query or reserving an attempt. Budget preparation uses the
+same bounded query plan as execution and reports required/remaining request
+counts; amount/approval checks still apply. A matching existing idempotent request
+can be restored even when a fresh request would exceed budget. Local shared
+ledger mode disables JSON repair and uses validated vision observations directly,
+so a short explicit window admits one call. Disabled repairs do not count toward
+ingest or ordinary-query admission. Invalid or reversed time windows request
+clarification without dispatch. If the shared ledger cannot be read, preparation
+returns `budget_unavailable`; runtime status reports `budget_status: unavailable`
+without budget amounts or available capacity. Neither path bypasses approval.
