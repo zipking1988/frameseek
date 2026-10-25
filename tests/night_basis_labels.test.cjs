@@ -34,6 +34,8 @@ test('failed visual calls with zero evidence do not imply successful review',()=
 
 test('historical failure codes explain the system failure without blaming the question or inventing a provider cause',()=>{
   assert.match(render('real',[],[{code:'invalid_tool_request'}]),/分析工具请求未通过校验/);
+  assert.match(render('real',[],[{code:'invalid_visual_matches'}]),/匹配条件、主体或画面引用未通过验证/);
+  assert.match(render('real',[],[{code:'visual_index_invalid'}]),/索引缺失、版本变化或引用无效/);
   assert.match(render('real',[],[{code:'query_cancelled'}]),/这次查找已取消/);
   assert.match(render('real',[],[{code:'audio_channel_unavailable'}]),/尚无可靠音轨转写/);
   assert.match(render('real',[],[{code:'real_blocked'}]),/在模型调用前被拦截/);

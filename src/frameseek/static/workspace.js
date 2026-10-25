@@ -8,6 +8,7 @@
   const labels = { queued:"等待预检", probing:"检查素材", captioning:"理解画面", transcribing:"转写音轨", indexing:"建立索引", ready:"可以提问", failed:"处理失败", cancelled:"已取消", awaiting_configuration:"等待模型配置" };
   let session, current, currentVideo = demo, suspended = true, saving = null, lastSaved = "", lastSavedEdits = "", timer;
   let conflict = false, requestEpoch = 0, activeRequest = null, libraryEpoch = 0;
+  let pendingSave = null;
   let lastVideoDesks = {};
   try {
     const saved = JSON.parse(localStorage.getItem("frameseek-video-desks") || "{}");
@@ -15,7 +16,12 @@
   } catch {}
   const owns = (id, epoch) => current?.id === id && requestEpoch === epoch;
   let sourceChoices = new Map([[demo.id, demo]]), sourceListEpoch = 0, sourceSwitching = false;
+  let searchEpoch = 0, searchDesk = null, searchGeneration = null;
   function syncSourceSwitcher(videos) {
+    $('search-index').hidden = currentVideo.id === demo.id || currentVideo.job?.state !== 'ready';
+    if(searchDesk && (searchDesk !== current?.id || searchGeneration !== currentVideo.generation)) {
+      searchEpoch++; searchDesk=null; $('visual-search-dialog').close();
+    }
     if (videos) sourceChoices = new Map([[demo.id, demo], ...videos.map(video => [video.id, video])]);
     sourceChoices.set(currentVideo.id, currentVideo);
     const select = $("source-switcher");
@@ -67,6 +73,31 @@
       localStorage.setItem("frameseek-video-desks", JSON.stringify(lastVideoDesks));
     } catch {}
   }
+  const draftShadowKey='frameseek-draft-shadow';
+  function keepDraftShadow(base) {
+    if(suspended || !current || !session?.owner_id)return;
+    try {
+      if(base===undefined)base=lastSaved ? JSON.parse(lastSaved).ui?.draft || '' : '';
+      sessionStorage.setItem(draftShadowKey,JSON.stringify({owner:session.owner_id,desk:current.id,
+        generation:currentVideo.generation || 0,epoch:store().getSnapshot().epoch || 0,
+        base,text:$('question').value,expires:Date.now()+3600000,
+        pendingDraft:pendingSave?.desk===current.id ? pendingSave.draft : null,
+        pendingRevision:pendingSave?.desk===current.id ? pendingSave.revision+1 : null}));
+    }catch{}
+  }
+  function recoverDraftShadow() {
+    try {
+      const saved=JSON.parse(sessionStorage.getItem(draftShadowKey) || 'null');
+      if(!saved || saved.expires<Date.now() || typeof saved.text!=='string' || saved.text.length>4000
+        || saved.owner!==session.owner_id || saved.desk!==current.id
+        || saved.generation!==(currentVideo.generation || 0)
+        || saved.epoch!==(store().getSnapshot().epoch || 0))return false;
+      const pendingBase=current.revision===saved.pendingRevision && $('question').value===saved.pendingDraft;
+      if($('question').value!==saved.base && $('question').value!==saved.text && !pendingBase)return false;
+      if($('question').value===saved.text)return false;
+      ui().restoreDraft(saved.text);return true;
+    }catch{return false;}
+  }
   async function flush() {
     if (saving) {
       const desk=current;
@@ -80,10 +111,17 @@
     if (encoded === lastSaved) return;
     const desk = current;
     status("正在保存…");
+    pendingSave={desk:desk.id,revision:desk.revision,draft:state.ui?.draft || ''};
+    keepDraftShadow();
     saving = api(`/api/investigations/${desk.id}`, "PUT", {revision:desk.revision,state:JSON.parse(encoded)})
-      .then(result => { desk.revision=result.revision; lastSaved=encoded; lastSavedEdits=edits; status("已保存到本机","saved"); })
+      .then(result => { desk.revision=result.revision; lastSaved=encoded; lastSavedEdits=edits; status("已保存到本机","saved");
+        if(current===desk) {
+          if($('question').value===(state.ui?.draft || '')) {try{sessionStorage.removeItem(draftShadowKey);}catch{}}
+          else keepDraftShadow(state.ui?.draft || '');
+        }
+      })
       .catch(error => { conflict=error.status===409; status(conflict ? "其他页面已修改 · 请重新打开" : "保存失败 · 点击重试", "error"); throw error; })
-      .finally(() => { saving=null; });
+      .finally(() => { saving=null; pendingSave=null; });
     await saving;
     if (current!==desk) return;
     if (editSnapshot(snapshot())!==lastSavedEdits) return flush();
@@ -112,6 +150,7 @@
       remember(); syncSourceSwitcher(); status("已恢复调查","saved");
       $("workspace-library").close();
       suspended=false;
+      if(recoverDraftShadow())changed();
       await recover();
       if (!owns(desk.id,epoch)) return false;
       if (["queued","probing","captioning","transcribing","indexing"].includes(video.job?.state)) watch(video.id,epoch);
@@ -164,6 +203,7 @@
         ? `模型请求已用完 ${b.call_cap} / ${b.call_cap} 次；不会再调用模型，已有回答和证据仍可回看。`
         : !data.dispatch_prerequisites_met
         ? '真实聊天暂未就绪，可在「更多 → 模型与预算」检查；已有证据仍可回看。'
+        : b?.visual_search_calls === 1 ? `剩余 ${b.remaining_calls} / ${b.call_cap} 次模型请求 · 视觉查找通常预留1次，复核最多8张索引候选；不代表已穷举全片。`
         : b ? `剩余 ${b.remaining_calls} / ${b.call_cap} 次模型请求 · 指定不超过60秒的时段通常预留 ${b.short_window_calls} 次；跨时段检索需要更多。`
         : '预算状态未确认，请先检查模型与预算；不代表可以发送。';
     }catch(error){if(check===budgetEpoch && owns(desk,epoch)){line.hidden=false;line.textContent='预算状态读取失败，发送前仍需通过账本检查；不会自动调用模型。';}}
@@ -193,6 +233,39 @@
       }
     }catch(error){$("agent-setup-summary").textContent=`读取失败：${error.message}。可重新检查。`;}
     finally {button.disabled=false;}
+  }
+  async function searchSavedFrames() {
+    const question=$('question').value.trim();
+    if(!question) {ui().notify('先在输入框描述要找的内容，再查找已有画面；不会发送给模型。');return;}
+    const desk=current?.id, epoch=requestEpoch, source=currentVideo, generation=source.generation, check=++searchEpoch;
+    if(!desk || source.id===demo.id || source.job?.state!=='ready')return;
+    const dialog=$('visual-search-dialog'), list=$('visual-search-results');
+    searchDesk=desk; searchGeneration=generation; list.replaceChildren();
+    $('visual-search-summary').textContent='正在检索已有索引，不调用模型…';
+    if(!dialog.open)dialog.showModal();
+    try {
+      const data=await api(`/api/videos/${source.id}/search-index`,'POST',
+        {question,generation});
+      if(check!==searchEpoch || !owns(desk,epoch) || currentVideo.generation!==generation || !dialog.open)return;
+      $('visual-search-summary').textContent=`已检索 ${data.indexed_frames} 张保存画面，列出 ${data.frames.length} 张候选。依据原有描述排序及时间探索，尚未逐项视觉复核；候选不等于满足全部条件，未列出也不代表不存在。没有新增模型调用。`;
+      for(const frame of data.frames) {
+        if(!frame.uri.startsWith(`/media/${source.id}/frames/`))continue;
+        const row=document.createElement('article'), image=document.createElement('img');
+        const caption=document.createElement('p'), button=document.createElement('button');
+        image.src=frame.uri; image.alt='原视频已保存的候选画面';
+        caption.textContent=frame.caption;
+        const seconds=Math.floor(frame.t);
+        button.textContent=`回看 ${Math.floor(seconds/60).toString().padStart(2,'0')}:${(seconds%60).toString().padStart(2,'0')} · 索引候选`;
+        button.type='button';button.onclick=()=>{
+          if(check!==searchEpoch || !owns(desk,epoch) || currentVideo.id!==source.id || currentVideo.generation!==generation)return;
+          dialog.close();ui().seek(frame.t,button);
+        };
+        row.append(image,caption,button);list.append(row);
+      }
+    } catch(error) {
+      if(check===searchEpoch && owns(desk,epoch) && dialog.open)
+        $('visual-search-summary').textContent=`索引暂不可用：${error.message}。原问题和聊天保留，未调用模型。`;
+    }
   }
   async function library(kind="investigations") {
     const deskId=current?.id, epoch=requestEpoch, token=++libraryEpoch;
@@ -433,7 +506,7 @@
       store().subscribe(changed);
       window.addEventListener("frameseek-canvas-changed",changed);
       ["pointerup","keyup","wheel","input"].forEach(event=>document.addEventListener(event,()=>{if(JSON.stringify(snapshot())!==lastSaved)changed();},{passive:true}));
-      $('question').addEventListener('input',()=>{if(preflightNotice){preflightNotice=false;ui().notify('');}});
+      $('question').addEventListener('input',()=>{keepDraftShadow();if(preflightNotice){preflightNotice=false;ui().notify('');}});
       document.addEventListener("visibilitychange",()=>{if(document.hidden)flush().catch(()=>{});});
       $("open-investigations").onclick=()=>library().catch(e=>ui().notify(e.message));
       $("open-sources").onclick=()=>library("videos").catch(e=>ui().notify(e.message));
@@ -441,6 +514,8 @@
       $("open-agent-setup").onclick=showRuntime;
       $("refresh-agent-setup").onclick=showRuntime;
       $("close-agent-setup").onclick=()=>$("agent-setup-dialog").close();
+      $('search-index').onclick=searchSavedFrames;
+      $('close-visual-search').onclick=()=>{searchEpoch++;$('visual-search-dialog').close();};
       $("save-state").onclick=()=>conflict ? openDesk(current.id).catch(e=>ui().notify(e.message)) : flush().catch(()=>{});
       $("resume-query").onclick=()=>recover().catch(e=>ui().notify(e.message));
       $("source-switcher").onchange=switchSelectedSource;

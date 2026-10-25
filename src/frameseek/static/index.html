@@ -14,14 +14,14 @@
       crossorigin
     />
     <link rel="stylesheet" href="/static/styles.css?v=136d47b61d96" />
-    <link rel="stylesheet" href="/static/workbench.css?v=96d283f97afa" />
+    <link rel="stylesheet" href="/static/workbench.css?v=350b4f1f715c" />
     <script src="/static/demo-conversation.js?v=fc40894c3313" defer></script>
     <script src="/static/investigation-canvas.js?v=8760bc6d8bbd" defer></script>
-    <script src="/static/workbench-model.js?v=7642b575afc8" defer></script>
+    <script src="/static/workbench-model.js?v=c3271a772d77" defer></script>
     <script src="/static/investigation-report.js?v=8411abe357f8" defer></script>
     <script src="/static/workbench.js?v=543493144efe" defer></script>
-    <script src="/static/workspace.js?v=e6117901f8d3" defer></script>
-    <script src="/static/app.js?v=8806805a8534" defer></script>
+    <script src="/static/workspace.js?v=e96df4a85141" defer></script>
+    <script src="/static/app.js?v=e45fe4bfcd74" defer></script>
   </head>
   <body>
     <a href="#question" class="skip-link">跳到对话输入</a>
@@ -315,6 +315,7 @@
         <p id="form-notice" class="form-notice" role="status" hidden></p>
         <p id="chat-budget-status" class="trace-note" role="status" hidden></p>
         <div id="composer-suggestions"></div>
+        <button id="search-index" class="text-button" type="button" hidden>查找已有画面 · 不调用模型</button>
         <form id="question-form">
           <div class="composer-context">
             <label id="composer-label" for="question">向 FrameSeek 提问</label
@@ -358,6 +359,11 @@
           </div>
         </form>
       </section>
+      <dialog id="visual-search-dialog" aria-labelledby="visual-search-title">
+        <header><h2 id="visual-search-title">已有画面索引</h2><button id="close-visual-search" type="button">关闭</button></header>
+        <p id="visual-search-summary" role="status"></p>
+        <div id="visual-search-results"></div>
+      </dialog>
       <section class="canvas-footer" aria-label="画布视图">
         <div class="canvas-navigation">
           <section

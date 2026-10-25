@@ -179,10 +179,22 @@ def configured_ledger(path, runtime):
                 raise BudgetDenied("Direct observations require Token Factory")
             ledger.allow_repairs = False
             ledger.direct_observations = True
+        if os.environ.get("FS_VISUAL_SEARCH") == "1":
+            if not runtime or runtime.provider != "tokenfactory":
+                raise BudgetDenied("Visual search requires Token Factory")
+            ledger.allow_repairs = False
+            ledger.direct_observations = True
+            ledger.visual_search = True
         return ledger
     if not runtime or os.environ.get("FS_PUBLIC_ORIGIN"):
         raise BudgetDenied("Shared ledger is restricted to the private local workspace")
-    return SharedLedger(target, os.environ["FS_SHARED_LEDGER_LOCAL_OWNER"], runtime.budget_version)
+    if os.environ.get("FS_VISUAL_SEARCH") == "1" and runtime.provider != "tokenfactory":
+        raise BudgetDenied("Visual search requires Token Factory")
+    ledger = SharedLedger(
+        target, os.environ["FS_SHARED_LEDGER_LOCAL_OWNER"], runtime.budget_version
+    )
+    ledger.visual_search = os.environ.get("FS_VISUAL_SEARCH") == "1"
+    return ledger
 
 
 if __name__ == "__main__":

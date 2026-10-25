@@ -51,6 +51,13 @@ ledger storage nor approvals/caps/history. Other providers reject this flag.
 The default route remains unchanged when the flag is absent. No browser request
 can enable it, and all dispatch still requires both existing budget scopes.
 
+`FS_VISUAL_SEARCH=1` additionally enables frame-level local candidate retrieval
+and one vision-only broad-question verification (at most8 saved frames), with
+repairs/text rewriting disabled. This also enables the direct-observation path.
+It is Token Factory only, including with the private shared-ledger adapter.
+The free owned `search-index` operation is available without this flag and never
+dispatches a provider request. See [engine scope](VIDEO_CTRL_F_ENGINE.md).
+
 `budget_admin settle` 仅由可信本机操作者按已核对的用量证据下调 completed 请求的金额占用；不退调用次数，不释放 unknown，不改变原 attempt 身份，也不自动启用审批。`budget_admin resume` 需新的明确继续授权引用，恢复同一审批版本，保留原金额和调用上限及消耗。账本 v2 保留 v1 数据并增加结算/恢复审计表；没有 HTTP 或普通配置绕过入口。详情见 [Token Factory 核账记录](TOKEN_FACTORY_LOCAL.md#reconciliation-and-user-continuation-2026-10-24)。
 
 ## Explicit retention for an existing source

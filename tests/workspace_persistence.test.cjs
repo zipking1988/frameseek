@@ -42,12 +42,12 @@ class Element {
   scrollIntoView() {}
   querySelector() { return new Element(); }
 }
-async function harness({ state = {}, requests = [], job = "ready", realReady = true } = {}) {
+async function harness({ state = {}, requests = [], job = "ready", realReady = true, storage = new Map(), owner = "owner-A", revision = 1 } = {}) {
   const store = createStore(), ids = new Map(), calls = [], answers = [], timers = new Map();
   let seq = 100, timerSeq = 0, ready = false, busy = false, context = null, override = null;
   const get = id => { if (!ids.has(id)) ids.set(id, new Element()); return ids.get(id); };
   const desks = new Map([
-    ["desk-A", { id: "desk-A", video: "video-A", title: "A", revision: 1, state }],
+    ["desk-A", { id: "desk-A", video: "video-A", title: "A", revision, state }],
     ["desk-B", { id: "desk-B", video: "video-B", title: "B", revision: 1, state: {} }],
   ]);
   const videos = new Map([
@@ -72,7 +72,7 @@ async function harness({ state = {}, requests = [], job = "ready", realReady = t
     calls.push(call);
     const special = override?.(call);
     if (special !== undefined) return special;
-    if (url === "/api/session") return response({ csrf: "csrf", ttl_hours: 24, real_ready: realReady });
+    if (url === "/api/session") return response({ csrf: "csrf", owner_id: owner, ttl_hours: 24, real_ready: realReady });
     if (url === "/api/investigations" && call.method === "GET") return response({ items: [...desks.values()] });
     if (url === "/api/investigations" && call.method === "POST") {
       const desk = { id: "new-demo", video: call.body.video_id, title: call.body.title, revision: 1, state: {} };
@@ -95,6 +95,7 @@ async function harness({ state = {}, requests = [], job = "ready", realReady = t
   };
   const window = { FrameSeekSessionUI: ui, FrameSeekWorkbench: store, addEventListener() {} };
   const sandbox = vm.createContext({ Event: class { constructor(type) { this.type=type; } }, window, document: { getElementById: get, createElement: () => new Element(), addEventListener() {} }, fetch,
+    sessionStorage: {getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},
     localStorage: { getItem: () => "desk-A", setItem() {} }, crypto: { randomUUID: () => `request-${++seq}` },
     setTimeout: (fn, delay) => { const id = ++timerSeq; timers.set(id, { fn, delay }); return id; }, clearTimeout: id => timers.delete(id),
   });
@@ -527,4 +528,87 @@ test('custom picker receives busy and restored selection notifications around as
   assert.equal(select.children[0].dataset.thumbnail,'/media/demo_parcel/frames/0.jpg');
   assert.match(select.children[0].dataset.detail,/00:18/);
   assert.equal(h.calls.some(c=>c.url==='/api/chat'),false);
+});
+
+test('index search preserves draft and cannot dispatch chat; late results cannot cross desks', async()=>{
+ const h=await harness();
+ h.videos.get('video-A').generation=2;
+ const wait=deferred();
+ h.setOverride(c=>c.url.endsWith('/search-index') ? wait.promise : undefined);
+ h.get('question').value='找红帽子白衣服的人';
+ const pending=h.get('search-index').onclick();
+ assert.equal(h.get('visual-search-dialog').open,true);
+ await h.window.testWorkspace.openDesk('desk-B');
+ h.get('question').value='另一视频草稿';
+ wait.resolve(response({indexed_frames:40,frames:[{uri:'/media/video-A/frames/f.jpg',t:1,caption:'旧视频内容'}]}));
+ await pending;
+ assert.equal(h.get('visual-search-dialog').open,false);
+ assert.equal(h.get('visual-search-results').children.length,0);
+ assert.equal(h.get('question').value,'另一视频草稿');
+ assert.equal(h.calls.filter(c=>c.url==='/api/chat' || c.url==='/api/chat/prepare').length,0);
+});
+
+test('index candidates render as unverified, seek original time, and keep the question', async()=>{
+ const h=await harness();let sought;
+ h.videos.get('video-A').generation=2;
+ h.ui.seek=t=>{sought=t;};
+ h.setOverride(c=>c.url.endsWith('/search-index') ? response({indexed_frames:40,frames:[
+  {uri:'/media/video-A/frames/f.jpg',t:62.4,caption:'保存的画面描述'},
+  {uri:'/media/video-B/frames/foreign.jpg',t:1,caption:'另一视频不得显示'}
+ ]}) : undefined);
+ h.get('question').value='我的原问题';
+ await h.get('search-index').onclick();
+ assert.match(h.get('visual-search-summary').textContent,/候选不等于满足全部条件/);
+ assert.equal(h.get('visual-search-results').children.length,1);
+ h.get('visual-search-results').children[0].children[2].onclick();
+ assert.equal(sought,62.4);
+ assert.equal(h.get('question').value,'我的原问题');
+ assert.equal(h.answers.length,0);
+ assert.equal(h.get('visual-search-dialog').open,false);
+});
+
+test('a draft survives immediate refresh before the debounce save runs', async()=>{
+ const storage=new Map(),h=await harness({storage});
+ h.get('question').value='刚输入尚未保存的原问题';
+ h.get('question').dispatchEvent({type:'input'});
+ const reloaded=await harness({storage});
+ assert.equal(reloaded.get('question').value,'刚输入尚未保存的原问题');
+ await reloaded.window.FrameSeekPersistence.flush();
+ assert.equal(storage.has('frameseek-draft-shadow'),false);
+ assert.equal(reloaded.desks.get('desk-A').state.ui.draft,'刚输入尚未保存的原问题');
+});
+
+test('draft shadow respects ownership and never overwrites a newer server draft', async()=>{
+ const storage=new Map(),h=await harness({storage});
+ h.get('question').value='旧会话草稿';h.get('question').dispatchEvent({type:'input'});
+ const other=await harness({storage,owner:'owner-B'});
+ assert.equal(other.get('question').value,'');
+ const newer=await harness({storage,state:{ui:{draft:'另一页面更新后的草稿'}}});
+ assert.equal(newer.get('question').value,'另一页面更新后的草稿');
+});
+
+test('refresh restores edits typed while the preceding draft save response was in flight', async()=>{
+ const storage=new Map(),h=await harness({storage}),first=deferred();
+ h.get('question').value='草稿 A';h.get('question').dispatchEvent({type:'input'});
+ h.setOverride(c=>c.url==='/api/investigations/desk-A' && c.method==='PUT' ? first.promise : undefined);
+ const saving=h.window.FrameSeekPersistence.flush();
+ h.get('question').value='草稿 B 最新编辑';h.get('question').dispatchEvent({type:'input'});
+ const restored=await harness({storage,revision:2,state:{ui:{draft:'草稿 A'}}});
+ assert.equal(restored.get('question').value,'草稿 B 最新编辑');
+ const newer=await harness({storage,revision:3,state:{ui:{draft:'另一个页面的更新'}}});
+ assert.equal(newer.get('question').value,'另一个页面的更新');
+ h.setOverride(()=>undefined);first.resolve(response({revision:2}));await saving;
+});
+
+test('index results from an older generation cannot publish into the same video', async()=>{
+ const h=await harness(),wait=deferred();
+ h.videos.get('video-A').generation=2;
+ h.get('question').value='同一视频重新预检前的问题';
+ h.setOverride(c=>c.url.endsWith('/search-index') ? wait.promise : undefined);
+ const pending=h.get('search-index').onclick();
+ h.window.testWorkspace.get().currentVideo.generation=3;
+ wait.resolve(response({indexed_frames:1,frames:[{uri:'/media/video-A/frames/old.jpg',t:1,caption:'过期帧'}]}));
+ await pending;
+ assert.equal(h.get('visual-search-results').children.length,0);
+ assert.equal(h.get('question').value,'同一视频重新预检前的问题');
 });

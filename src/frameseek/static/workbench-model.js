@@ -246,6 +246,8 @@
     if (codes.includes("audio_channel_unavailable")) return "尚无可靠音轨转写，无法回答解说内容；这不是问题写得不完整。";
     if (codes.includes("query_cancelled")) return "这次查找已取消，没有完成分析；不代表视频中没有相关内容。";
     if (codes.includes("invalid_tool_request")) return "分析工具请求未通过校验，未完成本轮查找；不是你的提问格式错误。";
+    if (codes.includes("invalid_visual_matches")) return "模型返回的匹配条件、主体或画面引用未通过验证，未接受为证据。不能据此判断目标不存在；不会自动重试。";
+    if (codes.includes("visual_index_invalid")) return "已有画面索引缺失、版本变化或引用无效，本次无法完成检索。原视频与聊天保留；不会自动重建索引或调用模型。";
     return "本轮分析未完成，系统没有保留足够信息来确认具体原因；不能据此判断视频中没有相关内容。";
   }
   function answerReviewNotes(answer) {

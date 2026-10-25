@@ -643,3 +643,37 @@ allowance remains $20 /40 requests,39 used and2284047 USD_MICRO occupied. One
 request remains for the user; no new paid inference acceptance is claimed.
 All deployed package hashes matched the release. Private audits/screenshots:
 `.frameseek/deploy-reviewed-20261025/`.
+
+## Ctrl+F search increment — 2026-10-25
+
+Core direction is conversational video search, not a basketball-specific engine.
+Deployed validated frame-level index retrieval, free owned candidate browsing,
+and optional one-call same-subject visual verification for broad questions.
+`FS_VISUAL_SEARCH=1` is enabled in both existing local and online trusted runtime
+environments; it does not modify the original ledger, provider/model identity or
+numeric approvals. No index rebuild or extra extraction was performed.
+
+263 backend /136 frontend tests, build, Ruff/format/schema and diff checks pass.
+Isolated labelled mock browser QA exercised chat and followups; actual local and
+online basketball pages exercised free candidate retrieval only. Both searched40
+saved frames, displayed8 loaded images and sought original timestamps. Online
+source round-trip restored five basketball turns and one box turn; local retained
+seven visible basketball turns and the original question draft. Immediate-refresh
+and in-flight-save draft recovery received regressions and native code review.
+
+Before/after online fingerprints match for chat content,13 queries, original
+video,39 attempts, all budgets,25 settlements, runtime.json and secrets.env.
+The environment gained only the trusted search policy flag; no budget version,
+cap, balance, unknown reservation or credential changed. Cumulative allowance
+remains $20 /40 requests with39 used and2284047 USD_MICRO occupied. Local video
+and query fingerprints and both ledger-scope snapshots also remain unchanged.
+
+Rollback source/package/env/SQLite backups are private at
+`/srv/frameseek/ctrlf-core-release-20261025/backup`; final frontend patches have
+their own static backups in the same release directory. Serving asset hashes
+were checked against the local build. No resource provisioning or model call.
+
+This is an integration/search increment, not acceptance of exhaustive recall,
+object identity continuity or arbitrary-question correctness. The underlying
+index remains sparse, and no new paid recognition was run. See
+[engine scope](VIDEO_CTRL_F_ENGINE.md) and [QA evidence](qa/CTRL_F_20261025.md).

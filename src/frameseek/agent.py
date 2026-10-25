@@ -1004,7 +1004,79 @@ class Agent:
             )
             if getattr(self.ledger, "direct_observations", False):
                 calls, cost = 1, self.runtime.vision.max_cost_micro
+        elif self.runtime.provider == "tokenfactory" and getattr(
+            self.ledger, "visual_search", False
+        ):
+            calls, cost = 1, self.runtime.vision.max_cost_micro
         return direct, calls, cost
+
+    def visual_search(
+        self, video, generation, manifest, metadata, question, context, provider, kwargs
+    ):
+        from frameseek.visual_search import (
+            checked_matches,
+            compile_index,
+            retrieve,
+            verification_prompt,
+        )
+
+        directory = self.ws.root / video
+        try:
+            index = compile_index(video, generation, metadata["duration"], manifest)
+            selection = retrieve(index, question, context)
+            sampled = selection["frames"]
+            for frame in sampled:
+                path = directory / "frames" / frame["file"]
+                if not path.is_file() or path.resolve().parent != (directory / "frames").resolve():
+                    raise ValueError("missing indexed source frame")
+        except (KeyError, TypeError, ValueError, OSError):
+            raise AgentError("visual_index_invalid") from None
+        provider.check()
+        result = provider.chat(
+            "vision",
+            content_for_frames(directory, sampled, verification_prompt(question, context)),
+            attempt=kwargs.pop("attempt"),
+            kind="zoom",
+            **kwargs,
+        )
+        try:
+            observations, limitations = checked_matches(result, sampled, metadata["duration"])
+        except (KeyError, TypeError, ValueError):
+            raise AgentError("invalid_visual_matches") from None
+        provider.check()
+        all_frames = {frame["frame_id"]: frame for frame in sampled}
+        events = observed_events(video, observations, all_frames)
+        note = (
+            f"已检索索引中的{selection['indexed_frames']}张已保存画面，"
+            f"本轮视觉复核{len(sampled)}张候选；未逐帧检查整段视频。"
+            "时间引用只证明该画面时刻可见，不能推断两次出现之间持续存在。"
+        )
+        answer = {
+            "schema_version": "0.1",
+            "status": "partial" if events else "no_result",
+            "timebase": "video_absolute_seconds",
+            "answer": (
+                "\n".join(item["statement"] for item in observations)
+                if events
+                else "本轮候选画面中未找到满足完整问题条件的可验证匹配。"
+                "这不代表整段视频中不存在该内容。"
+            )[:8000]
+            + "\n"
+            + note,
+            "events": events,
+            "unresolved": list(dict.fromkeys([note, *limitations]))[:100] if events else [],
+            "followups": [],
+            "errors": [],
+            "trace": {
+                "visible": {
+                    "channels": [],
+                    "segments_reviewed": len(sampled),
+                    "evidence_segments": len({e["evidence"][0]["frame_id"] for e in events}),
+                },
+                "debug": None,
+            },
+        }
+        return Answer.model_validate(answer).model_dump(mode="json")
 
     def query(self, video, owner, question, request_id, context=None, guard=None):
         if self.settings.mode != "real" or not self.runtime or self.runtime.blockers():
@@ -1057,6 +1129,21 @@ class Agent:
         }
         prefix = request_id + "_"
         frame_prefix = hashlib.sha256(request_id.encode()).hexdigest()[:24] + "_"
+        if (
+            not direct_window
+            and self.runtime.provider == "tokenfactory"
+            and getattr(self.ledger, "visual_search", False)
+        ):
+            return self.visual_search(
+                video,
+                generation,
+                manifest,
+                metadata,
+                question,
+                context,
+                provider,
+                {**kwargs, "attempt": prefix + "visual_search"},
+            )
         expanded = question
         if context:
             # Context is a server-verified answer for this video/generation only.

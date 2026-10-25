@@ -12,6 +12,14 @@ FrameSeek connects conversation to its source video. Questions form investigatio
 
 ## Current status
 
+2026-10-25 core search: **查找已有画面 · 不调用模型** searches the owned
+frame-level caption index and opens candidate images/timestamps without spending
+model allowance. Optional trusted Token Factory visual search verifies up to8
+saved candidates with one vision request, retaining the original budget ledger.
+Same-subject criteria and frame-local evidence are validated; sparse-index recall,
+live recognition quality and exhaustive counts are not accepted. See
+[core scope](docs/VIDEO_CTRL_F_ENGINE.md) and [QA evidence](docs/qa/CTRL_F_20261025.md).
+
 2026-10-25: [code review and dev delivery](docs/CODE_REVIEW_20261025.md) fixes six
 admission/UI issues; 239 backend and 130 frontend tests pass. The private local
 runtime shares the existing cumulative $20 / 40-call ledger: 39 calls used, one

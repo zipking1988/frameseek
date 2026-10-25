@@ -1117,6 +1117,7 @@ fetch("/demo/catalog")
   });
 
 window.FrameSeekSessionUI = {
+  seek: (seconds, trigger) => seek(seconds, trigger),
   snapshot: () => ({ ...window.FrameSeekWorkbench.getSnapshot(), canvas: investigation?.snapshot(),
     ui: { sourceOpen: !document.querySelector(".agent-shell").classList.contains("source-collapsed"),
       inspectorOpen: inspectorIsOpen(),

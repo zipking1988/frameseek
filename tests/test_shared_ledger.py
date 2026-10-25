@@ -176,3 +176,16 @@ def test_admission_does_not_reserve_disabled_repairs(
     assert admitted[0][2:4] == (ingest_calls, ingest_calls)
     _, calls, cost = agent.query_budget({"segments": [{}, {}, {}]}, {"duration": 60}, "描述场景")
     assert calls == cost == query_calls
+
+
+def test_shared_visual_search_flag_rejects_wrong_provider_before_rpc(monkeypatch):
+    from types import SimpleNamespace
+
+    from frameseek.shared_ledger import configured_ledger
+
+    monkeypatch.setenv("FS_SHARED_LEDGER_SSH", "example")
+    monkeypatch.setenv("FS_SHARED_LEDGER_LOCAL_OWNER", "local")
+    monkeypatch.setenv("FS_VISUAL_SEARCH", "1")
+    monkeypatch.delenv("FS_PUBLIC_ORIGIN", raising=False)
+    with pytest.raises(BudgetDenied, match="Visual search requires Token Factory"):
+        configured_ledger(None, SimpleNamespace(provider="gemini", budget_version="mock"))

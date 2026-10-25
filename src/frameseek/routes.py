@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from frameseek.agent import Agent, AgentError
+from frameseek.agent import Agent, AgentError, explicit_time_window
 from frameseek.attempts import BudgetDenied
 from frameseek.demo import catalog
 from frameseek.media import MAX_UPLOAD, MediaError, frames, probe, scene_windows
@@ -52,6 +52,11 @@ class ChatInput(Input):
     generation: int = Field(ge=0)
     question: str = Field(min_length=1, max_length=4000)
     parent_request_id: Key | None = None
+
+
+class IndexSearchInput(Input):
+    question: str = Field(min_length=1, max_length=4000)
+    generation: int = Field(ge=1)
 
 
 def unknown_final(request_id):
@@ -123,6 +128,39 @@ def register(app, settings, root, runtime=None, transport=None):
 
     owner_dependency = Depends(owned)
 
+    @router.post("/api/videos/{key}/search-index")
+    def search_index(key: str, body: IndexSearchInput, response: Response, owner=owner_dependency):
+        from frameseek.visual_search import compile_index, retrieve
+
+        source = ws.owned("videos", key, owner)
+        if source["generation"] != body.generation:
+            raise HTTPException(409, "stale_video_generation")
+        if not source["manifest"]:
+            raise HTTPException(409, "video_not_ready")
+        try:
+            metadata = json.loads(source["metadata"])
+            index = compile_index(
+                key, body.generation, metadata["duration"], json.loads(source["manifest"])
+            )
+            result = retrieve(index, body.question)
+            directory = ws.root / key / "frames"
+            for frame in result["frames"]:
+                path = directory / frame["file"]
+                if not path.is_file() or path.resolve().parent != directory.resolve():
+                    raise ValueError("missing indexed frame")
+        except (KeyError, TypeError, ValueError, OSError):
+            raise HTTPException(409, "visual_index_invalid") from None
+        response.headers["Cache-Control"] = "no-store"
+        return {
+            "kind": "index_candidates",
+            "video_id": key,
+            "generation": body.generation,
+            "question": body.question,
+            "verified_matches": False,
+            "model_requests_sent": 0,
+            **result,
+        }
+
     @router.get("/api/runtime/status")
     def runtime_status(response: Response, owner=owner_dependency):
         response.headers["Cache-Control"] = "no-store"
@@ -149,6 +187,7 @@ def register(app, settings, root, runtime=None, transport=None):
                 else 2
                 if not getattr(agent.ledger, "allow_repairs", True)
                 else 3,
+                "visual_search_calls": 1 if getattr(agent.ledger, "visual_search", False) else None,
             }
         return report
 
@@ -448,6 +487,7 @@ def register(app, settings, root, runtime=None, transport=None):
             "id": video,
             "name": row["name"],
             "metadata": json.loads(row["metadata"]),
+            "generation": row["generation"],
             "job": ws.job(video, owner),
             "expires": row["expires"],
             "capabilities": json.loads(row["manifest"])["capabilities"]
@@ -610,13 +650,29 @@ def register(app, settings, root, runtime=None, transport=None):
                 "原问题已保留；请在「更多 → 模型与预算」查看配置。",
             }
         context = prior(body, owner, desk)
-        if re.search(r"谁|哪位|哪名|哪队", body.question) and re.search(
-            r"(?:三分|3分|进球|得分|命中).*(?:最多|排名)", body.question
+        from frameseek.visual_search import requires_aggregation
+
+        if requires_aggregation(body.question) and not re.search(
+            r"这[个张幅]画面|这张图", body.question
         ):
+            try:
+                source = (
+                    ws.owned("videos", desk["video"], owner)
+                    if desk["video"] != "demo_parcel"
+                    else None
+                )
+                duration = json.loads(source["metadata"]).get("duration") if source else 18
+                short_scope = explicit_time_window(body.question, duration) if duration else None
+            except AgentError:
+                short_scope = None
+        else:
+            short_scope = True
+        if not short_scope:
             return {
                 "kind": "capability_blocked",
-                "message": "当前仅支持抽样画面的核对，尚未完成全片球员身份、投篮命中和次数追踪，"
-                "不能可靠回答谁命中最多。可以改问指定时段可见的球衣、位置或记分牌。"
+                "message": "尚未完成全片连续事件和唯一实体追踪，不能从索引抽样推算总次数或排名。"
+                "可以查找相关人物、物品或动作，列出已观察到的时间和证据；"
+                "上传片段也不能代表未出现在素材里的完整活动。"
                 "本次尚未调用模型，输入已保留。",
             }
         if re.fullmatch(

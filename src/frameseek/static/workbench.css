@@ -1994,3 +1994,13 @@
 .answer-review-note strong { color:#f3b88a; font-size:12px; }
 .answer-review-note p { color:#d4c1ae; line-height:1.7; }
 .answer-review-note button { color:#ffc098; font-size:11px; text-decoration:underline; }
+
+#search-index { align-self: flex-start; padding: 5px 0; color: var(--muted, #a7b8c8); }
+#visual-search-dialog { width: min(920px, 90vw); max-height: 85vh; padding: 24px; background: #14242f; color: #f1f4f7; border: 1px solid #344a5d; border-radius: 12px; }
+#visual-search-dialog::backdrop { background: rgb(0 0 0 / 65%); }
+#visual-search-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+#visual-search-summary { color: #a7b8c8; line-height: 1.7; }
+#visual-search-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+#visual-search-results article { padding: 12px; border: 1px solid #344a5d; border-radius: 8px; }
+#visual-search-results img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #0b141c; }
+#visual-search-results p { line-height: 1.6; }

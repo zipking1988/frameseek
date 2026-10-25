@@ -34,6 +34,14 @@ See [runtime/workflow](WORKSPACE_RUNTIME.md). GET /api/session initializes cooki
 
 ## Local readiness status
 
+Owned `POST /api/videos/{id}/search-index` accepts `{question, generation}` and
+returns `kind:index_candidates`, original saved frame descriptions/timestamps,
+`verified_matches:false`, index fingerprint/coverage and `model_requests_sent:0`.
+It requires CSRF/Origin and active source ownership/expiry, rejects stale source
+generation, and creates no query, provider attempt or approval. Results are
+candidate samples, not proof that all question conditions are met or absent.
+Video detail responses now expose their source generation for this check.
+
 Owned `GET /api/runtime/status` returns mode, local checks/model roles, runtime blockers, `dispatch_prerequisites_met`, `live_verified:false` and `model_requests_sent_by_check:0`; responses use `Cache-Control: no-store`. It reveals credential presence, never values or endpoint URLs, and reads existing current-owner/deployment budget records without authorizing calls. `dispatch_prerequisites_met` is a local prerequisite summary; each real operation still checks actual required calls/resources atomically. It is not provider connectivity, quality, billing or deployment acceptance. Use the workspace **模型与预算** dialog or the CLI in [WORKSPACE_RUNTIME](WORKSPACE_RUNTIME.md).
 
 ## Token Factory provider (2026-10-24)

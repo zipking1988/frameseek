@@ -34,6 +34,11 @@ async def test_continue_only_is_clarified_and_budget_preflight_never_creates_fai
         result = (await client.post("/api/chat/prepare", json=body)).json()
         assert result["kind"] == "capability_blocked"
         assert "尚未完成全片" in result["message"]
+        for question in ("整个比赛 多少个3分球投入？", "视频中箱子被搬动了多少次？"):
+            body["question"] = question
+            assert (await client.post("/api/chat/prepare", json=body)).json()[
+                "kind"
+            ] == "capability_blocked"
         body["question"] = "描述视频中的篮球场。"
         result = (await client.post("/api/chat/prepare", json=body)).json()
         assert result["kind"] == "budget_blocked"
