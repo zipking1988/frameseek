@@ -16,7 +16,8 @@ FrameSeek connects conversation to its source video. Questions form investigatio
 admission/UI issues; 239 backend and 130 frontend tests pass. The private local
 runtime shares the existing cumulative $20 / 40-call ledger: 39 calls used, one
 remaining. The historical smoke results below do not describe a fresh budget.
-Latest local-only changes have not yet been deployed to framefix.net.
+The reviewed fixes and optional single-call Token Factory path are now deployed
+to framefix.net; see the latest deployment record for preservation checks.
 
 2026-10-24: [framefix.net](https://framefix.net) is running on one Nebius CPU VM.
 The basketball source, index and original remaining Token Factory budget were

@@ -4,6 +4,28 @@ from frameseek.attempts import ApprovedBudget, AttemptLedger, BudgetDenied
 from frameseek.shared_ledger import SharedLedger, dispatch
 
 
+def test_direct_observations_uses_existing_local_ledger(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from frameseek.shared_ledger import configured_ledger
+
+    monkeypatch.delenv("FS_SHARED_LEDGER_SSH", raising=False)
+    path = tmp_path / "central.sqlite3"
+    original, _, _ = setup(tmp_path)
+    with original._connect() as connection:
+        before = connection.execute("SELECT * FROM budgets ORDER BY scope").fetchall()
+    runtime = SimpleNamespace(provider="tokenfactory")
+    ordinary = configured_ledger(path, runtime)
+    assert not getattr(ordinary, "direct_observations", False)
+    monkeypatch.setenv("FS_DIRECT_OBSERVATIONS", "1")
+    direct = configured_ledger(path, runtime)
+    assert direct.direct_observations and not direct.allow_repairs
+    with direct._connect() as connection:
+        assert connection.execute("SELECT * FROM budgets ORDER BY scope").fetchall() == before
+    with pytest.raises(BudgetDenied, match="require Token Factory"):
+        configured_ledger(path, SimpleNamespace(provider="gemini"))
+
+
 def setup(tmp_path):
     ledger = AttemptLedger(tmp_path / "central.sqlite3")
     binding = {

@@ -44,6 +44,13 @@ runtime 新增 `provider`（`nvidia_nebius` 默认 / `gemini`）及 `allow_googl
 
 ## 本机预算结算与恢复
 
+Trusted Token Factory deployments can set `FS_DIRECT_OBSERVATIONS=1` to use the
+same validated one-vision-call short-window path as the private local bridge.
+This disables JSON repair and the separate text rewrite; it changes neither
+ledger storage nor approvals/caps/history. Other providers reject this flag.
+The default route remains unchanged when the flag is absent. No browser request
+can enable it, and all dispatch still requires both existing budget scopes.
+
 `budget_admin settle` 仅由可信本机操作者按已核对的用量证据下调 completed 请求的金额占用；不退调用次数，不释放 unknown，不改变原 attempt 身份，也不自动启用审批。`budget_admin resume` 需新的明确继续授权引用，恢复同一审批版本，保留原金额和调用上限及消耗。账本 v2 保留 v1 数据并增加结算/恢复审计表；没有 HTTP 或普通配置绕过入口。详情见 [Token Factory 核账记录](TOKEN_FACTORY_LOCAL.md#reconciliation-and-user-continuation-2026-10-24)。
 
 ## Explicit retention for an existing source

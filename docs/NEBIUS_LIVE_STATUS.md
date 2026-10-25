@@ -3,8 +3,8 @@
 Latest local code review, 2026-10-25: six admission/UI defects fixed; 239 backend
 and 130 frontend regressions pass. Local single-process service restarted and
 saved basketball records/draft/player restored without sending. Shared allowance
-remains39/40 and2284047/20000000 USD_MICRO occupied. This dev delivery does not
-update the production package. See [review record](CODE_REVIEW_20261025.md).
+remains39/40 and2284047/20000000 USD_MICRO occupied. The subsequent authorized
+production sync is recorded in the final section below. See [review record](CODE_REVIEW_20261025.md).
 Earlier entries below are historical snapshots, not current spending approvals.
 
 Updated 2026-10-24. The user authorized starting hosting now for an initial month
@@ -608,3 +608,38 @@ no-match handling improved.235 backend /127 frontend regressions pass. New route
 has not been paid-live revalidated; the final1 call is left for the user.
 These changes run locally only; the production workspace package was untouched.
 See the latest NIGHT_TEST_20261025.md entry for scope, evidence and limitations.
+
+## Reviewed fixes deployed — 2026-10-25
+
+User authorized syncing the reviewed fixes to framefix.net while preserving
+basketball and box conversations, with no model calls or budget increase.
+Deployed the reviewed package to both source and installed Python package under
+the existing single-process service. Locked dependency files matched the host;
+no dependency install, new VM, GPU or resource provisioning was needed.
+Rollback code, environment and SQLite backups remain private under
+`/srv/frameseek/review-release-20261025/backup`.
+
+Added trusted `FS_DIRECT_OBSERVATIONS=1` support for the existing Token Factory
+ledger so production uses the same one-vision-call short-window route as local.
+It disables repair/text rewrite without replacing the ledger or changing any
+approval, cap, amount, identity or unknown reservation. Other providers reject
+this flag. Default behavior without it is unchanged. This deployment changes only
+that flag in workspace.env; runtime.json and secrets.env stay byte-identical.
+240 backend tests, focused admission/single-call regressions and make check pass;
+the previously built frontend passed130 tests and was not edited again.
+
+Browser verification on the existing private session restored five basketball
+turns and one box turn. Suggested questions filled only and the temporary test
+draft was cleared to its original empty value. Basketball basis sought180 seconds;
+box reference sought10 seconds, paused with decoded frames. Box reload restored
+one turn and10 seconds; switching back restored basketball's five turns. No Send,
+analysis, retry or model operation was used. Original historical answers remain
+unchanged, including their recorded quality limitations.
+
+Before/after fingerprints match for chat content across all seven investigations,
+13 query rows, source video,39 model attempts, budgets and25 settlements. Ordinary
+UI selection/playback/revision metadata changed during browser checks. Total
+allowance remains $20 /40 requests,39 used and2284047 USD_MICRO occupied. One
+request remains for the user; no new paid inference acceptance is claimed.
+All deployed package hashes matched the release. Private audits/screenshots:
+`.frameseek/deploy-reviewed-20261025/`.

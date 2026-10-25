@@ -173,7 +173,13 @@ def main():
 def configured_ledger(path, runtime):
     target = os.environ.get("FS_SHARED_LEDGER_SSH")
     if not target:
-        return AttemptLedger(path)
+        ledger = AttemptLedger(path)
+        if os.environ.get("FS_DIRECT_OBSERVATIONS") == "1":
+            if not runtime or runtime.provider != "tokenfactory":
+                raise BudgetDenied("Direct observations require Token Factory")
+            ledger.allow_repairs = False
+            ledger.direct_observations = True
+        return ledger
     if not runtime or os.environ.get("FS_PUBLIC_ORIGIN"):
         raise BudgetDenied("Shared ledger is restricted to the private local workspace")
     return SharedLedger(target, os.environ["FS_SHARED_LEDGER_LOCAL_OWNER"], runtime.budget_version)
