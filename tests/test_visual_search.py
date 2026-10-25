@@ -167,3 +167,21 @@ def test_long_chinese_context_remains_within_the_bounded_provider_text_envelope(
         * 4,
     }
     assert len(verification_prompt("问题" * 2000, context).encode()) < 17000
+
+
+def test_full_caption_search_paginates_all_hits_beyond_eight_with_snapshot():
+    from frameseek.visual_search import retrieve_page
+
+    index = compile_index("vid_fixture", 2, 1000, source(["yellow parcel"] * 95))
+    first = retrieve_page(index, "yellow parcel", limit=40)
+    second = retrieve_page(index, "yellow parcel", 40, 40, first["snapshot"])
+    third = retrieve_page(index, "yellow parcel", 80, 40, first["snapshot"])
+    assert first["total_candidates"] == 95
+    assert len(first["frames"] + second["frames"] + third["frames"]) == 95
+    assert third["next_offset"] is None
+    assert third["frames"][-1]["t"] == 940
+    assert not third["all_source_occurrences_verified"]
+    with pytest.raises(SearchError, match="snapshot"):
+        retrieve_page(index, "yellow parcel", 40)
+    with pytest.raises(SearchError, match="snapshot"):
+        retrieve_page(index, "different question", 40, snapshot=first["snapshot"])

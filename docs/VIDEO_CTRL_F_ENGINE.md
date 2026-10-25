@@ -120,3 +120,55 @@ the inspected resolver links OCR/caption overlap, not persistent people and
 clothing. Its stated product boundary excludes chat. Therefore it is a reference
 or potential extraction adapter, not a verified drop-in Ctrl+F/chat engine.
 No third-party code, models or dependencies have been installed or executed.
+
+## Full-source offline observation engine — 2026-10-25
+
+The next offline increment adds actual-PTS full-source scan planning, resumable
+private structured-observation artifacts, same-subject predicate matching and
+exhaustive observation traversal with paginated occurrence intervals. Sparse
+samples, missing work and uncertain fields remain explicit. The workbench's
+separate free caption browser now supports all saved records and pagination.
+
+This does not populate real-video observations or replace the live eight-frame
+verification path. The new engine is currently an offline artifact/CLI boundary;
+visual extraction and natural-language predicate compilation still need integration
+and independent recognition evaluation. No model calls or budget changes were
+made. See [implementation and verification](qa/FULL_VIDEO_INDEX_OFFLINE_20261025.md).
+
+### Current page connection
+
+The offline-only statement above is superseded by the page-integration record in
+[QA acceptance](qa/FULL_VIDEO_INDEX_OFFLINE_20261025.md#page-integration-supersedes-the-offline-only-boundary--2026-10-25).
+Owned occurrence search, zero-model composer chat, durable restoration, explicit
+property filters and the paginated original-time timeline now use the observation
+engine directly. Concept alignment includes general bilingual normalization and
+arbitrary aliases supplied by a trusted source index. Legacy captions stay
+unverified; real full-source observations are not fabricated or automatically
+re-extracted. The real basketball index remains sparse.
+
+## Local event reasoning increment (2026-10-25)
+
+Private observation indexes may now carry trusted track/entity references,
+canonical event keys, event completeness and data-driven state-transition rules.
+The existing owned index-chat and occurrence timeline can count these events,
+group by supplied entity references and exclude explicitly linked replay clips
+from counts. This does not create new visual observations, infer identities from
+clothing, or recognize unlabelled replays. Full source/event coverage is required
+before a count can be exact under the index. Raw basketball shot recognition and
+full-match counting remain unaccepted. See
+[offline event/page QA](qa/EVENT_ENGINE_OFFLINE_20261025.md).
+
+
+## Actual optional local visual engine (2026-10-25)
+
+The opt-in on-device route now compiles owned original frames and selects
+question-relevant observation IDs in small batches. It expands every matching
+observation's actual support frames. Appearance/presence questions directly check
+remaining sampled frames, with independent single-frame confirmation for batch
+negatives. Query/source/generation-specific receipts prevent silently repeating
+unknown work. Source timestamps are computed from decoder metadata; search
+summaries use actual matches and a query-condition label, not invented model time
+lists. General targets and conjunctions are not basketball-specific branches.
+See [runtime](LOCAL_VISION.md) and [actual page acceptance](qa/LOCAL_VISION_20261025.md).
+This does not establish original-frame exhaustive recall or unique-entity/event
+counts. The default fixture and zero-model caption-search routes remain separate.

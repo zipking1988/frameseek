@@ -277,3 +277,57 @@ def scene_windows(directory, metadata, threshold):
         {"start": w.start, "end": w.end} for w in plan_windows(metadata["duration"], cuts)
     ]
     return metadata
+
+
+def frame_timeline(directory, metadata):
+    """All decoded source frame PTS for an offline full-scan plan, never fps math.
+
+    Refuse missing, repeated, non-monotonic, trimmed or excessive timelines rather
+    than labelling a sampled/partially decoded catalog as full-source coverage.
+    """
+    binary = shutil.which("ffprobe")
+    if not binary:
+        raise MediaError("ffprobe_unavailable")
+    output, _ = run(
+        directory.resolve(),
+        [
+            binary,
+            "-v",
+            "error",
+            "-protocol_whitelist",
+            "file,pipe",
+            "-format_whitelist",
+            "mov,matroska,webm,avi",
+            "-select_streams",
+            "v:0",
+            "-show_frames",
+            "-show_entries",
+            "frame=best_effort_timestamp_time,duration_time,pkt_duration_time",
+            "-of",
+            "json",
+            str(directory.resolve() / "original"),
+        ],
+        timeout=90,
+        output_limit=32 * 1024 * 1024,
+    )
+    try:
+        raw = json.loads(output)["frames"]
+        if not isinstance(raw, list) or not 1 <= len(raw) <= 216000:
+            raise MediaError("observation_frame_limit")
+        times = [
+            float(frame["best_effort_timestamp_time"]) - metadata["start_pts"] for frame in raw
+        ]
+        duration = metadata["duration"]
+        last_duration = float(raw[-1].get("duration_time", raw[-1].get("pkt_duration_time", "nan")))
+        if (
+            not math.isfinite(last_duration)
+            or last_duration <= 0
+            or not math.isclose(times[-1] + last_duration, duration, abs_tol=0.00001, rel_tol=0)
+            or times[0] != 0
+            or not all(math.isfinite(t) and 0 <= t < duration for t in times)
+            or any(b <= a for a, b in zip(times, times[1:], strict=False))
+        ):
+            raise MediaError("incomplete_source_timeline")
+        return times
+    except (KeyError, TypeError, ValueError) as error:
+        raise MediaError("incomplete_source_timeline") from error

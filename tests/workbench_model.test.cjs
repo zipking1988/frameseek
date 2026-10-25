@@ -84,15 +84,15 @@ test("集合限制、移除与重置不遗留引用，本地文件禁止套用�
   assert.match(s.markdown(), /本地文件/);
   assert.doesNotMatch(s.markdown(), /合成演示/);
 });
-test("最近12轮受限，但保存的发现保留来源快照", () => {
+test("超过十二轮仍保留原聊天及发现来源快照", () => {
   const s = createStore();
   s.record("old", query);
   s.pinConclusion("old", query);
   for (let i = 0; i < 13; i++) s.record("turn-" + i, query);
-  assert.equal(s.getSnapshot().records.length, 12);
+  assert.equal(s.getSnapshot().records.length, 14);
   assert.equal(
     s.getSnapshot().records.some((r) => r.id === "old"),
-    false,
+    true,
   );
   assert.equal(s.getSnapshot().pins[0].turnId, "old");
   assert.equal(
@@ -141,4 +141,15 @@ test("发现筛选与时间排序保持来源及保存顺序，不修改原集�
   assert.deepEqual(original, [later, conclusion, earlier]);
   assert.equal(visiblePins(original, "evidence", "time")[0].query, query);
   assert.deepEqual(visiblePins([], "evidence", "time"), []);
+});
+
+test("history capacity rejects a new card without evicting old questions",()=>{
+  const store=createStore();
+  for(let i=1;i<=100;i++) assert.equal(store.record(`task-${i}`,{...query,id:`q${i}`}),true);
+  const before=store.getSnapshot();
+  assert.equal(store.record('task-101',{...query,id:'overflow'}),false);
+  assert.equal(store.getSnapshot(),before);
+  assert.equal(store.getSnapshot().records[0].id,'task-1');
+  store.hydrate(before);
+  assert.equal(store.getSnapshot().records.length,100);
 });

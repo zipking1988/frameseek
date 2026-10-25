@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from frameseek.api import create_app
@@ -270,5 +271,45 @@ async def test_cross_video_and_forged_real_evidence_cannot_be_saved(app):
             json={"revision": 0, "state": {"records": [{"id": "task-1", "query": altered}]}},
         )
         assert response.status_code == 422
+    finally:
+        await a.aclose()
+
+
+@pytest.mark.anyio
+async def test_local_session_reissue_preserves_owner_csrf_retention_and_private_state(app):
+    a = await client_for(app)
+    try:
+        token = a.cookies.get("fs_session")
+        original = app.state.workspace.authenticate(token)
+        desk = (await a.post("/api/investigations", json={})).json()
+        state = {"title": "保留原调查", "records": [], "ui": {"draft": "未发送的草稿"}}
+        path = "/api/investigations/" + desk["id"]
+        assert (await a.put(path, json={"revision": 0, "state": state})).status_code == 200
+        replacement = app.state.workspace.reissue_local_session(original["id"])
+        assert replacement != token
+        assert app.state.workspace.authenticate(replacement) == original
+        assert app.state.workspace.session(replacement) == (original, None)
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as recovered:
+            recovered.cookies.set("fs_session", replacement)
+            session = (await recovered.get("/api/session")).json()
+            assert session["owner_id"] == original["id"] and session["csrf"] == original["csrf"]
+            assert (await recovered.get(path)).json()["state"] == state
+            assert (
+                await recovered.put(path, json={"revision": 1, "state": state})
+            ).status_code == 403
+        newer = app.state.workspace.reissue_local_session(original["id"])
+        assert app.state.workspace.authenticate(newer) == original
+        with pytest.raises(HTTPException) as invalid:
+            app.state.workspace.authenticate(replacement)
+        assert invalid.value.status_code == 401
+        with app.state.workspace.db() as c:
+            c.execute("UPDATE sessions SET expires=0 WHERE id=?", (original["id"],))
+        with pytest.raises(HTTPException) as expired:
+            app.state.workspace.reissue_local_session(original["id"])
+        assert expired.value.status_code == 401
+        with pytest.raises(HTTPException):
+            app.state.workspace.authenticate(newer)
     finally:
         await a.aclose()

@@ -39,3 +39,40 @@ def test_seek_window_keeps_all_decoded_absolute_timestamps(tmp_path):
     assert len(sampled) == 6
     assert [item["t"] for item in sampled] == pytest.approx([12, 13, 14, 15, 16, 17], abs=0.11)
     assert all((tmp_path / "frames" / item["file"]).is_file() for item in sampled)
+
+
+def test_full_source_catalog_enumerates_real_frames_and_stores_no_fake_observations(tmp_path):
+    from frameseek.occurrences import pending_batches, plan_source
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        pytest.skip("FFmpeg required")
+    source = tmp_path / "short.mp4"
+    subprocess.run(
+        [
+            ffmpeg,
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=64x64:rate=10",
+            "-t",
+            "2",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(source),
+        ],
+        check=True,
+        timeout=20,
+    )
+    source.rename(tmp_path / "original")
+    index = plan_source(tmp_path, "vid_short", 1, probe(tmp_path), "offline-plan-only")
+    assert len(index.frames) == 20
+    assert [f.t for f in index.frames] == pytest.approx([i / 10 for i in range(20)])
+    assert index.frames[-1].end == 2
+    assert not index.observations
+    assert list(map(len, pending_batches(index))) == [8, 8, 4]
+    assert not (tmp_path / "frames").exists()

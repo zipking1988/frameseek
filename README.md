@@ -12,6 +12,37 @@ FrameSeek connects conversation to its source video. Questions form investigatio
 
 ## Current status
 
+2026-10-25 cloud integration: the optional Token Factory sampled compiler reuses
+the on-device engine's scene/selection/verification logic through the existing
+approved ledger. It exposes owned cloud-chat prepare/async routes and a cloud
+engine option. This does not authorize new calls or establish live cloud model
+quality; exhausted approvals remain blocked. See [cloud runtime](docs/CLOUD_VISION.md).
+
+2026-10-25 actual local page: optional free on-device recognition compiled the
+basketball source into49 windows/385 sampled frames. Question-specific pixel
+checks repair caption omissions, and all accepted references use original source
+times. White-jersey search, a blue-jersey/yellow-headband conjunction, bounded
+negative lookup and player seeking have actual source-page evidence. This is not
+exhaustive original-frame recall, entity tracking or exact event-count acceptance.
+The old12-turn eviction was removed; original chats were restored and history
+now uses owned query references within the existing bounded storage contract.
+See [actual results and incident recovery](docs/qa/LOCAL_VISION_20261025.md).
+
+2026-10-25 local runtime: an opt-in **本机视觉 · 免费** route can compile
+sampled visual observations with independently installed on-device MLX weights,
+then answer with original-time frame references. It has no paid API fallback and
+does not modify Token Factory approvals. Setup and accuracy limits are documented
+in [local vision](docs/LOCAL_VISION.md). This is a local Mac capability, not a
+deployment or exhaustive-recognition acceptance claim.
+
+2026-10-25 local page: **索引问答 · 不调用模型** now appends durable index
+answers and opens an interactive occurrence timeline with conditions, coverage,
+evidence and complete output pagination. It reads structured source indexes when
+available; legacy caption results remain unverified. Bilingual concept alignment
+and source-defined arbitrary aliases require no model dispatch. Actual basketball
+still lacks full-source object observations; zero-model retrieval cannot fill that
+gap. See [page acceptance and limits](docs/qa/FULL_VIDEO_INDEX_OFFLINE_20261025.md#page-integration-supersedes-the-offline-only-boundary--2026-10-25).
+
 2026-10-25 core search: **查找已有画面 · 不调用模型** searches the owned
 frame-level caption index and opens candidate images/timestamps without spending
 model allowance. Optional trusted Token Factory visual search verifies up to8
@@ -22,7 +53,7 @@ live recognition quality and exhaustive counts are not accepted. See
 
 2026-10-25: [code review and dev delivery](docs/CODE_REVIEW_20261025.md) fixes six
 admission/UI issues; 239 backend and 130 frontend tests pass. The private local
-runtime shares the existing cumulative $20 / 40-call ledger: 39 calls used, one
+runtime shares the existing cumulative $20 / 40-call ledger: 40 calls used, none
 remaining. The historical smoke results below do not describe a fresh budget.
 The reviewed fixes and optional single-call Token Factory path are now deployed
 to framefix.net; see the latest deployment record for preservation checks.
@@ -72,7 +103,7 @@ Useful local endpoints:
 5. Export a captured investigation report from **发现 → 导出调查记录** as Markdown, JSON or HTML with optional offline evidence images. See [canvas and report controls](docs/CANVAS_AND_REPORTS.md).
 6. Use **调查库** (investigations) to create or restore work. Use **素材库** (sources) to upload, rename, inspect or delete videos.
 
-Each investigation stores its latest 12 questions, up to 8 findings, notes, layout, path metadata, viewport, draft and player position in local SQLite. Default retention is 24 hours. Ownership follows the browser's session cookie; clearing it does not transfer access to an old investigation. There is no account-based cross-device sync.
+Each investigation stores up to100 questions without silent eviction, up to 8 findings, notes, layout, path metadata, viewport, draft and player position in local SQLite. Default retention is 24 hours. Ownership follows the browser's session cookie; clearing it does not transfer access to an old investigation. There is no account-based cross-device sync.
 
 Uploads are limited to 500 MiB per file, 10 sources/1 GiB per owner and 4 GiB across the service. Preflight checks duration, dimensions, audio and scene/window boundaries, then decodes timestamped previews. Failed or cancelled preflight can be explicitly retried. Analysis and questions for uploaded sources require configured models and approved budgets.
 

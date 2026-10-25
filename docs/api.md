@@ -77,3 +77,79 @@ ingest or ordinary-query admission. Invalid or reversed time windows request
 clarification without dispatch. If the shared ledger cannot be read, preparation
 returns `budget_unavailable`; runtime status reports `budget_status: unavailable`
 without budget amounts or available capacity. Neither path bypasses approval.
+
+### Full saved-caption browsing (offline increment, 2026-10-25)
+
+Owned, CSRF/Origin-protected `POST /api/videos/{id}/search-index` accepts the
+existing `question` and `generation` plus `all_saved:true`, `offset` (default0),
+`limit` (1–100, default40) and optional64-hex `snapshot`. Continuations require
+the query/index-bound snapshot from the first page; changed/stale snapshots
+return409. The response contains `total_candidates`, `next_offset`, `snapshot`
+and `all_source_occurrences_verified:false`. It searches all saved descriptions,
+returns lexical candidates in time order and sends zero model requests. It does
+not certify full-source appearances or interpret structured object attributes.
+The separate structured occurrence engine currently has an offline CLI only;
+see `docs/qa/FULL_VIDEO_INDEX_OFFLINE_20261025.md`.
+
+### Indexed occurrence search and zero-model chat (2026-10-25)
+
+`POST /api/videos/{id}/occurrences/search` accepts `question`, source `generation`,
+`offset`, `limit` (1–100), `snapshot` and optional up-to12 explicit `conditions`
+(`field`, `value`, `operator:is|is_not`). Owned/CSRF/Origin checks apply. Private
+observation artifacts are validated against the original source SHA256, duration
+and generation. The response distinguishes `indexed_occurrences`,
+`index_candidates` and `clarification_required`; only structured observations can
+become evidence. Caption fallback is explicitly incomplete and unverified.
+
+`POST /api/index-chat/prepare` and `/api/index-chat` accept the existing ChatInput
+fields plus `engine:"index"`. They do not invoke provider adapters or install/use
+model approvals. They append owned, generation-bound, idempotent query records;
+responses retain schema0.1 and carry outer `engine`, `source_generation` and small
+`index_search` metadata for restoring the timeline. Numeric model caps and model
+request payload hashing are unchanged. Chat returns up to20 indexed intervals;
+use the timeline endpoint for complete output pagination. No arbitrary semantic
+or full-source recognition guarantee follows from this zero-model retrieval route.
+
+### Optional on-device visual chat (2026-10-25)
+
+`GET /api/session` includes `local_vision_ready`. When enabled in trusted process
+configuration, owned/CSRF/Origin-protected `POST /api/local-chat/prepare` and
+`POST /api/local-chat` accept the existing ChatInput without an extra `engine`
+field. Preparation does not run inference. Chat uses one serialized local worker
+and returns a `query_control` pending envelope with progress in `suggested_action`;
+repeating the same request polls without dispatching another job. Completed
+responses use schema0.1 and outer `engine:"local"`, source generation and the
+existing durable query format. Cancellation, stale source/desk generations and
+expired ownership prevent publication. Unknown interrupted work is not silently
+resent. No remote provider fallback, spending approval or paid-budget mutation is
+available through these endpoints. See [local runtime and limits](LOCAL_VISION.md).
+
+
+### Durable query-reference snapshots (2026-10-25)
+
+`GET /api/session` advertises `query_reference_snapshots:true`. For uploaded
+sources, a saved record/finding may use `query:{id,parentTurn?}` instead of copying
+the complete answer. Only a completed query belonging to the authenticated owner
+and the same investigation resolves. Full legacy answers are still validated
+against their canonical query response; evidence findings still require an exact
+canonical frame. State storage keeps compact references. GET and PUT responses
+expand full canonical answers for compatibility. Query references cannot grant
+access to another owner, source or investigation.
+
+Snapshots retain up to100 records and8 findings with the existing1MiB encoded
+state bound. The desktop store no longer silently evicts the oldest card after
+round12. At capacity it preserves old records. Request recovery returns up to100
+owned records, aligned with the existing query-history bound. These are storage
+bounds, not changes to model/spending approvals.
+
+
+## Cloud sampled visual chat
+
+With trusted `FS_CLOUD_VISION=1`, `/api/session` exposes `cloud_vision_ready`.
+`POST /api/cloud-chat/prepare` and `/api/cloud-chat` use ChatInput and the existing
+owned asynchronous query-control protocol. Prepare reports a conservative
+`estimate` and `ready`, `capability_blocked` or `budget_blocked`, without dispatch.
+The execution route repeats admission and uses the original approved two-level
+ledger. Results have `engine: "cloud"` and schema0.1; source images and timestamps
+remain authoritative. This is a Token Factory inference/indexing path, not model
+training. See [cloud compiler](CLOUD_VISION.md).

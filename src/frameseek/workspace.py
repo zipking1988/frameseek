@@ -32,6 +32,8 @@ class Workspace:
             c.executescript("""
             CREATE TABLE IF NOT EXISTS sessions(
               id TEXT PRIMARY KEY, csrf TEXT NOT NULL, expires REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS session_tokens(
+              token_hash TEXT PRIMARY KEY, owner TEXT NOT NULL UNIQUE);
             CREATE TABLE IF NOT EXISTS investigations(
               id TEXT PRIMARY KEY, owner TEXT NOT NULL, video TEXT NOT NULL,
               title TEXT NOT NULL, revision INTEGER NOT NULL, state TEXT NOT NULL,
@@ -80,10 +82,39 @@ class Workspace:
         finally:
             c.close()
 
+    @staticmethod
+    def _session_row(c, token):
+        token_hash = digest(token)
+        row = c.execute("SELECT * FROM sessions WHERE id=?", (token_hash,)).fetchone()
+        if row is None:
+            row = c.execute(
+                "SELECT s.* FROM sessions s JOIN session_tokens t ON t.owner=s.id "
+                "WHERE t.token_hash=?",
+                (token_hash,),
+            ).fetchone()
+        return row
+
+    def reissue_local_session(self, owner):
+        """Offline administrator recovery only. No HTTP route exposes issuance.
+
+        Reissue a random bearer token for the SAME unexpired owner, CSRF and TTL.
+        Private media, ownership IDs and both spending-ledger scopes do not move.
+        At most one recovery token per owner remains active.
+        """
+        with self.db() as c:
+            c.execute("BEGIN IMMEDIATE")
+            row = c.execute("SELECT * FROM sessions WHERE id=?", (owner,)).fetchone()
+            if not row or row["expires"] <= time.time():
+                raise HTTPException(401, "session_expired")
+            token = ident()
+            c.execute("DELETE FROM session_tokens WHERE owner=?", (owner,))
+            c.execute("INSERT INTO session_tokens VALUES(?,?)", (digest(token), owner))
+            return token
+
     def session(self, token=None):
         with self.db() as c:
             if token:
-                row = c.execute("SELECT * FROM sessions WHERE id=?", (digest(token),)).fetchone()
+                row = self._session_row(c, token)
                 if row and row["expires"] > time.time():
                     return dict(row), None
             if (
@@ -102,7 +133,7 @@ class Workspace:
         if not token:
             raise HTTPException(401, "session_required")
         with self.db() as c:
-            row = c.execute("SELECT * FROM sessions WHERE id=?", (digest(token),)).fetchone()
+            row = self._session_row(c, token)
         if not row or row["expires"] <= time.time():
             raise HTTPException(401, "session_expired")
         return dict(row)
@@ -370,6 +401,7 @@ class Workspace:
                 (time.time(),),
             )
             c.execute("DELETE FROM sessions WHERE expires<=?", (time.time(),))
+            c.execute("DELETE FROM session_tokens WHERE owner NOT IN (SELECT id FROM sessions)")
         for row in expired:
             shutil.rmtree(self.root / row["id"], ignore_errors=False) if (
                 self.root / row["id"]

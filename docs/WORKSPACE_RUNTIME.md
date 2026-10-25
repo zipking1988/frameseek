@@ -8,7 +8,7 @@
 
 ## 可使用的工作流
 
-- 顶部调查库：新建、命名、切换、恢复和删除调查。标题、最近12轮问题、8项发现、笔记、卡片位置、命名对象分组、路径名称、折叠、画布视角、面板、输入草稿和播放器位置保存到 SQLite；浏览器只保存当前调查 ID。新调查保留上一份调查。
+- 顶部调查库：新建、命名、切换、恢复和删除调查。标题、最多100轮问题（不再静默淘汰早期记录）、8项发现、笔记、卡片位置、命名对象分组、路径名称、折叠、画布视角、面板、输入草稿和播放器位置保存到 SQLite；浏览器只保存当前调查 ID。新调查保留上一份调查。
 - 素材库：上传多段视频，可重命名，各自拥有独立调查和证据。500 MiB/文件、每主体最多10段素材/1 GiB、全服务4 GiB，上传180秒超时。删除素材级联禁用并清理原文件、帧、模型结果、索引及关联调查；删除操作在界面有确认。
 - 上传完成后，ffprobe 检查真实时长、像素与音轨，ffmpeg 检查镜头变化、生成完整120秒/5秒重叠窗口和实际解码 PTS 预览。未配置模型显示“等待模型配置”，问答关闭，禁止套用演示结果。摄取失败保留原素材；未完成预检的失败或取消素材可以显式“重新预检”，不会调用模型。
 - 模型配置与批准预算齐备后，在素材库“开始分析”：逐窗粗标注 → 向量索引 → 可配置逐窗 ASR → 原子发布完整 manifest。只有全视觉通道完成且帧文件存在才 ready。ASR 未配置/失败时只声明视觉能力；音轨问题不以视觉回答冒充。
@@ -136,3 +136,12 @@ trend phrases, such as 14 decreasing to23. It preserves the original answer and
 status, offers existing evidence for review, and does not claim video verification
 or rewrite historical queries. This is a targeted guard for the recorded QA defect,
 not a general correctness guarantee or a completed live-acceptance claim.
+
+
+2026-10-25 history repair: uploaded-source snapshots now store owned query references
+rather than duplicating answer payloads. GET/PUT responses still expand complete
+answers for clients. Owner/investigation and canonical-evidence validation, CAS
+and the1MiB snapshot bound remain enforced. Session capability
+`query_reference_snapshots` gates compact client writes. Recovery covers the
+existing100-query history bound; reaching capacity preserves old records rather
+than evicting them. The paid $20/40 ledger is unrelated and unchanged.

@@ -677,3 +677,97 @@ This is an integration/search increment, not acceptance of exhaustive recall,
 object identity continuity or arbitrary-question correctness. The underlying
 index remains sparse, and no new paid recognition was run. See
 [engine scope](VIDEO_CTRL_F_ENGINE.md) and [QA evidence](qa/CTRL_F_20261025.md).
+
+
+## Final authorized live appearance search — 2026-10-25
+
+One real online question, “找出穿白色球衣的人，列出出现时间”, completed via
+Token Factory with eight verified sampled frames. All eight original images
+visibly contain white basketball jerseys, all eight reference buttons sought
+the exact original timestamps, and refresh preserved the new question6 and
+previous visible chats. This establishes this positive case only, not exhaustive
+appearance recall or arbitrary-question accuracy. See
+[the live QA record](qa/CTRL_F_20261025.md#authorized-final-live-request--2026-10-25).
+
+Cumulative request use is now40/40. No retries or additional model stages were
+sent, no budget cap was raised, and the $20 total cap remains. Further paid
+requests are blocked; saved answers, evidence playback and free cached candidate
+browsing remain available. Private media/configuration fingerprints are unchanged.
+
+## Local zero-model index page integration — 2026-10-25
+
+Localhost now connects the observation index to owned occurrence search, durable
+index chat and the interactive paginated timeline. It was not deployed to Nebius.
+Browser integration passed on explicitly annotated synthetic sources with no
+provider configured. Actual local basketball adds one zero-model index answer;
+its bilingual description search returns19 candidates and explicitly reports
+missing full-source object observations. All3 local sources and9 prior query rows
+retain their fingerprints. Production attempts/budgets/settlements/queries,
+source and private configuration hashes match the40/40 snapshot unchanged.
+See [page acceptance](qa/FULL_VIDEO_INDEX_OFFLINE_20261025.md).
+
+## Local event reasoning and player recovery — 2026-10-25
+
+Local event counts now consume explicit action observations and data-driven
+same-track state transitions. Adjacent frames merge into events; explicit
+canonical replay associations deduplicate counts while preserving all original
+clips. Counts, entity grouping, evidence and recovery passed isolated synthetic
+browser checks with zero provider configuration.307 backend/140 frontend tests,
+build, lint/format/schema and diff checks pass.
+
+The compact current-video recovery button now aligns with the canvas toolbar;
+the canvas rail also opens the source panel. Basketball and box histories and
+all original drafts remain preserved. A QA cookie-host collision was recovered
+without moving ownership, extending validity or changing the ledger; the
+isolated harness now uses a distinct cookie name and localhost. See
+[event QA and remaining recognition gaps](qa/EVENT_ENGINE_OFFLINE_20261025.md).
+
+This is NOT acceptance of automatic raw-video event recognition or basketball
+three-point totals. Actual basketball still lacks full event observations, and
+no new model calls, budget changes or online deployment were made. The existing
+$20/40 cap and40/40 request use remain unchanged.
+
+## Free local visual runtime and replica recovery — 2026-10-25
+
+The local Mac now has an opt-in, independently installed MLX visual compiler.
+It decodes real source frames, caches source/generation-specific scene packets
+and uses owned asynchronous local-chat routes. It has no Token Factory fallback
+or paid-budget mutation. See [runtime](LOCAL_VISION.md) and
+[actual QA / failures / remaining acceptance](qa/LOCAL_VISION_20261025.md).
+This capability has not been deployed to the Nebius Linux CPU service.
+
+During actual local testing the replica crossed its stale October25 retention
+cutoff; cleanup removed it and its new visual cache. The online January grant and
+retained source were intact. The API was stopped, the authoritative source/hash/
+owner mapping and pre-existing grant were verified, and the original local source,
+index and10 original query rows were restored from retained media/private backup.
+The query fingerprint matches the pre-test baseline. The local source, linked desk
+and existing session now use the already-authorized January13 00:00JST cutoff.
+This does not create a public expired-data revival path or weaken cleanup checks.
+No original paid ingest was recharged/rebuilt. Paid attempt, budget and settlement
+fingerprints remain unchanged. Actual local page acceptance subsequently passed
+white-jersey search (49 groups/377 citations), same-person blue-jersey/yellow-
+headband search (05:08–05:10), negative scoped presence search, original score
+citation playback, refresh/video navigation and draft/history preservation.
+A12-record desk cap was repaired with owned compact query references (100-record
+capacity,no silent eviction); original history was recovered from durable rows
+and private backup.319 backend/143 frontend tests and build/checks passed.
+These are local Mac results, not a new framefix.net deployment. Exact action
+counts/ranking and exhaustive original-frame recall remain unaccepted. See the
+linked QA report for evidence, incidents and limitations.
+
+
+## Cloud sampled compiler deployment — 2026-10-25
+
+The existing CPU service now exposes optional Token Factory cloud-chat prepare
+and async execution, sharing the sampled compiler with the Mac implementation.
+The cloud engine option is present on framefix.net. Existing private source,
+queries and financial ledgers were preserved; no new model calls, approvals,
+resources or GPU rentals occurred.325 backend/143 frontend tests and build/checks
+pass. Actual page submission correctly stops before dispatch on exhausted budget.
+
+This is deployed integration and admission acceptance, not real cloud model
+quality acceptance. Current full-source path requires49 new scene calls and a
+conservative106-call/$37.10 total envelope. Existing approval remains$20/40,
+40 used; the $2.634047 occupied amount is not a new actual invoice. No cap was
+changed. See [cloud QA and remaining blocker](qa/CLOUD_VISION_20261025.md).

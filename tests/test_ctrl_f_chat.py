@@ -105,6 +105,36 @@ async def test_open_question_uses_one_verified_call_and_local_index_needs_none(
         assert candidate["verified_matches"] is False
         assert candidate["model_requests_sent"] == 0
         assert candidate["frames"]
+        # Full-index browsing is a separate no-call path, never top-eight proof.
+        exhaustive = await client.post(
+            f"/api/videos/{video}/search-index",
+            json=search
+            | {"question": candidate["frames"][0]["caption"], "all_saved": True, "limit": 1},
+        )
+        assert exhaustive.status_code == 200
+        page = exhaustive.json()
+        assert page["total_candidates"] >= 1 and len(page["frames"]) == 1
+        assert page["all_source_occurrences_verified"] is False
+        assert page["model_requests_sent"] == 0
+        if page["next_offset"] is not None:
+            continuation = await client.post(
+                f"/api/videos/{video}/search-index",
+                json=search
+                | {
+                    "question": candidate["frames"][0]["caption"],
+                    "all_saved": True,
+                    "offset": page["next_offset"],
+                    "limit": 1,
+                    "snapshot": page["snapshot"],
+                },
+            )
+            assert continuation.status_code == 200
+            stale_page = await client.post(
+                f"/api/videos/{video}/search-index",
+                json=search
+                | {"all_saved": True, "offset": page["next_offset"], "snapshot": page["snapshot"]},
+            )
+            assert stale_page.status_code == 409
         assert len(calls) == before
         with ledger._connect() as c:
             assert [

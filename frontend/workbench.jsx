@@ -181,22 +181,28 @@ function ComposerSuggestions() {
   const shortLabels = suggestions.titles || (suggestions.label.startsWith("示例问题")
     ? ["概括可见场景", "查找清晰片段", "哪些内容无法确认？"]
     : suggestions.label === "演示示例" ? ["包裹何时在中央？", "什么时候移到右侧？", "画面里有叉车吗？"] : null);
-  return <section className="composer-suggestions" aria-label="建议问题">
-    <div className="suggestion-heading"><span>{suggestions.label}</span><small>{hasDraft ? "已有草稿 · 清空后可选" : "点击填入，修改后发送"}</small></div>
-    <div className="suggestion-buttons">{suggestions.items.map((question, index) =>
-      <button key={question} type="button" title={question} disabled={hasDraft || state.local}
-        onClick={() => ui()?.fillSuggestedQuestion(question)}>{shortLabels?.[index] || question}</button>
-    )}</div>
-    {suggestions.basis && <div className="suggestion-basis">
-      <button type="button" title="回看已有证据，不发送问题、不调用模型" onClick={() => {
-        const current = store.getSnapshot();
-        const source = current.records.find(item => item.id === suggestions.basis.turnId && !item.hidden && item.query.id === suggestions.basis.queryId);
-        if (source && (current.sourceInfo?.id || "demo_parcel") === suggestions.basis.videoId)
-          ui()?.seek(suggestions.basis.t, source.query);
-      }}><img src={suggestions.basis.uri} alt="" /><span>回看依据 {clock(suggestions.basis.t)}</span></button>
-      <small>{suggestions.label === "基于已有证据" ? "依据已有画面整理，未新增模型分析" : "复用已有回答，不增加模型请求"}</small>
-    </div>}
-  </section>;
+  return <details className="composer-suggestions composer-popup" name="composer-popover" aria-label="建议问题">
+    <summary title="查看建议问题，点击只填入，不会发送">建议</summary>
+    <div className="composer-suggestion-panel">
+      <div className="suggestion-heading"><span>{suggestions.label}</span><small>{hasDraft ? "清空草稿后可选" : "点击填入，不会发送"}</small></div>
+      <div className="suggestion-buttons">{suggestions.items.map((question, index) =>
+        <button key={question} type="button" title={question} disabled={hasDraft || state.local}
+          onClick={(event) => {
+            ui()?.fillSuggestedQuestion(question);
+            event.currentTarget.closest("details").open=false;
+          }}>{shortLabels?.[index] || question}</button>
+      )}</div>
+      {suggestions.basis && <div className="suggestion-basis">
+        <button type="button" title="回看已有证据，不发送问题、不调用模型" onClick={(event) => {
+          const current = store.getSnapshot();
+          const source = current.records.find(item => item.id === suggestions.basis.turnId && !item.hidden && item.query.id === suggestions.basis.queryId);
+          if (source && (current.sourceInfo?.id || "demo_parcel") === suggestions.basis.videoId)
+            ui()?.seek(suggestions.basis.t, source.query);
+          event.currentTarget.closest("details").open=false;
+        }}><img src={suggestions.basis.uri} alt="" /><span>回看依据 {clock(suggestions.basis.t)}</span></button>
+      </div>}
+    </div>
+  </details>;
 }
 
 function Outline() {
@@ -431,7 +437,7 @@ function Inspector() {
                 <span
                   className={`result-pill ${selected.query.response.status}`}
                 >
-                  {labels[selected.query.response.status]}
+                  {selected.query.engine === "index" ? "索引问答 · 未调用模型" : labels[selected.query.response.status]}
                 </span>
               </div>
               <h2 className="inspector-question">{selected.query.question}</h2>
@@ -471,6 +477,7 @@ function Inspector() {
                   )}
                 </div>
                 <p>{selected.query.response.answer}</p>
+                {selected.query.engine === "index" && <button className="outline-button" onClick={()=>window.FrameSeekPersistence?.searchIndex(selected.query.index_search?.resolved_question || selected.query.question)}>查看索引时间线 · 不调用模型</button>}
                 {window.FrameSeekWorkbenchModel.queryFailureReason(selected.query) &&
                   <div className="answer-review-note" role="note">
                     <strong>为什么没有回答</strong>
@@ -573,7 +580,7 @@ function Inspector() {
                         }}
                         aria-label={`回看引用 ${clock(frame.t)}`}
                       >
-                        <img src={frame.uri} alt={frame.caption} />
+                        <img src={frame.uri} alt={frame.caption} loading="lazy" decoding="async" />
                         <span>{clock(frame.t)}</span>
                       </button>
                       <div>
@@ -606,7 +613,7 @@ function Inspector() {
                   <li>
                     <span>01</span>
                     <div>
-                      查看范围<small>{state.sourceInfo?.name || "合成视频"} · 00:00–{clock(state.sourceInfo?.metadata?.duration || 18)}</small>
+                      原视频范围<small>{state.sourceInfo?.name || "合成视频"} · 00:00–{clock(state.sourceInfo?.metadata?.duration || 18)}</small>
                     </div>
                   </li>
                   <li>
@@ -614,7 +621,7 @@ function Inspector() {
                     <div>
                       {selected.query.mode === "real" ? "证据检查" : "固定样例匹配"}
                       <small>
-                        {selected.query.response.events.length} 段事件 ·{" "}
+                        {selected.query.response.events.length} {['local','index'].includes(selected.query.engine) ? '组匹配画面' : '段事件'} ·{" "}
                         {frames.length} 张证据帧
                       </small>
                     </div>
@@ -623,7 +630,7 @@ function Inspector() {
                     <span>03</span>
                     <div>
                       {labels[selected.query.response.status]}
-                      <small>{selected.query.mode === "real" ? `${selected.query.response.trace.visible.segments_reviewed} 个片段已回看` : "未执行新的模型推理"}</small>
+                      <small>{selected.query.engine === "index" ? "已检索索引 · 未新增视觉复核" : selected.query.mode === "real" ? `${selected.query.response.trace.visible.segments_reviewed} 个片段已回看` : "未执行新的模型推理"}</small>
                     </div>
                   </li>
                 </ol>

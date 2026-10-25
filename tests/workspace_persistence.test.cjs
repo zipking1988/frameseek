@@ -42,7 +42,7 @@ class Element {
   scrollIntoView() {}
   querySelector() { return new Element(); }
 }
-async function harness({ state = {}, requests = [], job = "ready", realReady = true, storage = new Map(), owner = "owner-A", revision = 1 } = {}) {
+async function harness({ state = {}, requests = [], job = "ready", realReady = true, storage = new Map(), owner = "owner-A", revision = 1, queryReferences = false } = {}) {
   const store = createStore(), ids = new Map(), calls = [], answers = [], timers = new Map();
   let seq = 100, timerSeq = 0, ready = false, busy = false, context = null, override = null;
   const get = id => { if (!ids.has(id)) ids.set(id, new Element()); return ids.get(id); };
@@ -57,6 +57,7 @@ async function harness({ state = {}, requests = [], job = "ready", realReady = t
   const requestLists = new Map([["desk-A", requests], ["desk-B", []]]);
   const ui = {
     ready: () => ready, busy: value => { busy = value; }, notify: value => { get("notice").textContent = value; },
+    preflightFeedback: value => { get("feedback").textContent = value; },
     snapshot: () => ({ ...store.getSnapshot(), ui: { draft: get("question").value } }),
     currentContext: () => context, showSource() {},
     restore(saved, video) { store.hydrate({ ...saved, sourceInfo: video, local: video.job?.state !== "ready" }); get("question").value = saved.ui?.draft || ""; },
@@ -72,7 +73,7 @@ async function harness({ state = {}, requests = [], job = "ready", realReady = t
     calls.push(call);
     const special = override?.(call);
     if (special !== undefined) return special;
-    if (url === "/api/session") return response({ csrf: "csrf", owner_id: owner, ttl_hours: 24, real_ready: realReady });
+    if (url === "/api/session") return response({ csrf: "csrf", owner_id: owner, ttl_hours: 24, real_ready: realReady, query_reference_snapshots: queryReferences });
     if (url === "/api/investigations" && call.method === "GET") return response({ items: [...desks.values()] });
     if (url === "/api/investigations" && call.method === "POST") {
       const desk = { id: "new-demo", video: call.body.video_id, title: call.body.title, revision: 1, state: {} };
@@ -144,6 +145,8 @@ test('budget and capability preflight preserve the draft without a query or fail
   assert.equal(h.answers.length,0);assert.equal(h.calls.filter(c=>c.url==='/api/chat').length,0);
   assert.equal(h.window.testWorkspace.get().activeRequest,null);
   assert.match(h.get('notice').textContent,/尚未调用模型/);
+  assert.match(h.get('feedback').textContent,/尚未调用模型/);
+  assert.equal(h.busy,false,'send is released after preflight rejection');
   h.get('question').dispatchEvent({type:'input'});
   assert.equal(h.get('notice').textContent,'','editing clears a stale preflight explanation');
  }
@@ -300,15 +303,16 @@ test("delayed recovery cannot import old answers or overwrite the new desk draft
   assert.equal(h.window.testWorkspace.get().current.id, "desk-B");
 });
 
-test("latest twelve recovery candidates preserve existing turn and finding origin IDs", async () => {
+test("older recovery candidates are restored without changing existing turn and finding origin IDs", async () => {
   const records = Array.from({ length: 12 }, (_, j) => ({ id: `task-${j + 2}`, query: answer(`q${j + 2}`) }));
   const pin = { id: "finding-1", kind: "conclusion", turnId: "task-2", query: records[0].query };
   const requests = Array.from({ length: 13 }, (_, j) => ({ id: `q${13 - j}`, state: "done", result: answer(`q${13 - j}`) }));
   const h = await harness({ state: { records, pins: [pin] }, requests });
-  assert.equal(h.answers.length, 0);
-  assert.deepEqual(h.store.getSnapshot().records.map(r => r.id), records.map(r => r.id));
+  assert.equal(h.answers.length, 1);
+  assert.deepEqual(h.store.getSnapshot().records.slice(0,12).map(r => r.id), records.map(r => r.id));
+  assert.equal(h.answers[0].id,"q1");
   assert.equal(h.store.getSnapshot().pins[0].turnId, "task-2");
-  await h.window.testWorkspace.recover(); assert.equal(h.answers.length, 0);
+  await h.window.testWorkspace.recover(); assert.equal(h.answers.length, 1);
 });
 
 test("new recovered results preserve drafts, restore the submitted parent and persist immediately", async () => {
@@ -435,6 +439,11 @@ test("app answers keep edits made while busy and recovery preserves an existing 
     fetch: async () => response({ queries: [] }), Event: class {}, URL: {}, navigator: {},
   });
   vm.runInContext(fs.readFileSync(require.resolve("../src/frameseek/static/app.js"), "utf8"), sandbox); await tick();
+  vm.runInContext('setSourceOpen(false)', sandbox);
+  assert.equal(shell.classList.contains('source-collapsed'), true);
+  get('rail-canvas').dispatchEvent({type:'click'});
+  assert.equal(shell.classList.contains('source-collapsed'), false, 'canvas restores the source player');
+  assert.equal(get('rail-video').getAttribute('aria-expanded'), 'true');
   vm.runInContext('activeVideo={id:"video-A"}; window.FrameSeekSessionUI.busy(true)', sandbox);
   get("question").value = "next draft";
   vm.runInContext(`window.FrameSeekSessionUI.answer(${JSON.stringify(answer("done"))},"submitted")`, sandbox);
@@ -534,7 +543,7 @@ test('index search preserves draft and cannot dispatch chat; late results cannot
  const h=await harness();
  h.videos.get('video-A').generation=2;
  const wait=deferred();
- h.setOverride(c=>c.url.endsWith('/search-index') ? wait.promise : undefined);
+ h.setOverride(c=>c.url.endsWith('/occurrences/search') ? wait.promise : undefined);
  h.get('question').value='找红帽子白衣服的人';
  const pending=h.get('search-index').onclick();
  assert.equal(h.get('visual-search-dialog').open,true);
@@ -552,7 +561,7 @@ test('index candidates render as unverified, seek original time, and keep the qu
  const h=await harness();let sought;
  h.videos.get('video-A').generation=2;
  h.ui.seek=t=>{sought=t;};
- h.setOverride(c=>c.url.endsWith('/search-index') ? response({indexed_frames:40,frames:[
+ h.setOverride(c=>c.url.endsWith('/occurrences/search') ? response({indexed_frames:40,frames:[
   {uri:'/media/video-A/frames/f.jpg',t:62.4,caption:'保存的画面描述'},
   {uri:'/media/video-B/frames/foreign.jpg',t:1,caption:'另一视频不得显示'}
  ]}) : undefined);
@@ -604,11 +613,80 @@ test('index results from an older generation cannot publish into the same video'
  const h=await harness(),wait=deferred();
  h.videos.get('video-A').generation=2;
  h.get('question').value='同一视频重新预检前的问题';
- h.setOverride(c=>c.url.endsWith('/search-index') ? wait.promise : undefined);
+ h.setOverride(c=>c.url.endsWith('/occurrences/search') ? wait.promise : undefined);
  const pending=h.get('search-index').onclick();
  h.window.testWorkspace.get().currentVideo.generation=3;
  wait.resolve(response({indexed_frames:1,frames:[{uri:'/media/video-A/frames/old.jpg',t:1,caption:'过期帧'}]}));
  await pending;
  assert.equal(h.get('visual-search-results').children.length,0);
  assert.equal(h.get('question').value,'同一视频重新预检前的问题');
+});
+
+test('full saved-index browsing loads subsequent times without sending chat or losing draft', async()=>{
+ const h=await harness();h.videos.get('video-A').generation=2;
+ const pages=[];
+ h.setOverride(c=>{
+  if(!c.url.endsWith('/occurrences/search'))return undefined;
+  pages.push(c.body);
+  return response({indexed_frames:41,total_candidates:41,snapshot:'a'.repeat(64),next_offset:c.body.offset===0 ? 40 : null,
+   frames:[{uri:`/media/video-A/frames/f${c.body.offset}.jpg`,t:c.body.offset,caption:'已有描述'}]});
+ });
+ h.get('question').value='查找全部时间';await h.get('search-index').onclick();
+ assert.equal(pages[0].limit,40);
+ const more=h.get('visual-search-results').children.at(-1);
+ assert.match(more.textContent,/加载后续时间/);await more.onclick();
+ assert.equal(pages[1].offset,40);assert.equal(pages[1].snapshot,'a'.repeat(64));
+ assert.equal(h.get('visual-search-results').children.length,2);
+ assert.match(h.get('visual-search-summary').textContent,/不是整段视频的全部出现时间/);
+ assert.equal(h.get('question').value,'查找全部时间');assert.equal(h.answers.length,0);
+ assert.equal(h.calls.filter(c=>c.url.startsWith('/api/chat')).length,0);
+});
+
+test('late full-index continuation cannot publish on another investigation', async()=>{
+ const h=await harness();h.videos.get('video-A').generation=2;const wait=deferred();
+ h.setOverride(c=>c.url.endsWith('/occurrences/search') ? c.body.offset===0 ? response({indexed_frames:41,total_candidates:41,snapshot:'a'.repeat(64),next_offset:40,frames:[]}) : wait.promise : undefined);
+ h.get('question').value='查找';await h.get('search-index').onclick();
+ const more=h.get('visual-search-results').children.at(-1), pending=more.onclick();
+ await h.window.testWorkspace.openDesk('desk-B');
+ wait.resolve(response({indexed_frames:41,frames:[{uri:'/media/video-A/frames/f.jpg',t:40,caption:'旧视频'}]}));
+ await pending;
+ assert.equal(h.get('visual-search-results').children.length,0);
+ assert.equal(h.get('visual-search-dialog').open,false);
+});
+
+test('index chat uses separate zero-model routes and persists into existing canvas', async()=>{
+ const h=await harness();h.get('chat-engine').value='index';
+ h.get('question').value='find white jersey';
+ h.setOverride(c=>c.url==='/api/index-chat/prepare' ? response({kind:'ready'})
+  : c.url==='/api/index-chat' ? response({...answer(c.body.request_id),engine:'index',index_search:{total:3}}) : undefined);
+ await h.window.FrameSeekPersistence.ask('find white jersey');
+ assert.equal(h.answers.length,1);assert.equal(h.answers[0].engine,'index');
+ assert.equal(h.calls.filter(c=>c.url==='/api/chat' || c.url==='/api/chat/prepare').length,0);
+ assert.equal(h.calls.find(c=>c.url==='/api/index-chat').body.engine,'index');
+ assert.equal(h.get('question').value,'');
+});
+
+test('stored index timeline opens without replacing the active draft', async()=>{
+ const h=await harness();h.videos.get('video-A').generation=2;
+ h.get('question').value='new draft';
+ h.setOverride(c=>c.url.endsWith('/occurrences/search') ? response({kind:'indexed_occurrences',
+  total_occurrences:1,provenance:'ANNOTATED FIXTURE',conditions:[{field:'color',value:'white'}],
+  coverage:{catalog_frames:10,reviewed_frames:10,missing_frame_ids:[],uncertain_frame_ids:[],exhaustive_under_index:true},
+  occurrences:[{start:8,end:9,evidence_count:2,evidence:[{uri:'/media/video-A/frames/f.jpg',t:8}]}]}) : undefined);
+ await h.window.FrameSeekPersistence.searchIndex('white jersey');
+ assert.equal(h.get('question').value,'new draft');
+ assert.match(h.get('visual-search-summary').textContent,/1 \/ 1/);
+ assert.match(h.get('visual-search-coverage').textContent,/10 \/ 10/);
+ assert.equal(h.get('visual-search-results').children.length,1);
+});
+
+test('owned history snapshots send references while retaining full client answers and drafts',async()=>{
+ const q=answer('durable-source-query');
+ const h=await harness({queryReferences:true,state:{records:[{id:'task-1',query:q}],pins:[]}});
+ h.get('question').value='keep my draft';
+ await h.window.FrameSeekPersistence.flush();
+ const saved=h.calls.filter(c=>c.method==='PUT').at(-1).body.state;
+ assert.deepEqual(saved.records[0].query,{id:q.id});
+ assert.equal(saved.ui.draft,'keep my draft');
+ assert.equal(h.store.getSnapshot().records[0].query.response.answer,q.response.answer);
 });

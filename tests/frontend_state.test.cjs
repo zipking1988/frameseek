@@ -134,12 +134,15 @@ async function harness(readyState = 1, width = 1440) {
             ? byClass("evidence-button")
             : [],
   };
+  const emitted = [];
   const context = vm.createContext({
     document,
+    Event: class { constructor(type) { this.type = type; } },
     window: {
       innerWidth: width,
       matchMedia: () => ({ matches: true }),
       addEventListener() {},
+      dispatchEvent(event) { emitted.push(event.type); },
     },
     navigator: { clipboard: { writeText: async () => {} } },
     fetch: async () => ({ ok: true, json: async () => ({ queries: [] }) }),
@@ -166,7 +169,7 @@ async function harness(readyState = 1, width = 1440) {
       followups: [],
     },
   });
-  return { get, player, run, shell, answer };
+  return { get, player, run, shell, answer, emitted };
 }
 
 test("cached metadata supports immediate seek; deferred metadata applies a queued seek", async () => {
@@ -258,12 +261,15 @@ test("source rail toggles the open panel and evidence restores its state without
   h.get("collapse-source").click();
   assert.equal(rail.focused, true);
   assert.equal(rail.getAttribute("aria-expanded"), "false");
+  h.get("source-dock").scrollTop = 900;
   h.run("seek(13)");
+  assert.equal(h.get("source-dock").scrollTop, 0);
   assert.equal(h.shell.classList.contains("source-collapsed"), false);
   assert.equal(rail.getAttribute("aria-expanded"), "true");
   assert.equal(rail.getAttribute("aria-label"), "收起视频面板");
   assert.equal(h.player.currentTime, 13);
   assert.equal(h.get("question").value, "保留当前追问");
+  assert.ok(h.emitted.includes("frameseek-canvas-changed"), "panel state notifies persistence");
 });
 
 test("发现导航显式展开小桌面检查器并保留输入", async () => {
@@ -370,3 +376,21 @@ test('inspector visibility restores independently across narrow and wide desktop
     assert.equal(h.get('toggle-inspector').getAttribute('aria-expanded'),'true');
   }
 });
+
+ test("local canvas previews one group without truncating saved evidence", async () => {
+  const h = await harness();
+  const query = h.answer("ok", [{action:"Visible subject", start:1,end:2,evidence:[{t:1,uri:"/frame.jpg",caption:"visible"}],summary:"Visible"}]);
+  query.engine = "local";
+  query.response.events = [0, 1, 2].map(() => structuredClone(query.response.events[0]));
+  const original = JSON.stringify(query.response);
+  h.run(`renderAnswer(${JSON.stringify(query)})`);
+  const turn = h.get("messages").children[0];
+  const cluster = turn.children.find(child => child.className === "event-cluster");
+  assert.equal(cluster.children.length, 1);
+  assert.ok(turn.children.some(child => child.textContent.startsWith("查看全部 ")));
+  assert.equal(JSON.stringify(query.response), original);
+  const details = turn.children.find(child => child.className === "response-details");
+  const structured = details.children.find(child => child.tagName === "details");
+  const saved = JSON.parse(structured.children.find(child => child.tagName === "pre").textContent);
+  assert.equal(saved.events.length, 3);
+ });

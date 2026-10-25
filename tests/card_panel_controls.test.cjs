@@ -42,12 +42,13 @@ test('hidden questions are excluded from reports while explicitly saved findings
  assert.equal(create({...state,pins:[{id:'finding-1',kind:'conclusion',title:'saved',turnId:'task-4',query}]}).questions[0].retained_by_finding,true);
 });
 
-test('removed records participate in the same bounded twelve-turn retention without resetting IDs',()=>{
+test('removed records remain recoverable after more than twelve turns without resetting IDs',()=>{
  const store=createStore();
  for(let i=1;i<=12;i++)store.record(`task-${i}`,{id:`q${i}`});
  const saved=toggleTurn(store.getSnapshot(),'task-1',true);store.hydrate(saved);
  store.record('task-13',{id:'q13'});
- assert.equal(store.getSnapshot().records.length,12);
- assert.equal(store.getSnapshot().records[0].id,'task-2');
+ assert.equal(store.getSnapshot().records.length,13);
+ assert.equal(store.getSnapshot().records[0].id,'task-1');
+ assert.equal(store.getSnapshot().records[0].hidden,true);
  assert.equal(store.getSnapshot().records.at(-1).id,'task-13');
 });

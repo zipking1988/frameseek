@@ -277,3 +277,32 @@ def checked_matches(result, frames, duration):
     if not observed and not result["no_match"]:
         raise SearchError("unconfirmed_visual_matches")
     return sorted(observed, key=lambda item: item["start"]), warnings + uncertain
+
+
+def retrieve_page(index, question, offset=0, limit=40, snapshot=None):
+    """Search the full saved caption index; pagination never limits retrieval.
+
+    Lexical candidates remain unverified. This is not a semantic attribute parser
+    and cannot establish absence when descriptions omit the requested object.
+    """
+    if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 100:
+        raise SearchError("visual_search_page_limit")
+    identity = hashlib.sha256((index["fingerprint"] + "\n" + question).encode()).hexdigest()
+    if (snapshot is not None and snapshot != identity) or (offset and snapshot is None):
+        raise SearchError("visual_search_snapshot_conflict")
+    query = tokens(question)
+    candidates = [
+        frame for frame in index["frames"] if query.keys() & tokens(frame["caption"]).keys()
+    ]
+    # Keep temporal ordering and every lexical hit, including hits beyond top-8.
+    end = offset + limit
+    return {
+        "frames": candidates[offset:end],
+        "indexed_frames": len(index["frames"]),
+        "total_candidates": len(candidates),
+        "next_offset": end if end < len(candidates) else None,
+        "snapshot": identity,
+        "index_fingerprint": index["fingerprint"],
+        "coverage": "all_saved_captions_searched_not_all_video_frames",
+        "all_source_occurrences_verified": False,
+    }

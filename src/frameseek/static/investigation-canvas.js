@@ -909,7 +909,7 @@
             ? query.response.unresolved.length
               ? "结论 · 仍需核实"
               : "结论 · 保留来源"
-            : `${frames.size} 张证据 · ${query.response.status === "partial" ? "仍需核实" : query.response.status === "no_result" ? "未找到" : query.response.status === "error" ? "查找失败" : query.mode === "real" ? "已回看" : "预设结果"}`;
+            : query.engine === "index" ? `${query.index_search?.total || 0} ${query.response.events.length ? "个已有观察区间" : "张文字候选 · 覆盖待补齐"}` : `${frames.size} 张证据 · ${query.response.status === "partial" ? "仍需核实" : query.response.status === "no_result" ? "未找到" : query.response.status === "error" ? "查找失败" : query.mode === "real" ? "已回看" : "预设结果"}`;
       const overviewAction = document.createElement("button");
       overviewAction.type = "button";
       overviewAction.className = "overview-action";

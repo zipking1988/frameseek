@@ -558,8 +558,8 @@ def checked_synthesis(result):
     return result
 
 
-def explicit_time_window(question, duration):
-    """Resolve one short, explicit MM:SS range without a model or inferred context."""
+def explicit_time_window(question, duration, *, max_seconds=60):
+    """Resolve an explicit range; paid callers retain the default 60-second bound."""
     stamps = re.findall(r"(?<![\d:])(\d{1,3}):([0-5]\d)(?![\d:])", question)
     match = re.search(
         r"(?<![\d:])(\d{1,3}):([0-5]\d)\s*(?:至|到|[-–—~～])\s*"
@@ -572,7 +572,7 @@ def explicit_time_window(question, duration):
     start, end = a * 60 + b, c * 60 + d
     if not 0 <= start < end <= duration:
         raise AgentError("invalid_time_window")
-    return {"start": start, "end": end} if end - start <= 60 else None
+    return {"start": start, "end": end} if end - start <= max_seconds else None
 
 
 def referenced_frame_window(question, context, duration):

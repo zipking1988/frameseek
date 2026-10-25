@@ -14,14 +14,14 @@
       crossorigin
     />
     <link rel="stylesheet" href="/static/styles.css?v=136d47b61d96" />
-    <link rel="stylesheet" href="/static/workbench.css?v=350b4f1f715c" />
+    <link rel="stylesheet" href="/static/workbench.css?v=f6bfc957829f" />
     <script src="/static/demo-conversation.js?v=fc40894c3313" defer></script>
-    <script src="/static/investigation-canvas.js?v=8760bc6d8bbd" defer></script>
-    <script src="/static/workbench-model.js?v=c3271a772d77" defer></script>
+    <script src="/static/investigation-canvas.js?v=7ee82329b349" defer></script>
+    <script src="/static/workbench-model.js?v=0c1cfaf7d431" defer></script>
     <script src="/static/investigation-report.js?v=8411abe357f8" defer></script>
-    <script src="/static/workbench.js?v=543493144efe" defer></script>
-    <script src="/static/workspace.js?v=e96df4a85141" defer></script>
-    <script src="/static/app.js?v=e45fe4bfcd74" defer></script>
+    <script src="/static/workbench.js?v=69313d444432" defer></script>
+    <script src="/static/workspace.js?v=2332c66692d3" defer></script>
+    <script src="/static/app.js?v=9b5e4fbce9a4" defer></script>
   </head>
   <body>
     <a href="#question" class="skip-link">跳到对话输入</a>
@@ -135,19 +135,21 @@
         </div>
       </main>
       <section class="canvas-topbar" aria-label="画布操作">
-        <button id="rail-video" class="source-tile" aria-label="查看当前视频">
+        <div class="canvas-actions">
+        <button id="rail-video" class="source-tile" aria-label="显示当前视频播放器" aria-controls="source-dock" title="显示当前视频播放器">
           <img
             id="source-thumbnail"
             src="/media/demo_parcel/frames/0.jpg"
             alt="合成仓库视频"
           />
+          <span class="source-reveal-label">当前视频</span>
           <span class="source-item"
             ><strong id="attached-source-name">包裹移动 · 合成演示</strong
             ><span id="attached-source-state">正在加载</span></span
           >
           <img class="icon" src="/static/icons/play.svg" alt="" />
         </button>
-        <div class="canvas-actions">
+
           <span id="board-label" class="board-label">调查画布</span>
           <button id="canvas-search" class="outline-button" title="搜索画布（⌘ / Ctrl + K）">搜索</button>
           <span id="demo-current" class="demo-current" hidden></span>
@@ -313,9 +315,6 @@
       ></aside>
       <section class="composer-area" aria-label="与 FrameSeek 对话">
         <p id="form-notice" class="form-notice" role="status" hidden></p>
-        <p id="chat-budget-status" class="trace-note" role="status" hidden></p>
-        <div id="composer-suggestions"></div>
-        <button id="search-index" class="text-button" type="button" hidden>查找已有画面 · 不调用模型</button>
         <form id="question-form">
           <div class="composer-context">
             <label id="composer-label" for="question">向 FrameSeek 提问</label
@@ -345,8 +344,20 @@
                 class="icon"
                 src="/static/icons/paperclip.svg"
                 alt=""
-              /></button
-            ><span>Enter 发送 · Shift + Enter 换行</span
+              /></button>
+            <div class="composer-secondary">
+              <label class="index-engine-label" for="chat-engine">
+                <span class="sr-only">提问方式</span>
+                <select id="chat-engine" aria-label="提问方式" title="索引检索不调用模型；模型分析需通过预算检查"><option value="index" selected>索引 · 零模型</option><option id="local-engine-option" value="local" hidden disabled>本机视觉 · 免费</option><option id="cloud-engine-option" value="cloud" hidden disabled>云端视觉 · Token Factory</option><option value="model">模型分析</option></select>
+              </label>
+              <button id="search-index" class="composer-tool-button" type="button" title="打开已有索引的时间线，不调用模型" hidden>时间线</button>
+              <div id="composer-suggestions"></div>
+              <details class="composer-info composer-popup" name="composer-popover">
+                <summary>说明</summary>
+                <div class="composer-info-panel"><strong>检索与预算</strong><p>索引模式读取已有分析，不会重新识别视频。模型分析须通过现有预算检查。</p><p id="chat-budget-status" role="status" hidden></p></div>
+              </details>
+            </div>
+            <span class="composer-keyhint" title="Enter 发送，Shift + Enter 换行">Enter 发送</span
             ><button
               id="send-question"
               class="send-button"
@@ -359,9 +370,19 @@
           </div>
         </form>
       </section>
+      <dialog id="question-feedback-dialog" class="question-feedback-dialog" aria-labelledby="question-feedback-title" aria-describedby="question-feedback-message">
+        <h2 id="question-feedback-title">问题已收到，需要调整后再发送</h2>
+        <p id="question-feedback-message"></p>
+        <p class="question-feedback-note">本次没有调用模型，原问题已保留。</p>
+        <button id="question-feedback-edit" type="button" class="outline-button" autofocus>返回编辑问题</button>
+      </dialog>
       <dialog id="visual-search-dialog" aria-labelledby="visual-search-title">
-        <header><h2 id="visual-search-title">已有画面索引</h2><button id="close-visual-search" type="button">关闭</button></header>
+        <header><h2 id="visual-search-title">视频索引与出现时间</h2><button id="close-visual-search" type="button">关闭</button></header>
         <p id="visual-search-summary" role="status"></p>
+        <p id="visual-search-conditions"></p>
+        <div id="visual-search-coverage" role="note"></div>
+        <div id="visual-search-track" aria-label="出现区间时间线" hidden></div>
+        <details id="visual-search-filters"><summary>明确检索条件 · 同一物体须全部满足</summary><div id="visual-search-options"></div><button id="visual-search-apply" type="button">按已选条件检索</button></details>
         <div id="visual-search-results"></div>
       </dialog>
       <section class="canvas-footer" aria-label="画布视图">

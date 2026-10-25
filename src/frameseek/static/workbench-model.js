@@ -31,20 +31,22 @@
       },
       hydrate(saved) {
         const clean = { ...initial(), ...saved };
-        clean.records = (saved.records || []).slice(-12);
+        clean.records = (saved.records || []).slice(0, 100);
         clean.pins = (saved.pins || []).slice(0, 8);
         sequence = Math.max(0, ...clean.pins.map(p => Number(p.id.split("-").pop()) || 0));
         publish(clean);
       },
       describe(sourceInfo) { publish({ sourceInfo }); },
       record(id, query) {
+        if (state.records.length >= 100 && !state.records.some(r => r.id === id)) return false;
         publish({
           records: [
             ...state.records.filter((r) => r.id !== id),
             { id, query },
-          ].slice(-12),
+          ],
           selectedId: id,
         });
+        return true;
       },
       select(id) {
         if (state.records.some((r) => r.id === id && !r.hidden) && state.selectedId !== id)

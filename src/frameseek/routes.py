@@ -10,7 +10,7 @@ import shutil
 import threading
 import time
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from frameseek.agent import Agent, AgentError, explicit_time_window
 from frameseek.attempts import BudgetDenied
 from frameseek.demo import catalog
+from frameseek.local_vision import configured as local_configured
 from frameseek.media import MAX_UPLOAD, MediaError, frames, probe, scene_windows
 from frameseek.readiness import budget_ready, readiness_report
 from frameseek.schema import Answer
@@ -54,7 +55,24 @@ class ChatInput(Input):
     parent_request_id: Key | None = None
 
 
+class IndexChatInput(ChatInput):
+    engine: Literal["index"] = "index"
+
+
+class OccurrenceSearchInput(Input):
+    question: str = Field(min_length=1, max_length=4000)
+    generation: int = Field(ge=1)
+    offset: int = Field(default=0, ge=0, le=216000)
+    limit: int = Field(default=40, ge=1, le=100)
+    snapshot: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    conditions: list[dict] | None = Field(default=None, max_length=12)
+
+
 class IndexSearchInput(Input):
+    offset: int = Field(default=0, ge=0, le=216000)
+    limit: int = Field(default=40, ge=1, le=100)
+    snapshot: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    all_saved: bool = False
     question: str = Field(min_length=1, max_length=4000)
     generation: int = Field(ge=1)
 
@@ -107,9 +125,13 @@ def register(app, settings, root, runtime=None, transport=None):
     app.state.process_lock = lock
     ws = Workspace(root, settings.ttl_hours)
     agent = Agent(ws, settings, runtime, transport)
+    from frameseek.cloud_vision import CloudVision
+
+    cloud_vision = CloudVision(agent)
     app.state.workspace, app.state.agent = ws, agent
     router = APIRouter()
     upload_gate = asyncio.Semaphore(2)
+    index_gate = threading.BoundedSemaphore(2)
     worker_lock = threading.Lock()
     workers = set()
 
@@ -130,7 +152,7 @@ def register(app, settings, root, runtime=None, transport=None):
 
     @router.post("/api/videos/{key}/search-index")
     def search_index(key: str, body: IndexSearchInput, response: Response, owner=owner_dependency):
-        from frameseek.visual_search import compile_index, retrieve
+        from frameseek.visual_search import compile_index, retrieve, retrieve_page
 
         source = ws.owned("videos", key, owner)
         if source["generation"] != body.generation:
@@ -142,7 +164,11 @@ def register(app, settings, root, runtime=None, transport=None):
             index = compile_index(
                 key, body.generation, metadata["duration"], json.loads(source["manifest"])
             )
-            result = retrieve(index, body.question)
+            result = (
+                retrieve_page(index, body.question, body.offset, body.limit, body.snapshot)
+                if body.all_saved
+                else retrieve(index, body.question)
+            )
             directory = ws.root / key / "frames"
             for frame in result["frames"]:
                 path = directory / frame["file"]
@@ -160,6 +186,172 @@ def register(app, settings, root, runtime=None, transport=None):
             "model_requests_sent": 0,
             **result,
         }
+
+    def indexed_search(source, question, offset=0, limit=40, snapshot=None, conditions=None):
+        from frameseek.index_service import search_source
+
+        if not index_gate.acquire(blocking=False):
+            raise HTTPException(429, "index_search_capacity")
+        try:
+            result = search_source(root, source, question, offset, limit, snapshot, conditions)
+        except (ValueError, KeyError, TypeError, OSError):
+            raise HTTPException(409, "observation_index_unavailable_or_stale") from None
+        finally:
+            index_gate.release()
+        current = ws.owned("videos", source["id"], source["owner"])
+        if (
+            current["generation"] != source["generation"]
+            or current["manifest"] != source["manifest"]
+        ):
+            raise HTTPException(409, "stale_video_generation")
+        return result
+
+    @router.post("/api/videos/{key}/occurrences/search")
+    def occurrence_search(
+        key: str, body: OccurrenceSearchInput, response: Response, owner=owner_dependency
+    ):
+        source = ws.owned("videos", key, owner)
+        if source["generation"] != body.generation:
+            raise HTTPException(409, "stale_video_generation")
+        response.headers["Cache-Control"] = "no-store"
+        return indexed_search(
+            source, body.question, body.offset, body.limit, body.snapshot, body.conditions
+        )
+
+    def index_chat_input(body, owner):
+        desk = ws.owned("investigations", body.investigation_id, owner)
+        if json.loads(desk["state"]).get("epoch", 0) != body.generation:
+            raise HTTPException(409, "stale_chat_generation")
+        if desk["video"] == "demo_parcel":
+            raise HTTPException(409, "demo_uses_explicit_fixtures")
+        source = ws.owned("videos", desk["video"], owner)
+        question = body.question
+        if body.parent_request_id:
+            with ws.db() as c:
+                parent = c.execute(
+                    "SELECT result FROM queries WHERE owner=? AND id=? AND investigation=? "
+                    "AND generation=? AND state='done'",
+                    (owner, body.parent_request_id, desk["id"], body.generation),
+                ).fetchone()
+            if not parent:
+                raise HTTPException(409, "invalid_context_anchor")
+            prior_result = json.loads(parent["result"])
+            if (
+                prior_result.get("engine") == "index"
+                and prior_result.get("source_generation") != source["generation"]
+            ):
+                raise HTTPException(409, "stale_index_context")
+            if re.fullmatch(
+                r"\s*(?:继续|还有吗|再找一次|同样条件|same criteria|again)[？?。\s]*",
+                question,
+                re.I,
+            ):
+                if prior_result.get("engine") != "index":
+                    raise HTTPException(409, "index_context_required")
+                question = prior_result.get("index_search", {}).get(
+                    "resolved_question", prior_result["question"]
+                )
+        return desk, source, question
+
+    @router.post("/api/index-chat/prepare")
+    def prepare_index_chat(body: IndexChatInput, owner=owner_dependency):
+        desk, source, question = index_chat_input(body, owner)
+        with ws.db() as c:
+            old = c.execute(
+                "SELECT hash FROM queries WHERE owner=? AND id=?", (owner, body.request_id)
+            ).fetchone()
+        if old:
+            if old["hash"] != digest(body.model_dump_json()):
+                raise HTTPException(409, "request_payload_conflict")
+            return {"kind": "ready", "request_id": body.request_id}
+        result = indexed_search(source, question, limit=1)
+        if result["kind"] == "clarification_required":
+            return result
+        return {"kind": "ready", "request_id": body.request_id, "model_requests_sent": 0}
+
+    @router.post("/api/index-chat")
+    def index_chat(body: IndexChatInput, owner=owner_dependency):
+        from frameseek.index_service import chat_answer
+
+        desk, source, question = index_chat_input(body, owner)
+        payload_hash = digest(body.model_dump_json())
+        # Computation has no external side effects. Publication is a single CAS
+        # transaction; no running provider attempt or model slot is created.
+        with ws.db() as c:
+            old = c.execute(
+                "SELECT * FROM queries WHERE owner=? AND id=?", (owner, body.request_id)
+            ).fetchone()
+        if old:
+            if old["hash"] != payload_hash:
+                raise HTTPException(409, "request_payload_conflict")
+            if old["state"] != "done":
+                raise HTTPException(409, "index_request_not_terminal")
+            return JSONResponse(json.loads(old["result"]), headers={"Cache-Control": "no-store"})
+        result = indexed_search(source, question, limit=20)
+        if result["kind"] == "clarification_required":
+            return JSONResponse(result, status_code=409)
+        answer = chat_answer(result)
+        terminal = {
+            "id": body.request_id,
+            "question": body.question,
+            "response": answer,
+            "mode": "real",
+            "engine": "index",
+            "video_id": source["id"],
+            "usedContext": question != body.question,
+            "source_generation": source["generation"],
+            "index_search": {
+                "kind": result["kind"],
+                "resolved_question": question,
+                "total": result.get("total_occurrences", result.get("total_candidates", 0)),
+                "coverage": {k: v for k, v in result["coverage"].items() if not k.endswith("_ids")},
+                "model_requests_sent": 0,
+                "aggregation": result.get("aggregation"),
+            },
+        }
+        with ws.db() as c:
+            c.execute("BEGIN IMMEDIATE")
+            old = c.execute(
+                "SELECT * FROM queries WHERE owner=? AND id=?", (owner, body.request_id)
+            ).fetchone()
+            if old:
+                if old["hash"] != payload_hash:
+                    raise HTTPException(409, "request_payload_conflict")
+                if old["state"] != "done":
+                    raise HTTPException(409, "index_request_not_terminal")
+                return JSONResponse(
+                    json.loads(old["result"]), headers={"Cache-Control": "no-store"}
+                )
+            active = ws.owned("investigations", desk["id"], owner)
+            latest = ws.owned("videos", source["id"], owner)
+            if (
+                json.loads(active["state"]).get("epoch", 0) != body.generation
+                or latest["generation"] != source["generation"]
+                or latest["manifest"] != source["manifest"]
+            ):
+                raise HTTPException(409, "stale_chat_generation")
+            if (
+                c.execute("SELECT count(*) FROM queries WHERE owner=?", (owner,)).fetchone()[0]
+                >= 100
+                or c.execute("SELECT count(*) FROM queries").fetchone()[0] >= 1000
+            ):
+                raise HTTPException(429, "query_history_limit")
+            c.execute(
+                "INSERT INTO queries(id,investigation,owner,generation,hash,state,"
+                "result,http,updated,input) "
+                "VALUES(?,?,?,?,?,'done',?,200,?,?)",
+                (
+                    body.request_id,
+                    desk["id"],
+                    owner,
+                    body.generation,
+                    payload_hash,
+                    json.dumps(terminal, ensure_ascii=False),
+                    time.time(),
+                    body.model_dump_json(),
+                ),
+            )
+        return JSONResponse(terminal, headers={"Cache-Control": "no-store"})
 
     @router.get("/api/runtime/status")
     def runtime_status(response: Response, owner=owner_dependency):
@@ -220,9 +412,9 @@ def register(app, settings, root, runtime=None, transport=None):
                     video,
                     owner,
                     generation,
-                    "awaiting_configuration",
+                    "ready" if local_configured() else "awaiting_configuration",
                     total=len(metadata["windows"]),
-                    error="real_blocked",
+                    error=None if local_configured() else "real_blocked",
                     lease=None,
                 )
         except (
@@ -312,6 +504,9 @@ def register(app, settings, root, runtime=None, transport=None):
             "owner_id": row["id"],
             "expires": row["expires"],
             "real_ready": not blockers,
+            "local_vision_ready": bool(local_configured()),
+            "cloud_vision_ready": cloud_vision.configured(),
+            "query_reference_snapshots": True,
             "provider": runtime.provider if runtime else "nvidia_nebius",
             "blockers": sorted(set(blockers)),
             "ttl_hours": settings.ttl_hours,
@@ -325,9 +520,41 @@ def register(app, settings, root, runtime=None, transport=None):
     def new_investigation(body: NewInvestigation, owner=owner_dependency):
         return ws.create(owner, body.video_id, body.title)
 
+    def stored_query(query, desk, owner):
+        if not isinstance(query, dict) or not isinstance(query.get("id"), str):
+            raise ValueError("invalid_query_reference")
+        if "response" not in query and set(query) - {"id", "parentTurn"}:
+            raise ValueError("invalid_query_reference")
+        with ws.db() as c:
+            row = c.execute(
+                "SELECT result FROM queries WHERE id=? AND owner=? "
+                "AND investigation=? AND state='done'",
+                (query["id"], owner, desk["id"]),
+            ).fetchone()
+        if not row:
+            raise ValueError("foreign_or_missing_query_reference")
+        saved = json.loads(row["result"])
+        saved.setdefault("video_id", desk["video"])
+        if "parentTurn" in query:
+            parent = query["parentTurn"]
+            if parent is not None and not re.fullmatch(r"task-[0-9]{1,9}", str(parent)):
+                raise ValueError("invalid_parent_turn")
+            saved["parentTurn"] = parent
+        return saved
+
+    def expanded_investigation(desk, owner):
+        if desk["video"] != "demo_parcel":
+            try:
+                for record in [*desk["state"].get("records", []), *desk["state"].get("pins", [])]:
+                    if "response" not in record["query"]:
+                        record["query"] = stored_query(record["query"], desk, owner)
+            except (ValueError, KeyError, TypeError):
+                raise HTTPException(409, "stored_query_unavailable") from None
+        return desk
+
     @router.get("/api/investigations/{key}")
     def investigation(key: str, owner=owner_dependency):
-        return ws.get(key, owner)
+        return expanded_investigation(ws.get(key, owner), owner)
 
     @router.put("/api/investigations/{key}")
     def save_investigation(key: str, body: SaveInvestigation, owner=owner_dependency):
@@ -355,12 +582,14 @@ def register(app, settings, root, runtime=None, transport=None):
                 state.get("pins", []), list
             ):
                 raise ValueError
-            if len(state.get("records", [])) > 12 or len(state.get("pins", [])) > 8:
+            if len(state.get("records", [])) > 100 or len(state.get("pins", [])) > 8:
                 raise HTTPException(422, "snapshot_limit")
             for record in [*state.get("records", []), *state.get("pins", [])]:
                 if not re.fullmatch(r"(?:task|finding)-[0-9]{1,9}", record["id"]):
                     raise ValueError
                 query = record["query"]
+                if desk["video"] != "demo_parcel" and "response" not in query:
+                    query = stored_query(query, desk, owner)
                 if not isinstance(query["question"], str) or len(query["question"]) > 4000:
                     raise ValueError
                 answer = Answer.model_validate(query["response"])
@@ -383,17 +612,12 @@ def register(app, settings, root, runtime=None, transport=None):
                     ):
                         raise ValueError
                 else:
-                    with ws.db() as c:
-                        original = c.execute(
-                            "SELECT result FROM queries WHERE id=? AND owner=? "
-                            "AND investigation=? AND state='done'",
-                            (query["id"], owner, key),
-                        ).fetchone()
-                    if (
-                        not original
-                        or json.loads(original["result"])["response"] != query["response"]
-                    ):
+                    original = stored_query(query, desk, owner)
+                    if original["response"] != query["response"]:
                         raise ValueError
+                    record["query"] = {"id": query["id"]}
+                    if "parentTurn" in query:
+                        record["query"]["parentTurn"] = query["parentTurn"]
             # Spatial state is plain finite JSON; never stored HTML or executable code.
             encoded = json.dumps(state, allow_nan=False)
             if len(encoded.encode()) > 1024**2:
@@ -404,7 +628,7 @@ def register(app, settings, root, runtime=None, transport=None):
                 raise ValueError
         except (ValueError, KeyError, TypeError):
             raise HTTPException(422, "invalid_snapshot") from None
-        return ws.save(key, owner, body.revision, state)
+        return expanded_investigation(ws.save(key, owner, body.revision, state), owner)
 
     @router.delete("/api/investigations/{key}", status_code=204)
     def remove_investigation(key: str, owner=owner_dependency):
@@ -609,7 +833,7 @@ def register(app, settings, root, runtime=None, transport=None):
         with ws.db() as c:
             rows = c.execute(
                 "SELECT * FROM queries WHERE investigation=? AND owner=? "
-                "AND generation=? ORDER BY updated DESC LIMIT 20",
+                "AND generation=? ORDER BY updated DESC LIMIT 100",
                 (key, owner, generation),
             ).fetchall()
         return {
@@ -993,5 +1217,9 @@ def register(app, settings, root, runtime=None, transport=None):
             )
         return JSONResponse(result, status_code=status)
 
+    from frameseek.local_routes import install_local_routes
+
+    install_local_routes(router, ws, owner_dependency, ChatInput)
+    install_local_routes(router, ws, owner_dependency, ChatInput, cloud=cloud_vision)
     app.include_router(router)
     return ws

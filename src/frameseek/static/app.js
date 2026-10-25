@@ -99,18 +99,24 @@ function setupPanelResize() {
 
 
 function setSourceOpen(open) {
+  const wasOpen = !document.querySelector(".agent-shell").classList.contains("source-collapsed");
   document
     .querySelector(".agent-shell")
     .classList.toggle("source-collapsed", !open);
   $("rail-source").setAttribute("aria-expanded", String(open));
   $("rail-source").setAttribute("aria-label", open ? "收起视频面板" : "打开视频面板");
   $("rail-source").title = open ? "收起视频面板" : "展开视频面板";
+  $("rail-video").setAttribute("aria-expanded", String(open));
+  if (wasOpen !== open) window.dispatchEvent(new Event("frameseek-canvas-changed"));
 }
 
 function showEvidence(open, trigger = document.activeElement) {
   if (window.FrameSeekWorkbench) {
     $("evidence-canvas").hidden = false;
-    if (open) setSourceOpen(true);
+    if (open) {
+      setSourceOpen(true);
+      $("source-dock").scrollTop = 0;
+    }
     $("source-dock").classList.toggle("evidence-focused", open);
     return;
   }
@@ -202,7 +208,7 @@ const stateLabels = {
   no_result: "未找到相关画面",
   error: "查找未完成",
 };
-function selectTask(data, historyButton) {
+function selectTask(data, historyButton, query=null) {
   window.FrameSeekWorkbench?.select(
     historyButton.dataset.sourceTurn || historyButton.dataset.turn,
   );
@@ -214,15 +220,15 @@ function selectTask(data, historyButton) {
   document.querySelectorAll(".turn").forEach((item) => {
     item.classList.toggle("selected", item.id === historyButton.dataset.turn);
   });
-  $("run-state").textContent = stateLabels[data.status];
-  $("result-step").textContent = activeVideo ? "真实模型检索与回看" : "已匹配固定演示样例";
+  $("run-state").textContent = query?.engine==='index' ? "索引检索已完成" : stateLabels[data.status];
+  $("result-step").textContent = query?.engine==='index' ? "读取已有索引 · 未调用模型" : activeVideo ? "真实模型检索与回看" : "已匹配固定演示样例";
   $("result-step-state").textContent = "已匹配";
   document
     .querySelector(".run-steps li:nth-child(2)")
     .classList.add("complete");
   $("evidence-step").textContent = data.events.length
     ? `${data.events.length} 个事件可回看`
-    : "该样例没有可定位的事件";
+    : query?.engine==='index' ? "可在索引时间线回看描述候选" : "该样例没有可定位的事件";
   $("evidence-step-state").textContent = data.events.length
     ? "待选择"
     : "无证据";
@@ -242,6 +248,12 @@ function notice(message) {
   $("form-notice").textContent = message;
   $("form-notice").hidden = !message;
 }
+function preflightFeedback(message) {
+  $("question-feedback-message").textContent = message;
+  if (!$("question-feedback-dialog").open) $("question-feedback-dialog").showModal();
+}
+$("question-feedback-edit").addEventListener("click", () => $("question-feedback-dialog").close());
+$("question-feedback-dialog").addEventListener("close", () => $("question").focus());
 function node(tag, className, text) {
   const element = document.createElement(tag);
   if (className) element.className = className;
@@ -332,6 +344,10 @@ function updateTime() {
 function renderAnswer(query) {
   if ((activeVideo && (query.mode !== "real" || query.video_id !== activeVideo.id)) || (!activeVideo && query.mode === "real")) return;
   if (localMode || !demo) return;
+  if (!query.savedTurn && window.FrameSeekWorkbench?.getSnapshot().records.length >= 100) {
+    announce("当前调查的保存空间已满，原聊天没有删除；请建立另一份调查。");
+    return;
+  }
   if (++turns > 12 && !window.FrameSeekWorkbench) {
     const oldestId = $("messages").firstElementChild?.id;
     if (oldestId) document.querySelector(`[data-turn="${oldestId}"]`)?.remove();
@@ -351,17 +367,20 @@ function renderAnswer(query) {
     node(
       "span",
       "fixture-tag",
-      query.mode === "real" ? (query.usedContext ? "证据追问 · 承接前文" : "真实分析") : query.usedContext ? "预设追问 · 承接前文" : "预设演示 · 未调用模型",
+      query.engine === "index" ? "索引问答 · 未调用模型" : query.mode === "real" ? (query.usedContext ? "证据追问 · 承接前文" : "真实分析") : query.usedContext ? "预设追问 · 承接前文" : "预设演示 · 未调用模型",
     ),
   );
   turn.append(label, node("p", "answer-text", data.answer));
   turn.append(
-    node("span", `answer-status ${data.status}`, stateLabels[data.status]),
+    node("span", `answer-status ${data.status}`, query.engine === "index" ? (data.events.length ? "已有观察匹配" : "索引结果 · 覆盖待补齐") : stateLabels[data.status]),
   );
+  if(query.engine==='index') turn.append(button('查看索引时间线 · 不调用模型','outline-button',()=>window.FrameSeekPersistence?.searchIndex(query.index_search?.resolved_question || query.question)));
   const eventCluster =
     data.events.length > 1 ? node("div", "event-cluster") : turn;
   if (eventCluster !== turn) turn.append(eventCluster);
-  data.events.forEach((event) => {
+  const previewEvents = ["local", "cloud", "index"].includes(query.engine)
+    ? data.events.slice(0, 1) : data.events;
+  previewEvents.forEach((event) => {
     const row = node("section", "event");
     row.append(node("h3", "event-heading", event.action));
     const toolbar = node("div", "event-toolbar");
@@ -370,7 +389,7 @@ function renderAnswer(query) {
         `${clock(event.start)}–${clock(event.end)}`,
         "seek-button",
         (clickEvent) => {
-          selectTask(data, historyButton);
+          selectTask(data, historyButton, query);
           investigation?.choose(turn.id);
           investigation?.evidence(query);
           seek(event.start, clickEvent.currentTarget);
@@ -382,7 +401,7 @@ function renderAnswer(query) {
     const evidence = node("div", "evidence-grid");
     event.evidence.forEach((frame, index) => {
       const frameButton = button("", "evidence-button", () => {
-        selectTask(data, historyButton);
+        selectTask(data, historyButton, query);
         investigation?.choose(turn.id);
         investigation?.evidence(query);
         document.querySelectorAll(".evidence-button").forEach((item) => {
@@ -425,6 +444,14 @@ function renderAnswer(query) {
     );
     eventCluster.append(row);
   });
+  if (previewEvents.length < data.events.length) {
+    const count = data.events.reduce((total, event) => total + event.evidence.length, 0);
+    turn.append(button(`查看全部 ${count} 张引用`, "outline-button", () => {
+      selectTask(data, historyButton, query);
+      investigation?.choose(turn.id);
+      openInspector("context");
+    }));
+  }
   if (data.unresolved.length) {
     const unresolved = node("div", "unresolved");
     unresolved.append(node("strong", "", "仍未确认"));
@@ -447,7 +474,7 @@ function renderAnswer(query) {
       node(
         "p",
         "trace-note",
-        query.mode === "real" ? `检索与回看 · ${data.trace.visible.segments_reviewed} 个片段` : "演示检查范围：00:00–00:18 · 无音轨 · 非真实模型评测",
+        query.engine==='index' ? "已检索已有记录 · 未新增视觉复核" : query.mode === "real" ? `检索与回看 · ${data.trace.visible.segments_reviewed} 个片段` : "演示检查范围：00:00–00:18 · 无音轨 · 非真实模型评测",
       ),
     );
   }
@@ -477,14 +504,14 @@ function renderAnswer(query) {
           ? "auto"
           : "smooth",
       });
-    selectTask(data, historyButton);
+    selectTask(data, historyButton, query);
   });
   historyButton.dataset.turn = turn.id;
   historyButton.title = query.question;
   $("task-list").prepend(historyButton);
   $("history-empty").hidden = true;
   $("task-count").textContent = $("messages").children.length;
-  selectTask(data, historyButton);
+  selectTask(data, historyButton, query);
   const chatContent = $("chat-content");
   if (!investigation) chatContent.scrollTop = chatContent.scrollHeight;
   window.FrameSeekWorkbench?.record(turn.id, query);
@@ -498,7 +525,7 @@ function renderAnswer(query) {
     $("task-count").textContent = $("messages").children.length;
   }
   investigation?.register(turn, query, historyButton);
-  announce(`${query.mode === "real" ? "回答" : "演示回答"}：${stateLabels[data.status]}。${data.answer}`);
+  announce(`${query.mode === "real" ? "回答" : "演示回答"}：${query.engine==='index' ? "索引检索完成" : stateLabels[data.status]}。${data.answer}`);
 }
 function fillSuggestedQuestion(question, turnId = null) {
   const input = $("question");
@@ -945,6 +972,7 @@ $("collapse-source").addEventListener("click", () => {
   setSourceOpen(false);
   $("rail-source").focus();
 });
+$("rail-canvas").addEventListener("click", () => { setSourceOpen(true); $("source-dock").scrollTop = 0; });
 $("rail-source").addEventListener("click", () =>
   setSourceOpen(
     document
@@ -1129,13 +1157,19 @@ window.FrameSeekSessionUI = {
     $("video-heading").textContent=name;$("attached-source-name").textContent=name;
     window.FrameSeekWorkbench.describe(activeVideo);
   },
-  showSource: () => setSourceOpen(true),
+  showSource: () => { setSourceOpen(true); $("source-dock").scrollTop = 0; },
   restoreDraft(value) { $("question").value = value; updateSend(); },
   currentContext: () => investigation?.context()?.query || null,
   ready: () => !!demo,
-  busy(value) { realBusy = value; updateSend(); },
+  busy(value) {
+    realBusy = value;
+    $("question-form").setAttribute("aria-busy", String(value));
+    $("send-question").setAttribute("aria-label", value ? "正在处理问题" : "发送消息");
+    updateSend();
+  },
   clear: clearChat,
   notify: notice,
+  preflightFeedback,
   answer(query, submittedDraft) {
     renderAnswer(query);
     if (submittedDraft !== undefined && $("question").value.trim() === submittedDraft)
