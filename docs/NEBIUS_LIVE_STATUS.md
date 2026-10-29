@@ -1,13 +1,34 @@
 # Nebius deployment record
 
+## Current release — 2026-10-30 JST
+
+The reviewed code from `61ab279` is deployed on the original single-process
+Nebius server. The sports landing page is at `/` and the existing investigation
+workspace is at `/workspace`. The deployment passed a separate Linux fixture
+precheck, source and installed-package hash comparisons, and protected-data and
+private-configuration fingerprints before and after installation. The browser
+restored the six-turn basketball investigation and its original video and
+successfully jumped to the saved 03:00 evidence. No question was submitted.
+
+SSH was recovered by updating its administrator IP using a temporary CPU rescue
+instance, which was stopped and deleted after approximately 319 seconds. Its
+rough additional cost is $0.006 before tax based on observed unit rates; final
+billing is pending. The original managed boot-disk specification, running VM and
+both original disk identities were verified, with no temporary VM or disk left.
+The previously approved $0.20 cumulative gift-credit-only recovery limit was
+not increased; the rough total across all four rescues is about $0.14 before tax.
+No model calls, budget changes, GPUs or top-ups were made. The 40/40 model
+request limit remains exhausted, and new basic-index processors are still disabled
+pending calibration and human quality acceptance.
+
 ## GitHub push and interrupted server recovery — 2026-10-29 JST
 
 The reviewed code, including the evidence-retention and historical-follow-up
 fixes, was pushed to private GitHub main as commit `61ab279`. The frozen release
 passed 562 backend and 212 frontend tests, frontend build, lint, formatting and
 schema checks. The three unrelated hackathon-video files remain local and were
-not included. The reviewed landing page and latest fixes are not yet deployed;
-the previous framefix.net release remains active.
+not included. At that point the landing page and latest fixes were not yet
+deployed; the subsequent deployment is recorded above.
 
 The administrator's public IP changed, and SSH to the existing VM timed out.
 A third temporary CPU rescue instance was created within the previously approved

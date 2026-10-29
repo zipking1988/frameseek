@@ -4,8 +4,8 @@
 basketball-first illustrative imagery. **Open workspace** leads to `/workspace`,
 which retains the existing desktop investigation, saved sources and ownership
 checks. The marketing preview is explicitly illustrative and makes no model
-requests; the workspace still starts with the labeled synthetic demo. This
-landing-page change is local and has not been deployed.
+requests; the workspace still starts with the labeled synthetic demo. The
+landing page and reviewed workspace release are deployed to framefix.net.
 
 2026-10-24: 用户授权新增 `provider=tokenfactory` 与 `allow_tokenfactory_media`，仅向固定 Token Factory API 发送本机抽帧 JPEG。使用 Nemotron 3.5 Super VL 公共 API 和 Qwen3 Embedding 8B 文本检索；不租 GPU、不自动启用付费请求。配置、预算待确认项与篮球测试见 [Token Factory 本地准备](docs/TOKEN_FACTORY_LOCAL.md)。原自托管及 Gemini 路线保持独立。
 
