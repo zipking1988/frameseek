@@ -1,5 +1,34 @@
 # Nebius deployment record
 
+## GitHub push and interrupted server recovery — 2026-10-29 JST
+
+The reviewed code, including the evidence-retention and historical-follow-up
+fixes, was pushed to private GitHub main as commit `61ab279`. The frozen release
+passed 562 backend and 212 frontend tests, frontend build, lint, formatting and
+schema checks. The three unrelated hackathon-video files remain local and were
+not included. The reviewed landing page and latest fixes are not yet deployed;
+the previous framefix.net release remains active.
+
+The administrator's public IP changed, and SSH to the existing VM timed out.
+A third temporary CPU rescue instance was created within the previously approved
+$0.20 cumulative gift-credit-only recovery allowance. Its cleanup watchdog failed
+to identify the instance after the turn was interrupted; it ran for approximately
+79 minutes before being stopped and deleted. This was an operational error. The
+original VM remained running, and the rescue never attached the original boot or
+workspace disks. A subsequent cloud inventory showed only the original VM and its
+two original disks. The final rescue invoice is not yet available. The payment
+balance moved from $116.57 to $116.41 during this interval, including normal
+usage of the original server; that difference is not the rescue charge alone.
+
+The two earlier rescues were estimated at $0.043891 before tax. Applying the
+usage-page CPU, RAM and disk unit rates to the third rescue's approximately
+79-minute lifetime gives an additional rough $0.09 before tax; actual billing,
+taxes and posting remain to be confirmed. No model requests, model-budget changes,
+GPUs or top-ups were made. The new basic-index processors remain disabled pending
+calibration and real-material human evaluation; the existing model allowance is
+still 40/40 requests used. Continue deployment only after management connectivity
+is restored and the available recovery allowance is rechecked.
+
 ## Current release — 2026-10-29 JST
 
 The reviewed supplement-retention/admission fixes are deployed to the existing
