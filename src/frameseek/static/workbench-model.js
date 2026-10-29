@@ -264,7 +264,83 @@
     }
     return notes;
   }
-  const api = { createStore, clock, visiblePins, toggleTurn, panelWidth, composerSuggestions, answerReviewNotes, queryFailureReason };
+  function shouldOfferTextCandidates(query, available, accepts) {
+    return Boolean(query?.engine === "index" && ["ok", "partial", "no_result"].includes(query.response?.status)
+      && query.index_search?.ocr_eligible !== false
+      && available && typeof accepts === "function"
+      && accepts(query.index_search?.resolved_question || query.question));
+  }
+  function replyQuote(records, query, recordId = null) {
+    if (!query) return null;
+    const record = records.find(r => !r.hidden && r.query.id === query.id
+      && r.query.video_id === query.video_id && (!recordId || r.id === recordId));
+    if (!record) return null;
+    const presentation = conversationAnswer(record.query);
+    return {
+      heading: presentation.englishDemo ? `Replying to answer ${record.id.replace(/^task-/, "")}` : `引用问题 ${record.id.replace(/^task-/, "")} 的回答`,
+      question: record.query.question,
+      answer: presentation.text,
+      ...(presentation.englishDemo ? {englishDemo: true} : {}),
+    };
+  }
+  function conversationAnswer(query) {
+    const response = query.response;
+    const frames = new Map();
+    const video = query.video_id || (query.mode !== "real" ? "demo_parcel" : null);
+    const checkedFrames = new Map();
+    if (query.engine === "index" && response.status === "no_result"
+      && query.index_search?.kind === "supplement_unconfirmed"
+      && Array.isArray(query.index_search.checked_frames)) {
+      for (const frame of query.index_search.checked_frames.slice(0,16)) {
+        const prefix = `/media/${video}/frames/`;
+        if (!frame || typeof frame !== "object"
+          || typeof frame.frame_id !== "string" || !frame.frame_id.startsWith(`${video}_`)
+          || !Number.isFinite(frame.t) || frame.t < 0 || typeof frame.uri !== "string"
+          || !frame.uri.startsWith(prefix)
+          || !/^[a-zA-Z0-9_-]+\.jpg$/.test(frame.uri.slice(prefix.length))) continue;
+        checkedFrames.set(frame.frame_id,frame);
+      }
+    }
+    for (const event of response.events || []) {
+      if (event.video_id && event.video_id !== video) continue;
+      for (const frame of event.evidence || []) {
+        if (!Number.isFinite(frame.t) || frame.t < 0 || typeof frame.uri !== "string"
+          || !frame.uri.startsWith(`/media/${video}/frames/`)
+          || frame.uri.includes("..") || frame.uri.includes("?")) continue;
+        frames.set(frame.frame_id || frame.uri, frame);
+      }
+    }
+    const aggregation = /多少(?:个|次|人|球)|几次|几个|数量|总数|最多|排名|how many|count|most|rank/i.test(query.question);
+    const numeric = /^\s*\d+(?:\.\d+)?\s*(?:个|次|人|球)?[。.!！]?\s*$/.test(response.answer);
+    const model = query.mode === "real" && query.engine !== "index";
+    // These are translations of explicitly labelled presets, not a
+    // translation or inference layer for arbitrary user video answers.
+    const englishPreset = query.id === "center"
+      && /^\s*when is the parcel in the center\??\s*$/i.test(query.question)
+      && response.answer === "包裹在 00:05–00:11 出现在工作台中央。"
+      ? "The parcel appears in the center from 00:05 to 00:11."
+      : query.id === "right"
+        && /^\s*(?:what happens next|when is the parcel on the right)\??\s*$/i.test(query.question)
+        && response.answer === "从 00:11 开始，包裹出现在工作台右侧。"
+        ? "From 00:11, the parcel appears on the right side of the workbench."
+        : null;
+    const englishDemo = Boolean(englishPreset) && !query.synthetic_fixture
+      && query.mode !== "real" && response.status === "ok" && video === "demo_parcel"
+      && (response.events || []).length === 1 && response.events[0].video_id === "demo_parcel";
+    return {
+      text: englishDemo ? englishPreset : response.answer,
+      label: englishDemo ? "Synthetic demo · preset answer" : query.synthetic_fixture ? "合成测试索引" : query.mode !== "real" ? "合成演示 · 预设回答" : query.engine === "index" ? "已有索引" : "模型回答",
+      englishDemo,
+      prefix: model && aggregation && numeric ? "模型给出的估计：" : "",
+      caution: model && aggregation && ["ok", "partial"].includes(response.status)
+        ? "这是模型回答，尚未核实整段视频的总数或排名。"
+        : (response.unresolved || [])[0] || "",
+      frames: [...frames.values()].sort((a,b)=>a.t-b.t),
+      checkedFrames: [...checkedFrames.values()].sort((a,b)=>a.t-b.t),
+      evidenceNote: englishDemo ? "Select a frame to replay its video time." : aggregation ? "引用画面的张数不代表事件发生次数。" : "点击画面，回看原视频对应时间。",
+    };
+  }
+  const api = { replyQuote, conversationAnswer, shouldOfferTextCandidates, createStore, clock, visiblePins, toggleTurn, panelWidth, composerSuggestions, answerReviewNotes, queryFailureReason };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.FrameSeekWorkbenchModel = api;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -1,5 +1,16 @@
 # Opt-in on-device video answering
 
+> Current VideoKnowledge path (2026-10-29): when `FS_KNOWLEDGE_LOCAL=1`
+> is configured, upload-time indexing builds the reusable base first. Chat
+> searches that index and may run bounded local supplements. The legacy
+> local-chat route described below remains available for deployments without
+> this index; it should not be confused with the new upload-time pipeline.
+> Local supplement contract v9 combines each item's color and type to fit the
+> existing per-subject limit. Older receipts keep their original prompt and are
+> never automatically replayed when their outcome is unknown. See
+> [current runtime status](WORKSPACE_RUNTIME.md) and the
+> [test record](qa/KNOWLEDGE_REFACTOR_20261029.md) for verification limits.
+
 FrameSeek can run a separately installed MLX vision runtime on an Apple Silicon
 Mac. This route performs real local image inference, caches scene observations,
 and answers questions with references to decoded frames at original video times.
@@ -82,3 +93,46 @@ counting from this sampled compiler.
 Mock tests verify lifecycle, ownership, idempotence, caching and reference contracts;
 they do not establish recognition quality. Real page checks and factual image
 inspection must be recorded separately in `docs/qa/`.
+
+
+## Stopping local processing
+
+The composer shows **停止处理** while an asynchronous request is running. Stopping
+preserves the draft and interrupts the free local worker, including model startup.
+Only that explicitly cancelled job's newly created interrupted markers are cleared
+for a later user-initiated request. Existing unknown receipts are preserved; this
+does not resend or refund any paid attempt. The previous request cannot publish a
+late answer over a newer submission. See [actual page verification](qa/COMPOSER_STOP_20261028.md).
+
+## Experimental reusable knowledge index
+
+In a separate workspace, trusted `FS_KNOWLEDGE_LOCAL=1` with the existing local
+vision settings enables the experimental upload-time index and bounded local
+supplement. It runs on the installed on-device model and does not enable cloud
+spending. Existing videos require an explicit build; uploaded videos begin after
+preflight. A fingerprint of model weights, tokenizer, preprocessing and model
+configuration, together with the extraction contract revision, binds new
+checkpoints to the configured processor. If that identity changes, an ordinary
+resume does not silently rebuild an existing checkpoint. Published versions and
+their historical answers stay readable. The page keeps playback available while
+the index builds and requires the completed base index before a new question.
+
+This flag is not enabled in the existing user workspace or production. The full
+basketball source and synthetic fixture flows have been exercised in isolated
+local workspaces, but the required 20 independently annotated cases and
+recognition-quality threshold remain open. See the [QA record](qa/KNOWLEDGE_REFACTOR_20261029.md).
+Token Factory for this contract still requires matching cost calibration and is
+not enabled by this flag. A separate adapter has mock coverage for preflight and
+the existing provider's per-call reservation path; no production calibration or
+live Token Factory run has been performed for this extraction contract. These
+limitations must be cleared before switching the default workspace or claiming
+whole-video recognition quality.
+
+New upload-time local knowledge builds use a versioned v5 prompt that asks for
+clothing color and item in one observed value, such as `garment=blue jersey`,
+and asks separately for visible object colors. Matching interrupted v3 and v4
+builds resume with their original prompts and caches;
+published indexes are not rebuilt automatically. Supplement receipt identities
+are unchanged. Token Factory has separate v4/v5 code paths requiring their own
+calibrations; no real v4/v5 calibration has been performed. Recognition quality
+still requires human review.

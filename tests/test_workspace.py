@@ -144,6 +144,35 @@ def test_restart_recovers_queued_jobs_without_replaying(tmp_path):
     assert row["state"] == "failed" and row["error"] == "interrupted" and row["lease"] is None
 
 
+def test_restart_distinguishes_saved_replies_from_unknown_dispatches(tmp_path):
+    ws = Workspace(tmp_path)
+    key = "a" * 64
+    for video in ("before", "saved", "unknown", "missing"):
+        (tmp_path / video).mkdir()
+    for video in ("saved", "unknown"):
+        directory = tmp_path / video / f"knowledge-g1-{key}"
+        directory.mkdir()
+        (directory / "window-0000.dispatched.json").write_text("{}")
+    (tmp_path / "saved" / f"knowledge-g1-{key}" / "window-0000.raw.json").write_text("{}")
+    with ws.db() as c:
+        for video in ("before", "saved", "unknown", "missing"):
+            c.execute(
+                "INSERT INTO knowledge_jobs(video,generation,state,updated,cache_key) "
+                "VALUES(?,1,'indexing',?,?)",
+                (video, time.time(), None if video == "before" else key),
+            )
+    reopened = Workspace(tmp_path)
+    with reopened.db() as c:
+        states = {
+            r["video"]: (r["state"], r["error"])
+            for r in c.execute("SELECT video,state,error FROM knowledge_jobs")
+        }
+    assert states["before"] == ("failed", "interrupted_resumable")
+    assert states["saved"] == ("failed", "interrupted_resumable")
+    assert states["unknown"] == ("unknown", "interrupted")
+    assert states["missing"] == ("unknown", "interrupted")
+
+
 @pytest.mark.anyio
 async def test_real_upload_probe_private_frames_range_delete_and_cascade(app):
     a, b = await client_for(app), await client_for(app)

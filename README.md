@@ -1,5 +1,12 @@
 # FrameSeek
 
+2026-10-29: the home page (`/`) now introduces the sports video workflow, with
+basketball-first illustrative imagery. **Open workspace** leads to `/workspace`,
+which retains the existing desktop investigation, saved sources and ownership
+checks. The marketing preview is explicitly illustrative and makes no model
+requests; the workspace still starts with the labeled synthetic demo. This
+landing-page change is local and has not been deployed.
+
 2026-10-24: 用户授权新增 `provider=tokenfactory` 与 `allow_tokenfactory_media`，仅向固定 Token Factory API 发送本机抽帧 JPEG。使用 Nemotron 3.5 Super VL 公共 API 和 Qwen3 Embedding 8B 文本检索；不租 GPU、不自动启用付费请求。配置、预算待确认项与篮球测试见 [Token Factory 本地准备](docs/TOKEN_FACTORY_LOCAL.md)。原自托管及 Gemini 路线保持独立。
 
 2026-10-24 live smoke: Token Factory indexed the basketball source and produced two visually checked evidence answers, including a contextual follow-up. The USD1/30-call test stopped after 21 attempts; following the user’s reconciliation request, the same caps resumed with nine attempts remaining. Sparse sampling and one rejected planner response limit this result; see [test record](docs/TOKEN_FACTORY_LOCAL.md#final-smoke-result-2026-10-24).
@@ -11,6 +18,20 @@ FrameSeek connects conversation to its source video. Questions form investigatio
 ![FrameSeek investigation canvas](docs/local-tools-20261005/canvas.png)
 
 ## Current status
+
+2026-10-29 reusable-index refactor: an experimental opt-in local route builds a
+sampled VideoKnowledge index after upload and reuses it for evidence-backed
+questions and bounded local follow-up checks. A separate local browser test
+indexed the complete basketball source and checked original-time evidence;
+the default runtime and hosted service have not switched to this route. The
+new Token Factory base-index adapter is mock-tested but is not connected to the
+job runner, and its live calibration and the 20-case human-reviewed quality
+gate remain open. See [the real and synthetic test record](docs/qa/KNOWLEDGE_REFACTOR_20261029.md).
+
+2026-10-28 event evaluation: offline event/replay scoring and reviewed-score delta
+proposals are available as separate evaluation tools. They do not turn citations
+into confirmed counts or claim a trained model. See [training readiness and actual
+seed-case limits](docs/EVENT_TRAINING_READINESS.md).
 
 2026-10-25 cloud integration: the optional Token Factory sampled compiler reuses
 the on-device engine's scene/selection/verification logic through the existing

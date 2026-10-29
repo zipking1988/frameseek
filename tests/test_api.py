@@ -27,9 +27,29 @@ async def test_local_health_and_schema_do_not_claim_real_readiness():
             "error",
         ]
         assert "QueryControl" in schemas
-        assert "调查画布" in (await client.get("/")).text
+        assert "Find the play." in (await client.get("/")).text
+        assert "调查画布" in (await client.get("/workspace")).text
         assert (await client.get("/docs/errors")).status_code == 200
         assert (await client.post("/api/chat", json={"question": "anything"})).status_code == 401
+
+
+@pytest.mark.anyio
+async def test_sports_landing_is_public_without_initializing_a_private_session():
+    app = create_app(Settings())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        page = await client.get("/")
+        assert page.status_code == 200
+        assert "text/html" in page.headers["content-type"]
+        assert "set-cookie" not in page.headers
+        assert 'href="/workspace"' in page.text
+        assert "Illustrative product preview" in page.text
+        assert "/static/workspace.js" not in page.text
+        for file in ("courtside-hero.jpg", "shot.jpg", "court.jpg", "pass.jpg"):
+            asset = await client.get(f"/static/landing/{file}")
+            assert asset.status_code == 200
+            assert asset.headers["content-type"] == "image/jpeg"
+        assert (await client.get("/api/investigations")).status_code == 401
+        assert (await client.get("/health")).json()["model_requests_sent"] == 0
 
 
 @pytest.fixture

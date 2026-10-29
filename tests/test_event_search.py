@@ -45,6 +45,9 @@ def event_index(hits=None, count=12):
 def test_continuous_frames_are_two_events_not_four_and_ranking_uses_entities():
     index = event_index()
     result = search_events(index, "搬运了多少次？")
+    assert result["structured_conditions_evaluated"] is True
+    assert result["verified_matches"] is False
+    assert result["coverage"]["recognition_accuracy_verified"] is False
     assert result["aggregation"]["unique_events"] == 2
     assert [(c["start"], c["end"]) for c in result["occurrences"]] == [(0, 2), (4, 6)]
     assert result["aggregation"]["exact_under_index"]

@@ -3,6 +3,7 @@
 import hashlib
 import json
 import math
+import os
 import re
 import secrets
 import sqlite3
@@ -19,6 +20,58 @@ def ident(prefix=""):
 
 def digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def interrupted_knowledge_state(root, video, generation, cache_key):
+    """Only permit a manual resume when no durable dispatch is ambiguous."""
+    if (
+        not isinstance(video, str)
+        or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", video)
+        or type(generation) is not int
+        or generation < 1
+        or (
+            cache_key is not None
+            and (not isinstance(cache_key, str) or not re.fullmatch(r"[a-f0-9]{64}", cache_key))
+        )
+    ):
+        return "unknown"
+    directory = root / video
+    if directory.is_symlink() or not directory.is_dir():
+        return "unknown"
+    try:
+        if cache_key:
+            candidates = [directory / f"knowledge-g{generation}-{cache_key}"]
+            if not candidates[0].exists():
+                return "unknown"
+        else:
+            with os.scandir(directory) as entries:
+                candidates = [
+                    directory / entry.name
+                    for entry in entries
+                    if entry.name.startswith(f"knowledge-g{generation}-")
+                ]
+        for base in candidates:
+            if base.is_symlink() or not base.is_dir():
+                return "unknown"
+            with os.scandir(base) as entries:
+                markers = [
+                    base / entry.name
+                    for entry in entries
+                    if entry.name.startswith("window-") and entry.name.endswith(".dispatched.json")
+                ]
+            for marker in markers:
+                if (
+                    marker.is_symlink()
+                    or not marker.is_file()
+                    or not re.fullmatch(r"window-\d{4}\.dispatched\.json", marker.name)
+                ):
+                    return "unknown"
+                raw = base / marker.name.replace(".dispatched.json", ".raw.json")
+                if raw.is_symlink() or not raw.is_file():
+                    return "unknown"
+    except OSError:
+        return "unknown"
+    return "failed"
 
 
 class Workspace:
@@ -47,6 +100,17 @@ class Workspace:
               id TEXT PRIMARY KEY, video TEXT NOT NULL, generation INTEGER NOT NULL,
               state TEXT NOT NULL, completed INTEGER DEFAULT 0, total INTEGER DEFAULT 0,
               error TEXT, lease REAL, budget TEXT, updated REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS knowledge_jobs(
+              video TEXT NOT NULL, generation INTEGER NOT NULL, state TEXT NOT NULL,
+              completed INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0,
+              version TEXT, error TEXT, updated REAL NOT NULL,
+              PRIMARY KEY(video, generation));
+            CREATE TABLE IF NOT EXISTS knowledge_supplement_jobs(
+              owner TEXT NOT NULL, request_id TEXT NOT NULL, investigation TEXT NOT NULL,
+              video TEXT NOT NULL, generation INTEGER NOT NULL, desk_epoch INTEGER NOT NULL,
+              payload_hash TEXT NOT NULL, state TEXT NOT NULL, base_version TEXT NOT NULL,
+              version TEXT, error TEXT, updated REAL NOT NULL,
+              PRIMARY KEY(owner, request_id));
             CREATE TABLE IF NOT EXISTS queries(
               id TEXT NOT NULL, investigation TEXT NOT NULL, owner TEXT NOT NULL,
               generation INTEGER NOT NULL, hash TEXT NOT NULL, state TEXT NOT NULL,
@@ -59,6 +123,15 @@ class Workspace:
             columns = {row[1] for row in c.execute("PRAGMA table_info(queries)")}
             if "input" not in columns:
                 c.execute("ALTER TABLE queries ADD COLUMN input TEXT")
+            knowledge_columns = {row[1] for row in c.execute("PRAGMA table_info(knowledge_jobs)")}
+            for name in ("run_id", "cache_key"):
+                if name not in knowledge_columns:
+                    c.execute(f"ALTER TABLE knowledge_jobs ADD COLUMN {name} TEXT")
+            supplement_columns = {
+                row[1] for row in c.execute("PRAGMA table_info(knowledge_supplement_jobs)")
+            }
+            if "input" not in supplement_columns:
+                c.execute("ALTER TABLE knowledge_supplement_jobs ADD COLUMN input TEXT")
             # A lost in-flight call is never replayed on process restart.
             c.execute(
                 "UPDATE jobs SET state='failed',error='unknown',lease=NULL "
@@ -68,6 +141,37 @@ class Workspace:
                 "UPDATE jobs SET state='failed',error='interrupted',lease=NULL WHERE state='queued'"
             )
             c.execute("UPDATE queries SET state='unknown' WHERE state='running'")
+            interrupted = c.execute(
+                "SELECT video,generation,cache_key FROM knowledge_jobs WHERE state='indexing'"
+            ).fetchall()
+            for row in interrupted:
+                state = interrupted_knowledge_state(
+                    self.root, row["video"], row["generation"], row["cache_key"]
+                )
+                c.execute(
+                    "UPDATE knowledge_jobs SET state=?,error=? "
+                    "WHERE video=? AND generation=? AND state='indexing'",
+                    (
+                        state,
+                        "interrupted" if state == "unknown" else "interrupted_resumable",
+                        row["video"],
+                        row["generation"],
+                    ),
+                )
+            c.execute(
+                "UPDATE knowledge_jobs SET state='failed',error='interrupted_before_start' "
+                "WHERE state='queued'"
+            )
+            c.execute(
+                "UPDATE knowledge_supplement_jobs SET state='unknown',error='interrupted' "
+                "WHERE state='running'"
+            )
+            c.execute(
+                "UPDATE knowledge_jobs SET state='failed',error='probe_interrupted' "
+                "WHERE state='waiting_probe' AND EXISTS "
+                "(SELECT 1 FROM jobs WHERE jobs.video=knowledge_jobs.video "
+                "AND jobs.generation=knowledge_jobs.generation AND jobs.state='failed')"
+            )
         self.path.chmod(0o600)
 
     @contextmanager
@@ -360,6 +464,26 @@ class Workspace:
                 (time.time(), video, generation),
             )
 
+    @staticmethod
+    def prune_supplements(connection, now):
+        """Remove private job inputs only after their owned context is unavailable.
+
+        Live terminal rows retain request identity, including unknown outcomes.
+        This never touches paid attempt reservations or dispatch receipts.
+        Call inside the same transaction as deletion or new-job admission.
+        """
+        return connection.execute(
+            "DELETE FROM knowledge_supplement_jobs WHERE NOT EXISTS ("
+            "SELECT 1 FROM sessions s JOIN investigations i ON i.owner=s.id "
+            "JOIN videos v ON v.owner=s.id AND v.id=i.video "
+            "WHERE s.id=knowledge_supplement_jobs.owner "
+            "AND i.id=knowledge_supplement_jobs.investigation "
+            "AND v.id=knowledge_supplement_jobs.video "
+            "AND s.expires>? AND i.expires>? AND v.expires>? "
+            "AND i.deleted=0 AND v.deleted=0)",
+            (now, now, now),
+        ).rowcount
+
     def delete(self, table, key, owner):
         self.owned(table, key, owner)
         with self.db() as c:
@@ -380,6 +504,7 @@ class Workspace:
                 "(SELECT id FROM investigations WHERE deleted=1 OR expires<=?)",
                 (time.time(),),
             )
+            self.prune_supplements(c, time.time())
 
     def cleanup(self):
         import shutil
@@ -402,6 +527,7 @@ class Workspace:
             )
             c.execute("DELETE FROM sessions WHERE expires<=?", (time.time(),))
             c.execute("DELETE FROM session_tokens WHERE owner NOT IN (SELECT id FROM sessions)")
+            self.prune_supplements(c, time.time())
         for row in expired:
             shutil.rmtree(self.root / row["id"], ignore_errors=False) if (
                 self.root / row["id"]

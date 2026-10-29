@@ -1,3 +1,147 @@
+# FrameSeek sports landing — 2026-10-29
+
+final result: passed
+
+The later local English judge rehearsal verified the exact preset center question,
+its contextual English follow-up, replay at 00:06 and 00:13, and restoration after
+refresh. The landing page now links to the English guide. These checks sent zero
+FrameSeek model requests and do not establish a live sports judge flow. The private
+2:20 narrated review cut and its publication limits are recorded in
+[HACKATHON_VIDEO.md](docs/HACKATHON_VIDEO.md).
+
+## Findings
+
+- [P2, fixed] The first hero crop brought the ball into the navigation. The image
+  now starts 68px lower inside the clipped hero. The heading/body gap and primary
+  button width also match the selected composition more closely.
+- [P2, fixed] Initial question headers were too wide, evidence images too tall,
+  and question/evidence relationships were missing. Narrowed the headers, increased
+  pane padding, changed evidence crops to 1.85:1 and added Canvas 2D links derived
+  only from each sample question's actual evidence elements. Post-fix comparison
+  shows the intended hierarchy and connections.
+- No actionable P0/P1/P2 findings remain in the checked states.
+
+## Source and implementation evidence
+
+The user selected the **first displayed generated image** from this conversation's
+three concepts. Visual truth: `docs/sports-landing-20261029/selected-option-1.png`.
+Implementation: `http://127.0.0.1:8781/`, screenshot
+`docs/sports-landing-20261029/desktop-final.png`.
+
+The source is 946 × 1663 pixels, proportionally normalized to 1440 × 2531 for
+comparison. The implementation is 1440 × 2650 pixels at a 1440 × 1000 CSS viewport,
+density 1. Its additional 119px comes from the explicit illustration disclosure
+and compact footer. No image was stretched non-proportionally. Both captures show
+the default Questions tab, 05:10 shot illustration selected, sequence paused.
+
+Full-view comparison actually opened: `comparison-final.jpg` (2880 × 2650).
+Focused comparisons actually opened: `hero-comparison-final.jpg` (2880 × 928)
+and `workspace-comparison-final.jpg` (2880 × 858). Each contains the normalized
+source on the left and browser-rendered implementation on the right. Focused
+views were necessary to assess headline wrapping, player framing, card density,
+icons and relationship links.
+
+Additional evidence in the same folder: `canvas-preview.png`, `desktop-1200.png`
+(1200 × 2339 at a 1200 × 900 CSS viewport), `narrow-390.png` (390 × 3076 at a
+390 × 844 CSS viewport), `narrow-preview.png`, and `workspace-entry.png`.
+The narrow page is responsive marketing, not a new mobile application.
+
+## Required fidelity surfaces
+
+- **Fonts/typography:** existing local Instrument Sans is loaded; no substitute
+  webfont. Hero uses approximately 125px/750 at 1440px, tight tracking and two-line
+  wrapping; body approximately 28px. Navigation, labels and evidence use the same
+  family with smaller optical weights. Primary copy stays readable and unclipped.
+- **Spacing/layout:** retained the large right-side athlete, left-aligned headline,
+  two-line evidence statement, wide source-and-questions preview and three-column
+  workflow. Desktop margins are 72px in the hero and 48px around sections. The
+  1200px layout retains the desktop split; 390px stacks the preview and workflow
+  without horizontal overflow or hidden persistent controls.
+- **Colors/tokens:** navy `#0b1c28`, functional orange `#ff702e`, light text
+  `#f1f4f7`, muted bluegray `#a7b8c8`, fine bluegray rules. Focus rings and selected
+  frames use orange. No synthetic CSS imagery or decorative gradient substitutes.
+- **Images/icons:** four individually generated basketball photographs match the
+  selected lighting and subject. JPEG assets preserve their proportions and have
+  no obvious compression defects. Existing official Phosphor icons retain their
+  license. The source-like frames and timestamps are explicitly illustrative;
+  no private video or real-player identity was used. Camera framing differs
+  slightly from the original generated mock, which is acceptable regeneration
+  variation. See `assets.md` for dimensions, paths and prompt art direction.
+- **Copy/content:** preserves the selected hero and evidence-first framing.
+  Unsupported statistics, athlete recognition and coaching guarantees are absent.
+  The page explains that its sports preview is illustrative and the actual
+  workspace starts with the existing labeled synthetic demo. Uploaded-video
+  analysis still requires configuration. Nothing implies live acceptance passed.
+
+## Interactions and accessibility checked
+
+- Header/hero workspace CTA reaches `/workspace`; existing upload, source player,
+  conversation/canvas controls and synthetic-demo labels render there. The brand
+  link returns to the landing page. No storage migration or ownership change.
+- How it works navigates to `/#how-it-works`; workspace navigation targets the
+  preview section. All primary CTA links use the same-origin workspace route.
+- Clicking the pass evidence changes the player image to `pass.jpg`, caption and
+  selected thumbnail to 05:03. Native range Home then ArrowRight selects the same
+  frame. Sequence playback advances and stops automatically at its final frame.
+- Questions/Canvas switches show the corresponding panel; ArrowLeft from Canvas
+  selects Questions and returns keyboard focus to its tab.
+- Semantic controls, accessible labels/alt text, visible focus styling, native
+  range keyboard behavior and reduced-motion CSS are present. Headline, CTA and
+  preview controls remain usable at the checked narrow width. No external
+  accessibility audit or exhaustive zoom/browser matrix is claimed.
+- Browser console checked: no entries. Visible images at 1200px all loaded;
+  document and viewport widths matched at both 1200 and 390px.
+
+Recorded interaction evidence: `browser-proof.json`. Final isolated preview health
+reports fixture mode and **0 FrameSeek model requests**; `verification.json` records
+the result and current CSS/JS hashes. Promotional images used built-in ImageGen,
+separately from FrameSeek's provider/budget path.
+
+## Comparison history
+
+1. `comparison-first.jpg` and `hero-comparison-first.jpg`, using
+   `desktop-first.png` (1440 × 2660): blocked by the two P2 findings above;
+   contemporaneous details in `review-first.md`.
+2. Applied hero positioning, spacing, evidence proportions and actual relationship
+   rendering fixes. Recaptured `desktop-final.png`; opened the combined full,
+   hero and workspace comparisons above. No blocking drift remained.
+
+## Validation and limits
+
+- `npm test`: 209 passed.
+- Focused backend API/gateway/workspace regressions: 27 passed.
+- `npm run build`, `make check` (Ruff lint/format and schema drift), JavaScript
+  syntax and `git diff --check`: passed.
+- Public-page regression checks that `/` does not set a session cookie, retains
+  a working `/workspace` link, serves the four illustration assets, leaves private
+  investigation access unauthorized and dispatches no FrameSeek model request.
+- Preview uses a separate ignored workspace and one API/worker process; the
+  already-running private workspace was not restarted or migrated.
+- Local implementation only. No push, deployment, cloud provisioning, budget
+  approval or live sports-recognition validation was performed.
+
+## Open questions
+
+No blocking design question. Publishing was not requested.
+
+## Implementation checklist
+
+- Selected direction implemented in the existing FastAPI/static project.
+- Landing CSS/JS receive content hashes from the existing frontend build.
+- Browser comparison, primary interactions and smaller layouts checked.
+- Original workbench, session/CSRF/ownership and provider boundaries preserved.
+- Local preview remains running for review.
+
+## Follow-up polish
+
+P3: future marketing material could use rights-cleared footage from a real sports
+investigation. The current generated sequence is intentionally an illustration.
+
+
+---
+
+<!-- Earlier reports retained below without modification. -->
+
 # FrameSeek 完整菜单与调查检查器 · 2026-10-04
 
 final result: passed
@@ -60,3 +204,110 @@ final result: passed
 - 真实 Agent 的完整索引、多轮上下文、媒体归属、费用准入、幂等/pending/unknown/reset/取消仅在 mock transport 测试验证；部署校准和实测未完成。
 - `make test`: 94 passed；`npm test`: 47 passed；`make check`与`npm run build`通过。测试隔离临时存储，不改运行调查。
 - 截图：`docs/workspace-20261004/source-library.png`、`investigation-library.png`、`restored-canvas.png`。默认本机24小时TTL；无跨设备账户同步。
+
+## Conversation reading view — 2026-10-28, selected displayed option2
+
+Source: `.frameseek/reading-view-20261028/selected-design.png` (1629×966).
+Implementation: local127.0.0.1:8765, existing authenticated basketball desk.
+First same-size comparison: `.frameseek/design-audit-20261028/comparison-01.png`.
+The model's actual saved response and real source images are retained; fabricated
+mock chat exchanges/player metadata are intentionally not copied into product data.
+
+First-pass findings (blocking): P1 the resized viewport leaves current evidence
+under the floating composer; P2 default source column is narrower than reference;
+P2 context chip floats outside the composer rather than belonging to its form.
+The initial default inspector duplication was also found and corrected: stored
+canvas inspector preference no longer opens the conversation inspector implicitly.
+Pending re-capture after correcting layout and resize focus.
+
+Current iteration final result: blocked
+
+### Final local comparison and interaction pass
+
+Final result: passed for the selected desktop reading-view implementation.
+
+- Compared the exact selected option 2 and implementation together at equal
+  1629×966 pixels, without browser chrome: private `comparison-final.png`.
+  Focused answer/evidence/composer comparison: `comparison-details.png`.
+- Typography: existing Instrument Sans / system Chinese fallback, bold answer
+  hierarchy and quieter coverage text; no new font downloads. The original saved
+  answer `1个` is retained, explicitly prefixed as an estimate. No mock exchanges,
+  identities or fabricated count verification were added.
+- Layout: source column follows the selected roughly one-third split; answer and
+  two evidence images share one reading lane. Fixed resize selection visibility,
+  duplicate inspector, detached context chip and source/history scroll coupling.
+  Player remains visible while the recent-question list scrolls independently.
+- Colors/icons: preserved dark navy surfaces, muted secondary text, orange answer
+  mark and active tab. Reused bundled icon assets, with labeled native buttons,
+  native disclosure controls and visible focus treatments.
+- Images: actual private evidence at 01:41 and 01:42, original 16:9 aspect ratio,
+  lazy loaded. The reference's fabricated second crop is intentionally replaced
+  by the genuine saved frame. Timestamp footer sits below images so controls do
+  not cover the scoreboard.
+- Interaction: native wheel moved conversation scrollTop from 11597 to 10631;
+  details opens; delete confirmation cancels without deletion; 377 references
+  expand and collapse; 01:41/01:42 buttons seek to 101/102 seconds; canvas/view
+  reload and context removal preserve draft; basketball→box→basketball restores
+  22 basketball turns and its draft. Box is the genuine empty owned desk, not
+  seeded with fake history. Player panel closes/reopens normally. Final test
+  draft restored to the original empty value and saved.
+- Regression: 150 frontend tests pass, frontend build and `make check` pass.
+  New gesture regression verifies conversation input is not captured by canvas
+  pan/zoom handlers. Time-reading questions are not mislabeled event counts.
+- Preservation: before/after hashes match for all 27 queries, 3 videos,
+  21 model attempts, 2 budgets and 19 settlements. No model dispatch or budget
+  changes. No deployment, commit or push in this design task.
+- Verification limit: this pass establishes local rendering and interaction with
+  existing answers. It does not establish model-answer accuracy or full-video
+  event-count quality. Existing canvas remains available; no mobile redesign.
+
+### Canvas-to-conversation composer entry — 2026-10-28
+
+Clicking the canvas composer body or focusing its textarea now opens the conversation
+view. Canvas card “继续追问” follows the same path through textarea focus. Engine,
+menu and other toolbar controls keep their own behavior. No submit is triggered.
+Browser verified direct textarea click and card follow-up: conversation active,
+textarea focused, existing context and temporary draft retained, 22 turns unchanged.
+Temporary draft restored to empty and saved. Screenshot: private
+`composer-entry.png`. Frontend regression suite: 151 passed; build passed.
+Final result: passed.
+
+### Explicit quoted replies — 2026-10-28
+
+Scoped follow-up to the user's audit feedback; existing desktop reading layout is
+preserved. The approved interaction replaces the implicit 接着 chip with a quoted
+answer: question number, original question, answer excerpt and visible 取消引用.
+A group label names the quoted question; ordinary and quoted input placeholders
+are distinct. Invalid/hidden/foreign source contexts are not inferred by matching
+question text. Failed real turns without an evidence anchor offer 重新编辑问题
+rather than implying a usable quoted reply.
+
+Same2267×1344 viewport capture, same original question25 and empty draft, compared
+together in private `followup-audit-20261028/quote-comparison.png`; focused crop
+`final-detail.png`. Typography uses existing fonts, palette uses existing navy and
+orange tokens, and quote spacing deliberately replaces a filter-like pill with a
+left-border reply block. No new imagery/icons were invented. Quote copy is actual
+saved answer content; long question/answer lines truncate visually with full title.
+Composer/evidence scroll clearance increased for the taller quoted block.
+
+Actual page checks: question24 shows its own `1个` answer; same-titled question25
+shows `无法确定`; cancel leaves typed draft byte-for-byte and restores normal
+placeholder; original empty draft restored; refresh restores question25 quote.
+No submit/model request, deletion, source edit, deployment or budget change.
+152 frontend regressions and frontend build pass. This tests local interaction;
+no full screen-reader/contrast conformance or new model quality claim is made.
+Final result: passed for the scoped quoted-reply change.
+
+### Automatic engine selection — local 2026-10-28
+
+Scoped composer edit keeps the approved reading view, fonts, colors and evidence
+imagery. The engine selector moved into More tools / Advanced settings; the primary
+composer shows Auto and manual override shows Manual. Actual backend read-only
+routing and dispatch are implemented, not a hidden unchanged selector. Label sizes
+and icon assets reuse the existing design. Browser verified default Auto, access
+to advanced controls, synthetic zero-model positive submission, and capability
+rejection preserving the submitted draft. Existing basketball23 turns, question25
+quote and original empty draft remain; source/query/financial hashes match.
+Private screenshots: `auto-route-20261028/local-auto.png`, `composer-auto.png`,
+`fixture-auto-answer.png`, `fixture-blocked.png`. No actual model inference or
+online deployment. Test counts and material limits: docs/AUTO_ROUTING.md.

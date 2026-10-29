@@ -7,23 +7,33 @@ import time
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
-from frameseek.local_vision import answer_source, configured
+from frameseek.local_vision import answer_source, cancel_worker, configured
+from frameseek.question_context import resolve_followup, saved_question
 from frameseek.schema import Answer, QueryControl
 from frameseek.workspace import digest
 
 _SLOT = threading.BoundedSemaphore(1)
+_CANCELLATIONS = {}
+_CANCEL_LOCK = threading.Lock()
 
 
-def install_local_routes(router, ws, owner_dependency, ChatInput, *, cloud=None):
+def interrupt_local_query(owner, desk, request):
+    with _CANCEL_LOCK:
+        callback = _CANCELLATIONS.get((owner, desk, request))
+        if callback:
+            callback()
+
+
+def install_local_routes(router, ws, owner_dependency, ChatInput, *, cloud=None, chat_guard=None):
     prefix = "/api/cloud-chat" if cloud else "/api/local-chat"
     label = "云端视觉" if cloud else "本机视觉"
 
     def available():
         return cloud.configured() if cloud else configured()
 
-    def admission(source, owner, body):
+    def admission(source, owner, body, context=None):
         if cloud:
-            return cloud.prepare(source, owner, body.question)
+            return cloud.prepare(source, owner, resolve_followup(body.question, context))
         return {"kind": "ready", "request_id": body.request_id, "paid_requests": 0}
 
     def owned(body, owner):
@@ -37,7 +47,7 @@ def install_local_routes(router, ws, owner_dependency, ChatInput, *, cloud=None)
         if body.parent_request_id:
             with ws.db() as c:
                 parent = c.execute(
-                    "SELECT result FROM queries WHERE owner=? AND investigation=? AND id=? "
+                    "SELECT result,input FROM queries WHERE owner=? AND investigation=? AND id=? "
                     "AND generation=? AND state='done'",
                     (owner, desk["id"], body.parent_request_id, body.generation),
                 ).fetchone()
@@ -48,8 +58,32 @@ def install_local_routes(router, ws, owner_dependency, ChatInput, *, cloud=None)
                 raise HTTPException(409, "foreign_context_video")
             if saved.get("source_generation", source["generation"]) != source["generation"]:
                 raise HTTPException(409, "stale_context_generation")
+
+            def load_parent(key):
+                with ws.db() as c:
+                    ancestor = c.execute(
+                        "SELECT result,input FROM queries WHERE owner=? AND investigation=? "
+                        "AND id=? AND generation=? AND state='done'",
+                        (owner, desk["id"], key, body.generation),
+                    ).fetchone()
+                return (
+                    (json.loads(ancestor["result"]), json.loads(ancestor["input"] or "{}"))
+                    if ancestor
+                    else None
+                )
+
+            try:
+                original_question = saved_question(
+                    saved,
+                    json.loads(parent["input"] or "{}"),
+                    load_parent,
+                    video=source["id"],
+                    generation=source["generation"],
+                )
+            except ValueError as error:
+                raise HTTPException(409, str(error)) from None
             context = {
-                "question": saved["question"],
+                "question": original_question,
                 "answer": saved["response"]["answer"],
                 "events": saved["response"]["events"],
             }
@@ -57,15 +91,22 @@ def install_local_routes(router, ws, owner_dependency, ChatInput, *, cloud=None)
 
     @router.post(prefix + "/prepare")
     def prepare(body: ChatInput, owner=owner_dependency):
-        _, source, _ = owned(body, owner)
+        desk, source, context = owned(body, owner)
+        if chat_guard:
+            chat_guard(desk)
         if not available():
             return {"kind": "capability_blocked", "message": label + "运行时尚未就绪，问题已保留。"}
-        return admission(source, owner, body)
+        return admission(source, owner, body, context)
 
-    def publish(body, owner, source, answer):
+    def publish(body, owner, source, answer, context=None):
+        try:
+            resolved_question = resolve_followup(body.question, context)
+        except ValueError:
+            resolved_question = body.question
         terminal = {
             "id": body.request_id,
             "question": body.question,
+            "resolved_question": resolved_question,
             "response": answer,
             "mode": "real",
             "engine": "cloud" if cloud else "local",
@@ -91,6 +132,11 @@ def install_local_routes(router, ws, owner_dependency, ChatInput, *, cloud=None)
             )
 
     def work(body, owner, desk, source, context):
+        cancellation_key = (owner, desk["id"], body.request_id)
+        if not cloud:
+            with _CANCEL_LOCK:
+                _CANCELLATIONS[cancellation_key] = cancel_worker
+
         def active():
             try:
                 current = ws.owned("investigations", desk["id"], owner)
@@ -130,7 +176,7 @@ def install_local_routes(router, ws, owner_dependency, ChatInput, *, cloud=None)
                 else answer_source(ws.root, source, body.question, context, progress, active)
             )
             if active():
-                publish(body, owner, source, answer)
+                publish(body, owner, source, answer, context)
         except Exception as error:
             if active():
                 answer = Answer.model_validate(
@@ -172,13 +218,17 @@ def install_local_routes(router, ws, owner_dependency, ChatInput, *, cloud=None)
                         },
                     }
                 ).model_dump(mode="json")
-                publish(body, owner, source, answer)
+                publish(body, owner, source, answer, context)
         finally:
+            with _CANCEL_LOCK:
+                _CANCELLATIONS.pop(cancellation_key, None)
             _SLOT.release()
 
     @router.post(prefix)
     def local_chat(body: ChatInput, owner=owner_dependency):
         desk, source, context = owned(body, owner)
+        if chat_guard:
+            chat_guard(desk)
         payload = digest(("cloud:" if cloud else "") + body.model_dump_json())
         with ws.db() as c:
             c.execute("BEGIN IMMEDIATE")
@@ -205,7 +255,7 @@ def install_local_routes(router, ws, owner_dependency, ChatInput, *, cloud=None)
             if not available():
                 raise HTTPException(409, "local_vision_not_configured")
             if cloud:
-                admitted = admission(source, owner, body)
+                admitted = admission(source, owner, body, context)
                 if admitted["kind"] != "ready":
                     return JSONResponse(admitted, headers={"Cache-Control": "no-store"})
             if (

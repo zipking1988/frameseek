@@ -421,3 +421,31 @@ def test_free_pixel_search_understands_presence_and_general_target_requests():
     assert appearance_request("找出红箱子")
     assert appearance_request("Are there people wearing blue?")
     assert not appearance_request("这个人出现多少次？")
+
+
+def test_explicit_free_cancellation_stops_worker_and_only_clears_its_new_markers(
+    tmp_path, monkeypatch
+):
+    import json
+    from types import SimpleNamespace
+
+    import frameseek.local_vision as local
+
+    stopped = []
+    process = SimpleNamespace(poll=lambda: None, terminate=lambda: stopped.append(True))
+    client = SimpleNamespace(process=process)
+    monkeypatch.setattr(local, "_CLIENT", client)
+    local.cancel_worker()
+    assert stopped == [True] and client.cancelled is True
+    starting = SimpleNamespace(process=process)
+    monkeypatch.setattr(local, "_STARTING_CLIENT", starting)
+    local.cancel_worker()
+    assert starting.cancelled is True and stopped == [True, True]
+    old = tmp_path / "old.started"
+    current = tmp_path / "current.started"
+    receipt = tmp_path / "current.raw.json"
+    old.write_text(json.dumps({"started": 10}))
+    current.write_text(json.dumps({"started": 30}))
+    receipt.write_text('{"text":"saved output"}')
+    local.clear_cancelled_markers(tmp_path, 20)
+    assert old.exists() and receipt.exists() and not current.exists()

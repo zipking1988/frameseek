@@ -1137,6 +1137,7 @@
       draw();
     }
     viewport.addEventListener("pointerdown", (e) => {
+      if (viewport.dataset.readingMode === "true") return;
       if (
         gesture?.kind === "card" ||
         e.button !== 0 ||
@@ -1155,7 +1156,7 @@
     viewport.addEventListener(
       "pointerdown",
       () => {
-        pointerFocus = true;
+        pointerFocus = viewport.dataset.readingMode !== "true";
       },
       true,
     );
@@ -1184,6 +1185,7 @@
     viewport.addEventListener(
       "wheel",
       (e) => {
+        if (viewport.dataset.readingMode === "true") return;
         if (e.target.closest("details,textarea")) return;
         e.preventDefault();
         if (e.ctrlKey || e.metaKey) {
@@ -1200,6 +1202,7 @@
       { passive: false },
     );
     viewport.addEventListener("keydown", (e) => {
+      if (viewport.dataset.readingMode === "true") return;
       if (e.target !== viewport) return;
       if (e.key === "Home") {
         e.preventDefault();
@@ -1251,6 +1254,7 @@
       draw();
     });
     viewport.addEventListener("dblclick", (e) => {
+      if (viewport.dataset.readingMode === "true") return;
       if (!e.target.closest(".turn,button,a")) fit();
     });
     function arrange(mode) {
@@ -1313,6 +1317,7 @@
     $("canvas-shortcuts")?.addEventListener("click",()=>$("canvas-shortcuts-dialog").showModal());
     $("canvas-shortcuts-close")?.addEventListener("click",()=>$("canvas-shortcuts-dialog").close());
     document.addEventListener("keydown",e=>{
+      if (viewport.dataset.readingMode === "true") return;
       if(document.querySelector("dialog[open]"))return;
       if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==="k") {e.preventDefault();openSearch();return;}
       if(e.target.closest("input,textarea,select,[contenteditable=true]"))return;

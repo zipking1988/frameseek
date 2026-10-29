@@ -7,6 +7,7 @@ recognition result: incomplete/uncertain inventories remain explicitly unknown.
 
 import hashlib
 import json
+import math
 import re
 import unicodedata
 from typing import Annotated, Literal
@@ -79,12 +80,26 @@ class Observation(Contract):
 class Condition(Contract):
     field: Label
     value: Label
-    operator: Literal["is", "is_not"] = "is"
+    operator: Literal["is", "is_not", "contains", "color_item"] = "is"
 
     @model_validator(mode="after")
     def nonempty(self):
         if not normalized(self.field) or not normalized(self.value):
             raise ValueError("empty_condition")
+        if self.operator == "contains" and normalized(self.field) != "text":
+            raise ValueError("contains_requires_visible_text")
+        if self.operator == "color_item":
+            from frameseek.semantic_search import COLOR_CONCEPTS, GARMENT_CONCEPTS
+
+            parts = normalized(self.value).split()
+            if (
+                normalized(self.field) == "text"
+                or not 2 <= len(parts) <= len(COLOR_CONCEPTS) + 1
+                or len(set(parts[:-1])) != len(parts) - 1
+                or not set(parts[:-1]) <= COLOR_CONCEPTS
+                or parts[-1] not in GARMENT_CONCEPTS
+            ):
+                raise ValueError("invalid_color_item_condition")
         return self
 
 
@@ -198,20 +213,93 @@ def checkpoint(index: ObservationIndex, batch, expected_snapshot):
 
 
 def subject_verdict(subject, conditions):
-    facts = {normalized(k): {normalized(v) for v in values} for k, values in subject.facts.items()}
+    from frameseek.semantic_search import (
+        BODY_CLOTHING_CONCEPTS,
+        COLOR_CONCEPTS,
+        GARMENT_CONCEPTS,
+        canonical,
+        interpret,
+        primary_item_description,
+    )
+
+    raw_facts = {
+        normalized(k): {normalized(v) for v in values} for k, values in subject.facts.items()
+    }
+    facts = {key: {canonical(value) for value in values} for key, values in raw_facts.items()}
     uncertain = {normalized(k) for k in subject.uncertain_fields}
     verdicts = []
     for condition in conditions:
-        key, value = normalized(condition.field), normalized(condition.value)
+        key, value = normalized(condition.field), canonical(condition.value)
         if key in uncertain or key not in facts:
             verdicts.append("unknown")
         else:
-            matched = value in facts[key]
-            verdicts.append("yes" if matched == (condition.operator == "is") else "no")
+            if condition.operator == "contains":
+                matched = any(
+                    normalized(condition.value) in observed for observed in raw_facts[key]
+                )
+                verdicts.append("yes" if matched else "no")
+            elif condition.operator == "color_item":
+                *requested, item = normalized(condition.value).split()
+                requested_colors = set(requested)
+                matched = False
+                ambiguous = False
+                for observed in raw_facts[key]:
+                    # A trim color is not necessarily the main item's color.
+                    # Only remove this narrowly specified suffix, preserving the
+                    # original observation and treating other descriptions as unknown.
+                    words, problems = interpret(primary_item_description(observed))
+                    if problems:
+                        ambiguous = True
+                        continue
+                    colors = set(words) & COLOR_CONCEPTS
+                    items = set(words) & GARMENT_CONCEPTS
+                    item_matches = item in items or (
+                        item == "clothing" and bool(items & BODY_CLOTHING_CONCEPTS)
+                    )
+                    if not problems and len(items) == 1 and set(words) == colors | items:
+                        matched = requested_colors <= colors and item_matches
+                        if matched:
+                            break
+                        if item_matches and requested_colors & colors:
+                            ambiguous = True
+                    elif requested_colors & colors and item_matches:
+                        ambiguous = True
+                if not matched and (
+                    item in facts[key]
+                    or item == "clothing"
+                    and bool(facts[key] & BODY_CLOTHING_CONCEPTS)
+                ):
+                    color_key = key + "_color"
+                    if (
+                        len(requested_colors) != 1
+                        or len(raw_facts[key]) != 1
+                        or color_key in uncertain
+                        or color_key not in facts
+                        or len(raw_facts[color_key]) != 1
+                    ):
+                        ambiguous = True
+                    elif requested_colors <= facts[color_key]:
+                        matched = True
+                verdicts.append("yes" if matched else "unknown" if ambiguous else "no")
+            else:
+                matched = value in facts[key]
+                if key == "kind" and value == "person" and facts[key] & {"male", "female"}:
+                    matched = True
+                verdicts.append("yes" if matched == (condition.operator == "is") else "no")
     return "no" if "no" in verdicts else "unknown" if "unknown" in verdicts else "yes"
 
 
-def search_occurrences(index: ObservationIndex, conditions, offset=0, limit=50, snapshot=None):
+def search_occurrences(
+    index: ObservationIndex,
+    conditions,
+    offset=0,
+    limit=50,
+    snapshot=None,
+    time_window=None,
+    candidate_offset=0,
+    candidate_time=None,
+    include_candidates=True,
+):
     """Scan EVERY observation; paginate output only. No invented NL interpretation.
 
     Conditions must come from a separately grounded query compiler or explicit
@@ -225,17 +313,69 @@ def search_occurrences(index: ObservationIndex, conditions, offset=0, limit=50, 
         raise ValueError("observation_condition_limit")
     if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 100:
         raise ValueError("observation_page_limit")
-    identity = fingerprint(
-        {"index": index.snapshot(), "conditions": [c.model_dump() for c in conditions]}
-    )
-    if (snapshot is not None and snapshot != identity) or (offset and snapshot is None):
+    if type(candidate_offset) is not int or not 0 <= candidate_offset <= 216000:
+        raise ValueError("observation_page_limit")
+    if candidate_time is not None and (
+        type(candidate_time) not in (int, float)
+        or not math.isfinite(candidate_time)
+        or not 0 <= candidate_time < index.duration
+        or candidate_offset != 0
+        or offset != 0
+    ):
+        raise ValueError("invalid_candidate_time")
+    identity_data = {"index": index.snapshot(), "conditions": [c.model_dump() for c in conditions]}
+    if time_window is not None:
+        if (
+            not isinstance(time_window, dict)
+            or set(time_window) != {"start", "end"}
+            or type(time_window["start"]) not in (int, float)
+            or type(time_window["end"]) not in (int, float)
+            or not 0 <= time_window["start"] < time_window["end"] <= index.duration
+        ):
+            raise ValueError("invalid_observation_time_window")
+        identity_data["time_window"] = time_window
+    identity = fingerprint(identity_data)
+    if (snapshot is not None and snapshot != identity) or (
+        (offset or candidate_offset or candidate_time is not None) and snapshot is None
+    ):
         raise ValueError("observation_snapshot_conflict")
     observations = {o.frame_id: o for o in index.observations}
-    occurrences, unknown, missing = [], [], []
+    occurrences, unknown, missing, candidates = [], [], [], []
+    # Consecutive samples often contain identical attributes. Memoize only
+    # within this search and cap the cache; never persist private observations.
+    verdict_cache = {}
+
+    def verdict(subject, condition_number=None):
+        key = (
+            tuple(sorted((field, tuple(values)) for field, values in subject.facts.items())),
+            tuple(sorted(subject.uncertain_fields)),
+            condition_number,
+        )
+        if key not in verdict_cache:
+            selected = conditions if condition_number is None else [conditions[condition_number]]
+            result = subject_verdict(subject, selected)
+            if len(verdict_cache) < 4096:
+                verdict_cache[key] = result
+            return result
+        return verdict_cache[key]
+
     last_hit = None
     reviewed = 0
-    complete = index.catalog_complete
-    for frame in index.frames:
+    complete = index.catalog_complete and time_window is None
+    scoped_frames = [
+        frame
+        for frame in index.frames
+        if time_window is None
+        or (
+            frame.t < time_window["end"]
+            and (
+                frame.end > time_window["start"]
+                if index.catalog_complete
+                else frame.t >= time_window["start"]
+            )
+        )
+    ]
+    for frame in scoped_frames:
         observation = observations.get(frame.frame_id)
         if observation is None:
             missing.append(frame.frame_id)
@@ -243,8 +383,18 @@ def search_occurrences(index: ObservationIndex, conditions, offset=0, limit=50, 
             last_hit = None
             continue
         reviewed += 1
-        matches = [s.id for s in observation.subjects if subject_verdict(s, conditions) == "yes"]
-        ambiguous = any(subject_verdict(s, conditions) == "unknown" for s in observation.subjects)
+        subjects = [(s, verdict(s)) for s in observation.subjects]
+        matches = [s.id for s, result in subjects if result == "yes"]
+        ambiguous = any(result == "unknown" for _, result in subjects)
+        # A lead is not an answer: one subject must satisfy at least one
+        # condition and leave the rest unknown, without contradicting any.
+        if include_candidates and not matches:
+            if any(
+                result == "unknown"
+                and any(verdict(subject, i) == "yes" for i in range(len(conditions)))
+                for subject, result in subjects
+            ):
+                candidates.append({"frame_id": frame.frame_id, "t": frame.t, "uri": frame.uri})
         if ambiguous or not observation.inventory_complete:
             unknown.append(frame.frame_id)
             complete = False
@@ -260,7 +410,7 @@ def search_occurrences(index: ObservationIndex, conditions, offset=0, limit=50, 
             and not frame.cut_before
             and last_hit["end"] == frame.t
         ):
-            last_hit["end"] = frame.end
+            last_hit["end"] = min(frame.end, time_window["end"]) if time_window else frame.end
             last_hit["evidence_count"] += 1
             if len(last_hit["evidence"]) == 1:
                 last_hit["evidence"].append(evidence)
@@ -268,14 +418,23 @@ def search_occurrences(index: ObservationIndex, conditions, offset=0, limit=50, 
                 last_hit["evidence"][-1] = evidence
         else:
             last_hit = {
-                "start": frame.t,
-                "end": frame.end,
+                "start": max(frame.t, time_window["start"])
+                if time_window and index.catalog_complete
+                else frame.t,
+                "end": min(frame.end, time_window["end"])
+                if time_window and frame.end is not None
+                else frame.end,
                 "evidence": [evidence],
                 "evidence_count": 1,
                 "identity_continuity": False,
             }
             occurrences.append(last_hit)
     end = offset + limit
+    if candidate_time is not None:
+        candidate_offset = next(
+            (i for i, frame in enumerate(candidates) if frame["t"] >= candidate_time),
+            len(candidates),
+        )
     return {
         "kind": "indexed_occurrences",
         "video_id": index.video,
@@ -284,17 +443,28 @@ def search_occurrences(index: ObservationIndex, conditions, offset=0, limit=50, 
         "occurrences": occurrences[offset:end],
         "total_occurrences": len(occurrences),
         "next_offset": end if end < len(occurrences) else None,
+        "uncertain_candidates": candidates[candidate_offset : candidate_offset + 8]
+        if offset == 0
+        else [],
+        "uncertain_candidate_total": len(candidates),
+        "uncertain_candidate_next_offset": candidate_offset + 8
+        if offset == 0 and candidate_offset + 8 < len(candidates)
+        else None,
         "model_requests_sent": 0,
         "coverage": {
-            "catalog_frames": len(index.frames),
+            "catalog_frames": len(scoped_frames),
             "reviewed_frames": reviewed,
             "missing_frame_ids": missing,
             "uncertain_frame_ids": unknown,
             "catalog_complete": index.catalog_complete,
-            "all_indexed_observations_searched": True,
-            "all_source_frames_reviewed": index.catalog_complete and not missing,
+            "all_indexed_observations_searched": time_window is None,
+            "all_scope_observations_searched": True,
+            "all_source_frames_reviewed": index.catalog_complete
+            and not missing
+            and time_window is None,
             "exhaustive_under_index": complete,
             "recognition_accuracy_verified": False,
+            "time_scope": time_window,
         },
     }
 

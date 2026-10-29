@@ -550,8 +550,22 @@ async def test_explicit_window_chat_fits_four_calls_and_keeps_real_frames(tmp_pa
     [
         ("请查看05:20至05:40的画面", {"start": 320, "end": 340}),
         ("请查看5:20–5:40的画面", {"start": 320, "end": 340}),
+        ("Find a box from 00:04 to 00:06", {"start": 4, "end": 6}),
+        ("Find a box BETWEEN 00:04 AND 00:06", {"start": 4, "end": 6}),
+        ("在05:09找出穿蓝色球衣的人", {"start": 309, "end": 310}),
+        ("Find a box at 00:04", {"start": 4, "end": 5}),
+        ("Find a box at 00:04 or before", None),
+        ("在00:04之前找箱子", None),
+        ("在00:04左右找箱子", None),
+        ("在00:04附近找箱子", None),
+        ("不在00:04的箱子", None),
+        ("Find a box not at 00:04", None),
+        ('Find text "at 00:04"', None),
+        ("Compare 00:04 and 00:06", None),
+        ('Find text "00:04 to 00:06"', None),
+        ('Find text "00:04 to 00:06" from 00:10 to 00:12', {"start": 10, "end": 12}),
+        ("查找文字‘00:04至00:06’，请在00:10至00:12查看", {"start": 10, "end": 12}),
         ("从00:00到02:00", None),
-        ("05:20至05:40，对比06:00", None),
         ("1:05:20至1:05:40", None),
         ("那后来呢？", None),
     ],
@@ -691,7 +705,19 @@ async def test_direct_window_one_json_repair_stays_within_three_calls(tmp_path, 
         await client.aclose()
 
 
-@pytest.mark.parametrize("question", ["05:40至05:20", "05:20至07:00"])
+@pytest.mark.parametrize(
+    "question",
+    [
+        "05:40至05:20",
+        "05:20至07:00",
+        "05:20至05:99",
+        "05:99至06:00",
+        "05:20至05:40，对比06:00",
+        "00:01至00:02和00:03至00:04",
+        "between 00:02 and 00:69",
+        "在05:09找人，再对比05:12",
+    ],
+)
 def test_invalid_explicit_window_rejected(question):
     from frameseek.agent import explicit_time_window
 

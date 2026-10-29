@@ -89,6 +89,138 @@ def test_all_frames_searched_not_top_eight_and_contiguous_timeline():
     assert result["model_requests_sent"] == 0
 
 
+def test_time_scoped_search_stays_within_requested_bounds_and_snapshot():
+    index = populated()
+    scope = {"start": 4, "end": 6}
+    result = search_occurrences(index, CRITERIA, time_window=scope)
+    assert result["coverage"]["time_scope"] == scope
+    assert not result["coverage"]["all_source_frames_reviewed"]
+    assert [(hit["start"], hit["end"]) for hit in result["occurrences"]] == [(4, 6)]
+    with pytest.raises(ValueError, match="observation_snapshot_conflict"):
+        search_occurrences(
+            index, CRITERIA, snapshot=result["snapshot"], time_window={"start": 5, "end": 6}
+        )
+
+
+def test_short_scope_partial_subject_candidates_are_not_matching_evidence():
+    index = catalog(4, complete=False)
+    index = checkpoint(
+        index,
+        [
+            observation(
+                0,
+                [
+                    {
+                        "id": "partial",
+                        "facts": {"kind": ["person"], "garment": ["jersey"], "color": ["white"]},
+                    }
+                ],
+            ),
+            observation(1, [{"id": "other", "facts": {"kind": ["car"], "garment": ["jersey"]}}]),
+            observation(
+                2, [{"id": "hit", "facts": {"kind": ["person"], "garment": ["white jersey"]}}]
+            ),
+            observation(3, [{"id": "unknown", "facts": {"pose": ["standing"]}}]),
+        ],
+        index.snapshot(),
+    )
+    conditions = [
+        {"field": "kind", "value": "person"},
+        {"field": "garment", "value": "white jersey", "operator": "color_item"},
+    ]
+    result = search_occurrences(index, conditions, time_window={"start": 0, "end": 4})
+    assert result["total_occurrences"] == 1
+    assert [item["frame_id"] for item in result["uncertain_candidates"]] == ["vid_offline_f0"]
+    assert result["uncertain_candidate_total"] == 1
+    assert result["occurrences"][0]["evidence"][0]["frame_id"] == "vid_offline_f2"
+    assert search_occurrences(index, conditions)["uncertain_candidate_total"] == 1
+    assert result["model_requests_sent"] == 0
+
+
+def test_full_video_candidates_paginate_without_promoting_or_changing_snapshot():
+    index = catalog(20, complete=False)
+    for start in range(0, 20, 8):
+        rows = [
+            observation(i, [{"id": "person", "facts": {"kind": ["person"], "garment": ["jersey"]}}])
+            for i in range(start, min(start + 8, 20))
+        ]
+        index = checkpoint(index, rows, index.snapshot())
+    conditions = [
+        {"field": "kind", "value": "person"},
+        {"field": "garment", "value": "white jersey", "operator": "color_item"},
+    ]
+    first = search_occurrences(index, conditions)
+    assert first["total_occurrences"] == 0 and first["uncertain_candidate_total"] == 20
+    assert len(first["uncertain_candidates"]) == 8 and first["uncertain_candidate_next_offset"] == 8
+    second = search_occurrences(index, conditions, snapshot=first["snapshot"], candidate_offset=8)
+    assert [frame["t"] for frame in second["uncertain_candidates"]] == list(range(8, 16))
+    jumped = search_occurrences(index, conditions, snapshot=first["snapshot"], candidate_time=15.5)
+    assert [frame["t"] for frame in jumped["uncertain_candidates"]] == list(range(16, 20))
+    assert jumped["uncertain_candidate_next_offset"] is None
+    with pytest.raises(ValueError, match="invalid_candidate_time"):
+        search_occurrences(index, conditions, snapshot=first["snapshot"], candidate_time=20)
+    with pytest.raises(ValueError, match="observation_snapshot_conflict"):
+        search_occurrences(index, conditions, candidate_time=15)
+    with pytest.raises(ValueError, match="observation_snapshot_conflict"):
+        search_occurrences(index, conditions, candidate_offset=8)
+    with pytest.raises(ValueError, match="observation_snapshot_conflict"):
+        search_occurrences(
+            index,
+            conditions + [{"field": "kind", "value": "person"}],
+            snapshot=first["snapshot"],
+            candidate_offset=8,
+        )
+
+
+def test_search_reuses_verdicts_without_merging_subject_identity_or_uncertainty(monkeypatch):
+    import frameseek.occurrences as occurrences
+
+    index = catalog(16, complete=False)
+    for start in (0, 8):
+        rows = [
+            observation(i, [{"id": f"person-{i}", "facts": {"kind": ["person"]}}])
+            for i in range(start, start + 8)
+        ]
+        rows[-1]["subjects"][0]["uncertain_fields"] = ["kind"]
+        index = checkpoint(index, rows, index.snapshot())
+    original = occurrences.subject_verdict
+    calls = []
+
+    def counted(subject, conditions):
+        calls.append(1)
+        return original(subject, conditions)
+
+    monkeypatch.setattr(occurrences, "subject_verdict", counted)
+    result = search_occurrences(index, [{"field": "kind", "value": "person"}])
+    assert result["total_occurrences"] == 14
+    assert result["coverage"]["uncertain_frame_ids"] == ["vid_offline_f7", "vid_offline_f15"]
+    assert result["occurrences"][0]["evidence"][0]["subjects"] == ["person-0"]
+    assert result["occurrences"][1]["evidence"][0]["subjects"] == ["person-1"]
+    assert len(calls) <= 3
+
+
+def test_full_frame_overlapping_scope_start_is_found_without_fabricating_timestamp():
+    from frameseek.index_service import chat_answer
+
+    index = populated()
+    result = search_occurrences(index, CRITERIA, time_window={"start": 4.25, "end": 4.75})
+    assert result["coverage"]["reviewed_frames"] == 1
+    hit = result["occurrences"][0]
+    assert (hit["start"], hit["end"]) == (4.25, 4.75)
+    assert hit["evidence"][0]["t"] == 4
+    result.update(duration=index.duration, question="fixture")
+    answer = chat_answer(result)
+    assert answer["events"][0]["start"] == 4
+    assert answer["events"][0]["evidence"][0]["t"] == 4
+    assert "首帧在所选时段开始前呈现" in answer["events"][0]["summary"]
+
+    sampled = catalog(2, complete=False)
+    sampled = checkpoint(sampled, [observation(0), observation(1)], sampled.snapshot())
+    assert not search_occurrences(sampled, CRITERIA, time_window={"start": 0.25, "end": 0.75})[
+        "occurrences"
+    ]  # A sample alone cannot establish a continuous interval.
+
+
 def test_brief_appearance_after_top_eight_and_end_of_video_retained():
     index = catalog()
     observations = [observation(i, subjects=[] if i not in (13, 23) else None) for i in range(24)]

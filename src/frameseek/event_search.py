@@ -265,7 +265,8 @@ def search_events(index, question, offset=0, limit=40, snapshot=None):
     page_end = offset + limit
     return {
         "kind": "indexed_occurrences",
-        "verified_matches": True,
+        "structured_conditions_evaluated": True,
+        "verified_matches": False,
         "video_id": index.video,
         "generation": index.generation,
         "snapshot": identity,

@@ -36,3 +36,17 @@ for (const file of [
   );
 }
 await writeFile(base + "index.html", html);
+
+// Keep the marketing page independent of the private workspace's application bundle.
+let landing = await readFile(base + "landing.html", "utf8");
+for (const file of ["landing.css", "landing.js"]) {
+  const hash = createHash("sha256")
+    .update(await readFile(base + file))
+    .digest("hex")
+    .slice(0, 12);
+  landing = landing.replace(
+    new RegExp("/static/" + file.replaceAll(".", "\\.") + "(?:\\?v=[a-f0-9]+)?", "g"),
+    `/static/${file}?v=${hash}`,
+  );
+}
+await writeFile(base + "landing.html", landing);

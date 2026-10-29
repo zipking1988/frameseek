@@ -3,6 +3,7 @@ import React, {
   useRef,
   useState,
   useEffect,
+  memo,
 } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -71,6 +72,142 @@ function WorkspaceChrome() {
     };
   }, []);
   return null;
+}
+
+function WorkspaceView() {
+  const [mode, setMode] = useState(() => {
+    try { return localStorage.getItem("frameseek-reading-view") === "canvas" ? "canvas" : "conversation"; }
+    catch { return "conversation"; }
+  });
+  useEffect(() => {
+    document.querySelector(".agent-shell").classList.toggle("conversation-mode", mode === "conversation");
+    document.getElementById("chat-content").setAttribute("aria-label", mode === "conversation" ? "视频对话" : "调查画布");
+    document.getElementById("chat-content").dataset.readingMode = String(mode === "conversation");
+    try { localStorage.setItem("frameseek-reading-view", mode); } catch {}
+    document.getElementById("reading-tools").open = mode === "canvas";
+    document.getElementById("engine-settings").open = false;
+    window.dispatchEvent(new Event("frameseek-reading-view"));
+    window.dispatchEvent(new Event("resize"));
+  }, [mode]);
+  useEffect(() => {
+    const form = document.getElementById("question-form");
+    const enterConversation = event => {
+      if (event.type === "focusin" ? event.target.id !== "question"
+        : event.target.closest("button, select, summary, a")) return;
+      setMode("conversation");
+    };
+    form.addEventListener("pointerdown", enterConversation);
+    form.addEventListener("focusin", enterConversation);
+    return () => {
+      form.removeEventListener("pointerdown", enterConversation);
+      form.removeEventListener("focusin", enterConversation);
+    };
+  }, []);
+  return <div className="reading-tabs" role="group" aria-label="工作区视图">
+    <button type="button" aria-pressed={mode === "conversation"} onClick={() => setMode("conversation")}>对话</button>
+    <button type="button" aria-pressed={mode === "canvas"} onClick={() => setMode("canvas")}>画布</button>
+  </div>;
+}
+function ConversationContext() {
+  const state = useDesk();
+  const [selection, setSelection] = useState(null);
+  useEffect(() => {
+    const label = document.getElementById("composer-label"), clear = document.getElementById("clear-context");
+    const sync = () => setSelection(clear.hidden ? null : {
+      query: window.FrameSeekSessionUI?.currentContext() || null,
+      recordId: window.FrameSeekSessionUI?.currentContextRecordId() || null,
+    });
+    const observer = new MutationObserver(sync);
+    observer.observe(label, {childList:true, subtree:true, characterData:true});
+    observer.observe(clear, {attributes:true, attributeFilter:["hidden"]});
+    sync(); return () => observer.disconnect();
+  }, []);
+  const context = window.FrameSeekWorkbenchModel.replyQuote(state.records, selection?.query, selection?.recordId);
+  useEffect(() => {
+    document.getElementById("conversation-context-chip").hidden = !context;
+    const input = document.getElementById("question");
+    if (!input.disabled) input.placeholder = context?.englishDemo ? "Ask a follow-up…" : context ? "针对这条回答继续提问…" : "向这个视频提问…";
+  }, [context?.heading, context?.answer, state.sourceInfo?.id]);
+  return context ? <div className="reading-context-chip" role="group" aria-label={context.heading}>
+    <div className="reading-quote-copy">
+      <strong>{context.heading}</strong>
+      <p className="reading-quote-question" title={context.question}>{context.question}</p>
+      <p className="reading-quote-answer" title={context.answer}>{context.englishDemo ? "Answer: " : "回答："}{context.answer}</p>
+    </div>
+    <button type="button" aria-label={context.englishDemo ? "Remove reference, keep draft" : "取消引用，保留草稿"} onClick={() => document.getElementById("clear-context").click()}>{context.englishDemo ? "Remove reference" : "取消引用"}</button>
+  </div> : null;
+}
+const ConversationTurn = memo(function ConversationTurn({record, selected, ocrAvailable}) {
+  const [expanded, setExpanded] = useState(false);
+  const [checkedExpanded, setCheckedExpanded] = useState(false);
+  const query = record.query, response = query.response;
+  const presentation = window.FrameSeekWorkbenchModel.conversationAnswer(query);
+  const frames = expanded ? presentation.frames : presentation.frames.slice(0,2);
+  const replay = frame => { ui()?.seek(frame.t, query); };
+  return <article id={`conversation-${record.id}`} className={`conversation-turn${selected ? " is-selected" : ""}`} aria-label={`问题与回答：${query.question}`}>
+    <div className="reading-question">{icon("chats-circle")}<p>{query.question}</p></div>
+    <div className="reading-answer">
+      <span className="reading-mark">{icon("chats-circle")}</span>
+      <span className="reading-speaker">FrameSeek <span>{presentation.label}</span></span>
+      <p className="reading-answer-text">{presentation.prefix}{presentation.text}</p>
+      {presentation.caution && <p className="reading-caution">{presentation.caution}</p>}
+      {!!frames.length && <div className="reading-evidence-grid">{frames.map(frame => <button className="reading-evidence" type="button" key={frame.frame_id || frame.uri}
+        aria-label={`${presentation.englishDemo ? "Replay evidence" : "回看证据"} ${clock(frame.t)}`} onClick={() => replay(frame)}>
+        <img src={frame.uri} alt={presentation.englishDemo ? "Synthetic parcel demo evidence" : frame.caption || "原视频引用画面"} loading="lazy" decoding="async"/>
+        <span>{icon("play")}<time>{clock(frame.t)}</time><strong>{presentation.englishDemo ? "Replay" : "回看"}</strong></span>
+      </button>)}</div>}
+      {!!presentation.frames.length && <p className="reading-evidence-note">{presentation.frames.length} {presentation.englishDemo ? (presentation.frames.length === 1 ? "cited frame" : "cited frames") : "张引用画面"} · {presentation.evidenceNote}</p>}
+      {presentation.frames.length > 2 && <button type="button" className="text-button reading-show-all" onClick={() => setExpanded(!expanded)}>{expanded ? "收起画面" : `查看全部 ${presentation.frames.length} 张画面`}</button>}
+      {!!presentation.checkedFrames.length && <>
+        <p className="reading-evidence-note">本次补查的抽样画面 · 不是匹配证据，点击回看原视频。</p>
+        <div className="reading-evidence-grid">{(checkedExpanded ? presentation.checkedFrames : presentation.checkedFrames.slice(0,2)).map(frame =>
+          <button className="reading-evidence" type="button" key={frame.frame_id} aria-label={`回看已检查画面 ${clock(frame.t)} · 非匹配证据`} onClick={() => replay(frame)}>
+            <img src={frame.uri} alt="已检查的抽样画面，不代表匹配" loading="lazy" decoding="async"/>
+            <span>{icon("play")}<time>{clock(frame.t)}</time><strong>回看</strong></span>
+          </button>)}</div>
+        {presentation.checkedFrames.length > 2 && <button type="button" className="text-button reading-show-all" onClick={() => setCheckedExpanded(!checkedExpanded)}>{checkedExpanded ? "收起已检查画面" : `查看全部 ${presentation.checkedFrames.length} 张已检查画面`}</button>}
+      </>}
+      <div className="reading-response-actions">
+        <button type="button" className="text-button" onClick={() => ui()?.continueFrom(record.id)}>{presentation.englishDemo ? "Ask a follow-up" : query.mode === "real" && !response.events.length ? "重新编辑问题" : "追问这条回答"}</button>
+        {query.engine === "index" && <button type="button" className="text-button" onClick={() => window.FrameSeekPersistence?.searchIndex({question: query.index_search?.resolved_question || query.question, answerRequestId: query.id})}>查看索引与候选画面</button>}
+        {window.FrameSeekWorkbenchModel.shouldOfferTextCandidates(query, ocrAvailable, window.FrameSeekPersistence?.canSearchOcr) && <button type="button" className="text-button" onClick={() => window.FrameSeekPersistence?.searchIndex({question: query.index_search?.resolved_question || query.question, answerRequestId: query.id, autoOcr: true})}>查找更多文字候选 · 不调用模型</button>}
+        <details className="reading-basis"><summary>查看依据与操作</summary>
+          <p>{response.events.length} 组画面 · {presentation.frames.length} 张引用</p>
+          {(response.unresolved || []).map((text,index) => <p key={index}>{text}</p>)}
+          {response.status === "error" && <p>{window.FrameSeekWorkbenchModel.queryFailureReason(query)}</p>}
+          <button type="button" className="text-button" onClick={() => ui()?.saveConclusion(record.id,query)}>保存结论</button>
+          <button type="button" className="text-button danger" onClick={() => ui()?.hideTurn(record.id)}>删除问题</button>
+        </details>
+      </div>
+    </div>
+  </article>;
+});
+function Conversation() {
+  const state = useDesk();
+  const records = state.records.filter(record => !record.hidden);
+  const scrollSelected = () => {
+    if (!document.querySelector(".agent-shell").classList.contains("conversation-mode")) return;
+    document.getElementById(`conversation-${store.getSnapshot().selectedId}`)?.scrollIntoView({block:"end",behavior:"instant"});
+  };
+  useEffect(scrollSelected, [state.selectedId, records.length]);
+  useEffect(() => {
+    const resized = () => requestAnimationFrame(scrollSelected);
+    window.addEventListener("resize", resized);
+    window.addEventListener("frameseek-thread-focus",scrollSelected);
+    window.addEventListener("frameseek-reading-view",scrollSelected);
+    return () => {window.removeEventListener("resize", resized);window.removeEventListener("frameseek-thread-focus",scrollSelected);window.removeEventListener("frameseek-reading-view",scrollSelected);};
+  }, []);
+  return <div className="conversation-stream" role="region" aria-label="问题、回答与视频证据">
+    {!records.length && <div className="reading-empty"><p className="reading-eyebrow">问视频，回看证据</p><h1>从一个问题开始。</h1><p>答案和对应画面会一起留在这里。</p>
+      {state.sourceInfo?.id === "demo_parcel" && !state.local && <div className="reading-demo-examples">
+        <p>试试合成演示 · 预设回答，不调用模型</p>
+        <div className="suggestion-buttons">{window.FrameSeekWorkbenchModel.composerSuggestions(state).items.map(question =>
+          <button key={question} type="button" onClick={() => ui()?.fillSuggestedQuestion(question)}>{question}</button>)}</div>
+        <small>点击填入，确认后发送。</small>
+      </div>}
+    </div>}
+    {records.map(record => <ConversationTurn key={record.id} record={record} selected={record.id===state.selectedId} ocrAvailable={!!state.sourceInfo?.knowledge_status?.ocr_candidates_available}/>)}
+  </div>;
 }
 
 function SourcePicker() {
@@ -207,17 +344,23 @@ function ComposerSuggestions() {
 
 function Outline() {
   const state = useDesk();
+  const [reading, setReading] = useState(document.querySelector(".agent-shell").classList.contains("conversation-mode"));
+  useEffect(() => {
+    const sync = () => setReading(document.querySelector(".agent-shell").classList.contains("conversation-mode"));
+    window.addEventListener("frameseek-reading-view", sync);
+    return () => window.removeEventListener("frameseek-reading-view", sync);
+  }, []);
   const visible = state.records.filter(r => !r.hidden);
   const hidden = state.records.filter(r => r.hidden);
   return (
     <section className="investigation-outline">
       <div className="section-line">
-        <h2>调查脉络</h2>
+        <h2>{reading ? "最近的提问" : "调查脉络"}</h2>
         <span>{visible.length} 轮</span>
       </div>
       {visible.length ? (
         <ol>
-          {visible.map(record => (
+          {(reading ? [...visible].reverse() : visible).map(record => (
             <li key={record.id}>
               <button
                 className={record.id === state.selectedId ? "active" : ""}
@@ -477,7 +620,7 @@ function Inspector() {
                   )}
                 </div>
                 <p>{selected.query.response.answer}</p>
-                {selected.query.engine === "index" && <button className="outline-button" onClick={()=>window.FrameSeekPersistence?.searchIndex(selected.query.index_search?.resolved_question || selected.query.question)}>查看索引时间线 · 不调用模型</button>}
+                {selected.query.engine === "index" && <button className="outline-button" onClick={()=>window.FrameSeekPersistence?.searchIndex({question:selected.query.index_search?.resolved_question || selected.query.question, answerRequestId:selected.query.id})}>查看索引时间线 · 不调用模型</button>}
                 {window.FrameSeekWorkbenchModel.queryFailureReason(selected.query) &&
                   <div className="answer-review-note" role="note">
                     <strong>为什么没有回答</strong>
@@ -916,3 +1059,7 @@ createRoot(document.getElementById("investigation-outline")).render(
 createRoot(document.getElementById("workbench-inspector")).render(
   <Inspector />,
 );
+
+createRoot(document.getElementById("workspace-view-tabs")).render(<WorkspaceView />);
+createRoot(document.getElementById("conversation-context-chip")).render(<ConversationContext />);
+createRoot(document.getElementById("conversation-root")).render(<Conversation />);

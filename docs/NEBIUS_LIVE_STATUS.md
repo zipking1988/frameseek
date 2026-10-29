@@ -1,5 +1,42 @@
 # Nebius deployment record
 
+## Current release — 2026-10-29 JST
+
+The reviewed supplement-retention/admission fixes are deployed to the existing
+single-process service at framefix.net. Current-IP SSH was recovered, the original
+VM/disk specification restored, and both temporary CPU rescue machines and their
+boot disks deleted. Their combined conservative estimate is $0.043891 before tax
+within the user's $0.20 gift-credit-only recovery authorization; the provider's
+final invoice is pending. No GPU, top-up or model request was added.
+
+All 16 investigations' history/drafts, 14 query rows, the original video, private
+configuration, 40 attempts, six budget records and 25 settlements are preserved.
+Cached basketball evidence and the synthetic box player were checked in-browser;
+a stale box-duration label was fixed and its 00:13 position restored after refresh.
+555 backend / 210 frontend regressions, build and final checks passed. New basic
+index processors remain disabled pending calibration and human quality acceptance;
+the $20/40 model allowance is unchanged and all 40 requests are already used.
+See [release, recovery and limitations](qa/SUPPLEMENT_RETENTION_FIX_20261029.md).
+
+## Support and billing check — 2026-10-29 JST
+
+Ticket M297448313 has a 26 October support reply. Support says eligible
+promotional credits are consumed first, then positive balance; after that, the
+linked card is charged when the negative-balance threshold is reached. Budgets
+provide alerts only and do not enforce a hard stop. The earlier reply declined
+the requested additional $50. Exact grant expiry and an extension through
+January were not confirmed. This check did not reply to or close the ticket.
+
+The payments page showed a combined $117.71 balance, starting from $125.00 and
+$7.29 consumption including tax. The original $125 comprised $100 promotional
+credit and a $25 card payment. If all posted consumption drew from the grant,
+the implied remaining promotional portion is $92.71, subject to account details,
+posting delays and expiry. The usage page showed $7.18 before tax for about
+102.7 VM-hours (205.41 vCPU-hours at 2 vCPUs), approximately $1.68 per day at
+that observed rate, excluding future tax or price changes. This does not show
+gift-only funding through the January announcement. No resource, budget, card
+or support-ticket setting was changed during this read-only check.
+
 Latest local code review, 2026-10-25: six admission/UI defects fixed; 239 backend
 and 130 frontend regressions pass. Local single-process service restarted and
 saved basketball records/draft/player restored without sending. Shared allowance
@@ -48,8 +85,8 @@ superseded. This does not approve extra model spending or GPU rental.
   One early certificate challenge failed during propagation; issuance succeeded
   after authoritative servers converged. No certificate validation was bypassed.
 
-AI Cloud grant expiry, gift drawdown priority and no-card billing protection are
-still unresolved in the support ticket. Starting this VM does not establish that
+At the time of creation, grant expiry, gift priority and card protection were
+unresolved; the later support reply is recorded above. Starting this VM does not establish that
 gift credits cover January. No recurring follow-up has been scheduled. Review
 continuation/migration within the initial month, by November 24, 2026. Stopping
 the VM alone does not remove disk charges.
@@ -771,3 +808,25 @@ quality acceptance. Current full-source path requires49 new scene calls and a
 conservative106-call/$37.10 total envelope. Existing approval remains$20/40,
 40 used; the $2.634047 occupied amount is not a new actual invoice. No cap was
 changed. See [cloud QA and remaining blocker](qa/CLOUD_VISION_20261025.md).
+
+## Conversation reading interface deployed — 2026-10-28
+
+The user-authorized static-only release is live at framefix.net: chronological
+question/answer/evidence reading view, retained canvas switch, and canvas composer
+click/focus or card follow-up entering conversation with context/draft retained.
+All eight frontend release files were backed up and replaced in both source and
+installed static directories. The existing single-process service remained active;
+no backend, runtime secrets, data or spending approvals were installed or replaced.
+Rollback archives remain privately on the same server.
+
+Deployment-time fingerprints were identical for videos, queries, investigations,
+model attempts, budgets, settlements and all three private configuration files.
+Browser acceptance then restored the existing six-turn basketball QA desk, switched
+to its genuine empty box desk and back, retained the original empty drafts, verified
+canvas-input focus entering conversation and sought a real citation to exactly60s.
+Normal layout/context/player autosaves changed investigation rows during acceptance;
+query/media/financial/configuration fingerprints remained unchanged. No question was
+submitted and no model request was made.151 frontend regressions and build passed;
+served asset bytes match the local release. This is UI deployment acceptance, not
+new model quality or exhaustive event-count acceptance. Private verification evidence:
+`.frameseek/reading-deploy-20261028/`.

@@ -22,6 +22,12 @@ from frameseek.attempts import BudgetDenied
 from frameseek.media import frames, run
 from frameseek.schema import Answer, hms
 from frameseek.shared_ledger import configured_ledger
+from frameseek.windows import (
+    find_single_time,
+    find_time_range,
+    has_malformed_time_range,
+    mask_quoted_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -560,15 +566,24 @@ def checked_synthesis(result):
 
 def explicit_time_window(question, duration, *, max_seconds=60):
     """Resolve an explicit range; paid callers retain the default 60-second bound."""
-    stamps = re.findall(r"(?<![\d:])(\d{1,3}):([0-5]\d)(?![\d:])", question)
-    match = re.search(
-        r"(?<![\d:])(\d{1,3}):([0-5]\d)\s*(?:至|到|[-–—~～])\s*"
-        r"(\d{1,3}):([0-5]\d)(?![\d:])",
-        question,
-    )
+    stamps = re.findall(r"(?<![\d:])(\d{1,3}):([0-5]\d)(?![\d:])", mask_quoted_text(question))
+    match = find_time_range(question)
+    point = find_single_time(question) if not match else None
+    if has_malformed_time_range(question) or (match and len(stamps) != 2):
+        raise AgentError("invalid_time_window")
+    if point:
+        if len(stamps) != 1:
+            raise AgentError("invalid_time_window")
+        minute, second = map(int, point.group("time").split(":"))
+        start = minute * 60 + second
+        if not 0 <= start < duration:
+            raise AgentError("invalid_time_window")
+        end = min(start + 1, duration)
+        return {"start": start, "end": end} if end - start <= max_seconds else None
     if len(stamps) != 2 or not match:
         return None
-    a, b, c, d = map(int, match.groups())
+    a, b = map(int, match.group("start").split(":"))
+    c, d = map(int, match.group("end").split(":"))
     start, end = a * 60 + b, c * 60 + d
     if not 0 <= start < end <= duration:
         raise AgentError("invalid_time_window")

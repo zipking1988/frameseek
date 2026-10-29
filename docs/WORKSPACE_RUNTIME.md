@@ -1,8 +1,36 @@
 # 调查、素材与真实 Agent 实施状态
 
+## 当前状态（2026-10-29）
+
+本地源码首页 `/` 现为体育视频落地页；现有调查工作台位于 `/workspace`。
+“Open workspace” 连接原工作台，不迁移调查、素材或会话记录。营销页面的篮球图像、
+问题和时间均明确标为示意，控件仅切换本页静态帧；不会初始化私有会话或调用
+FrameSeek 模型。进入工作台后仍由原会话、拥有权与预算路径控制。此落地页更新
+尚未部署，原模型质量与生产验收边界不变。
+
+当前源码包含可复用的 `VideoKnowledge v1` 上传索引，和下方较早的 manifest
+摄取路径并存。该索引功能需由可信服务配置显式启用：本机使用
+`FS_KNOWLEDGE_LOCAL=1` 及已配置的本机视觉；Token Factory 使用
+`FS_KNOWLEDGE_TOKENFACTORY=1` 及匹配版本的私有校准。媒体预检完成只表示
+视频可播放，不表示索引已完成；启用索引时，全部必要分段校验并发布后才开放
+新聊天，旧回答和播放器仍可使用。状态、恢复、取消与补查接口详见
+[API 文档](api.md#基础索引状态重构中)。
+
+基础索引每 8 秒最多采样 8 帧，并保留原视频解码时间；查询优先使用已保存
+观察，必要时只补查可定位的有限窗口。采样和模型观察都可能漏检或出错，
+不能据此宣称逐帧完整、跨镜头身份一致或事件统计准确。语音转写未纳入该
+索引能力。新本机索引使用 v5 属性绑定和物体颜色提示；Token Factory 各版本分别要求
+对应校准。旧检查点和历史答案不会因版本切换自动重建。
+
+本机短片段页面测试和 Token Factory 模拟传输验证已完成；真实素材的人审
+质量验收、Token Factory v4 真实校准、评审可访问的完整流程仍未完成。
+测试证据与限制见 [索引重构记录](qa/KNOWLEDGE_REFACTOR_20261029.md) 和
+[评审准备草稿](HACKATHON_JUDGE_DRAFT.md)。以下旧日期记录描述当时实现，
+与当前路径不同之处以本节和对应专项文档为准。
+
 2026-10-24: 用户授权新增 `provider=tokenfactory` 与 `allow_tokenfactory_media`，仅向固定 Token Factory API 发送本机抽帧 JPEG。使用 Nemotron 3.5 Super VL 公共 API 和 Qwen3 Embedding 8B 文本检索；不租 GPU、不自动启用付费请求。配置、预算待确认项与篮球测试见 [Token Factory 本地准备](TOKEN_FACTORY_LOCAL.md)。原自托管及 Gemini 路线保持独立。
 
-2026-10-05。新增功能已在本机运行；默认仍为 fixture。真实模型端点、数字预算、供应商权限与资源停费校准尚未提供，未发送真实模型请求，也未创建 GPU。
+2026-10-05 历史记录：新增功能已在本机运行；默认仍为 fixture。当时尚未提供真实模型端点、数字预算、供应商权限与资源停费校准，未发送真实模型请求，也未创建 GPU。
 
 2026-10-11 增量：按用户授权新增 Gemini / AI Builder Cup 路线，保留原 NVIDIA/Nebius。`FS_RUNTIME_FILE` 中 `provider=gemini` 选择 Google native REST 适配；省略为 `nvidia_nebius`。本轮仅本地实现与 mock 验证，不创建 GCP 或真实模型请求。Google 帧发送需明确 `allow_google_media`，同样受两级预算/校准/代际保护；仅视觉，不支持音轨转写。准备与限制见 [AI Builder Cup](AI_BUILDER_CUP.md) 和 [部署准备](deployment.md)。下方“自托管媒体/既定 Nebius”段落适用于原路线，Gemini 的已授权媒体边界以新文档与 ARCHITECTURE 增量为准。
 
@@ -26,7 +54,11 @@
 
 ## 模型与费用配置
 
-保持 ARCHITECTURE 的 NVIDIA/Nebius 选择，不配置其他云视觉供应商。所有视觉帧和音频仅发送到明确列出的自托管主机；Nebius Token Factory 只接收文本。模型名称必须等于实际服务暴露的 ID，并固定 revision。
+原自托管路线的视觉帧和音频仅发送到明确列出的自托管主机，文本检索可使用
+Nebius Token Factory。Token Factory 视觉与 Gemini 是后续单独授权的路线：
+必须通过对应可信配置明确启用，且只向各自固定官方 API 发送本机解码 JPEG。
+详见 [Token Factory](TOKEN_FACTORY_LOCAL.md) 和 [Gemini](AI_BUILDER_CUP.md)。
+模型名称必须等于实际服务暴露的 ID，并固定 revision。
 
 `docs/runtime.example.json` **是不可运行的模板**：占位主机、过期校准、空引用会阻止调用。`max_cost_micro:1` 是占位值，必须替换为经校准的每阶段保守费用上界，涵盖最大输入/输出、全部资源分配、启动、空闲、失败与释放余量，不能当作单价。`valid_until` 是校准失效的 Unix 时间；`resource_cutoff_reference` 必须指向实际验证过的供应商侧截止/释放记录。应用 HTTP 超时不证明 GPU 已停止计费。
 

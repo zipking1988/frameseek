@@ -169,10 +169,30 @@ function resetContext() {
   });
 }
 
+function knowledgeLabel(video) {
+  const status = video?.knowledge_status;
+  if (status?.state === "ready" && status.version) return "基础索引已就绪";
+  if (status?.state === "indexing") return `正在建立基础索引 ${status.completed_segments}/${status.total_segments}`;
+  if (status?.state === "waiting_probe") return "等待视频预检";
+  if (status?.state === "waiting_processor") return "等待索引配置";
+  if (status?.state === "waiting_budget") return "等待预算或授权";
+  if (status?.state === "failed" || status?.state === "unknown") return "基础索引未完成";
+  return "基础索引尚未建立";
+}
+
+function updateKnowledge(video) {
+  const status = video?.knowledge_status;
+  const control = $("knowledge-control");
+  $("video-state").textContent = knowledgeLabel(video);
+  control.hidden = !status?.required_for_chat || status.state === "ready";
+  control.disabled = status?.state === "waiting_probe" || status?.state === "unknown";
+  control.textContent = ["queued", "indexing"].includes(status?.state) ? "停止索引" : "建立基础索引";
+}
+
 function updateMediaContext() {
   if (activeVideo) {
-    const ready = activeVideo.job?.state === "ready";
-    $("attached-source-state").textContent = mediaFailed ? "播放失败" : ready ? "索引已就绪" : "已上传 · 等待分析";
+    const ready = activeVideo.job?.state === "ready" || Number(activeVideo.metadata?.duration) > 0;
+    $("attached-source-state").textContent = mediaFailed ? "播放失败" : ready ? "视频已就绪" : "已上传 · 等待预检";
     $("source-step").textContent = activeVideo.name;
     $("source-step-state").textContent = ready ? "已就绪" : "未就绪";
     return;
@@ -288,6 +308,7 @@ function seek(seconds, trigger = document.activeElement) {
   $("seek-status").textContent = `正在定位 ${clock(seconds)} · 等待画面加载…`;
   announce($("seek-status").textContent);
   player.currentTime = seconds;
+  window.dispatchEvent(new Event("frameseek-explicit-seek"));
   if (wasPaused) player.pause();
   if (investigation) {
     if (!trigger?.closest?.(".turn")) investigation.evidence(null);
@@ -374,7 +395,7 @@ function renderAnswer(query) {
   turn.append(
     node("span", `answer-status ${data.status}`, query.engine === "index" ? (data.events.length ? "已有观察匹配" : "索引结果 · 覆盖待补齐") : stateLabels[data.status]),
   );
-  if(query.engine==='index') turn.append(button('查看索引时间线 · 不调用模型','outline-button',()=>window.FrameSeekPersistence?.searchIndex(query.index_search?.resolved_question || query.question)));
+  if(query.engine==='index') turn.append(button('查看索引时间线 · 不调用模型','outline-button',()=>window.FrameSeekPersistence?.searchIndex({question:query.index_search?.resolved_question || query.question,answerRequestId:query.id})));
   const eventCluster =
     data.events.length > 1 ? node("div", "event-cluster") : turn;
   if (eventCluster !== turn) turn.append(eventCluster);
@@ -389,8 +410,6 @@ function renderAnswer(query) {
         `${clock(event.start)}–${clock(event.end)}`,
         "seek-button",
         (clickEvent) => {
-          selectTask(data, historyButton, query);
-          investigation?.choose(turn.id);
           investigation?.evidence(query);
           seek(event.start, clickEvent.currentTarget);
         },
@@ -401,8 +420,6 @@ function renderAnswer(query) {
     const evidence = node("div", "evidence-grid");
     event.evidence.forEach((frame, index) => {
       const frameButton = button("", "evidence-button", () => {
-        selectTask(data, historyButton, query);
-        investigation?.choose(turn.id);
         investigation?.evidence(query);
         document.querySelectorAll(".evidence-button").forEach((item) => {
           const selected = item === frameButton;
@@ -746,6 +763,12 @@ function restoreInspector(open) {
 }
 function toggleInspector() {
   const shell = document.querySelector(".agent-shell");
+  if (shell.classList.contains("conversation-mode")) {
+    const open = !shell.classList.contains("reading-inspector-open");
+    shell.classList.toggle("reading-inspector-open", open);
+    restoreInspector(open);
+    return;
+  }
   restoreInspector(!inspectorIsOpen());
   $("toggle-inspector").setAttribute(
     "aria-expanded",
@@ -885,7 +908,8 @@ function removeFinding(id) {
 window.FrameSeekUI = {
   select: (id) => {
     investigation?.choose(id);
-    investigation?.reveal(id);
+    if (!document.querySelector(".agent-shell").classList.contains("conversation-mode")) investigation?.reveal(id);
+    window.dispatchEvent(new Event("frameseek-thread-focus"));
   },
   seek: (seconds, query) => {
     seek(seconds);
@@ -959,6 +983,7 @@ function changeTurnVisibility(id, hidden) {
 }
 
 function openInspector(tab = "context") {
+  document.querySelector(".agent-shell").classList.add("reading-inspector-open");
   window.FrameSeekWorkbench?.showPanel(tab);
   restoreInspector(true);
   investigation?.fit();
@@ -1067,7 +1092,7 @@ function mediaLoaded() {
   updateMediaContext();
   if (localMode || activeVideo)
     $("video-meta").textContent =
-      `${clock(player.duration)} · ${player.videoWidth} × ${player.videoHeight} · ${activeVideo?.job?.state === "ready" ? "已建立索引" : "未建立索引"}`;
+      `${clock(player.duration)} · ${player.videoWidth} × ${player.videoHeight} · ${activeVideo?.job?.state === "ready" || Number(activeVideo?.metadata?.duration) > 0 ? "视频预检完成" : "视频预检未完成"}`;
   if (pendingSeek !== null) {
     const seconds = pendingSeek;
     const trigger = pendingSeekTrigger;
@@ -1145,6 +1170,7 @@ fetch("/demo/catalog")
   });
 
 window.FrameSeekSessionUI = {
+  updateKnowledge,
   seek: (seconds, trigger) => seek(seconds, trigger),
   snapshot: () => ({ ...window.FrameSeekWorkbench.getSnapshot(), canvas: investigation?.snapshot(),
     ui: { sourceOpen: !document.querySelector(".agent-shell").classList.contains("source-collapsed"),
@@ -1160,6 +1186,7 @@ window.FrameSeekSessionUI = {
   showSource: () => { setSourceOpen(true); $("source-dock").scrollTop = 0; },
   restoreDraft(value) { $("question").value = value; updateSend(); },
   currentContext: () => investigation?.context()?.query || null,
+  currentContextRecordId: () => investigation?.context()?.turn.id || null,
   ready: () => !!demo,
   busy(value) {
     realBusy = value;
@@ -1191,19 +1218,21 @@ window.FrameSeekSessionUI = {
       const preview = video.metadata?.preview?.[0];
       if (preview) player.poster = preview.uri;
       else player.removeAttribute("poster");
-      localMode = video.job?.state !== "ready";
+      localMode = video.knowledge_status?.required_for_chat
+        ? video.knowledge_status.state !== "ready"
+        : video.job?.state !== "ready";
       window.FrameSeekWorkbench.source(localMode);
       window.FrameSeekWorkbench.describe(video);
       $("question").disabled = localMode;
-      $("question").placeholder = localMode ? "素材尚未完成分析。" : "向这段视频提问，或继续追问…";
+      $("question").placeholder = localMode ? "素材尚未完成分析。" : "继续问这个视频…";
       $("video-heading").textContent = video.name;
       $("attached-source-name").textContent = video.name;
       $("mode-label").textContent = "真实素材";
-      $("video-state").textContent = localMode ? "已上传" : "索引就绪";
+      updateKnowledge(video);
       $("video-state").title = "私有素材 · 保存在本机服务";
       $("empty-eyebrow").textContent = "真实素材";
       $("canvas-hint").textContent = localMode ? "素材已保存 · 分析完成后即可提问" : "拖动空白平移 · Ctrl / ⌘ + 滚轮缩放";
-      $("composer-mode-text").textContent = video.job?.state === "ready" ? "真实分析 · 证据问答" : "真实素材 · 等待分析";
+      $("composer-mode-text").textContent = !localMode ? "证据问答" : "视频可播放 · 等待索引";
       $("source-thumbnail").hidden = !video.metadata?.preview?.length;
       if (video.metadata?.preview?.[0]) $("source-thumbnail").src = video.metadata.preview[0].uri;
       $("demo-notice-text").textContent = "素材保存在本机服务中。模型分析仅在已配置服务和已批准预算内执行。";
@@ -1214,9 +1243,11 @@ window.FrameSeekSessionUI = {
       $("empty-state").querySelector(".task-intro > p").textContent = localMode ? "在素材库查看进度；配置完成后即可开始分析。" : "提问、回看证据，再从任意问题继续追问。";
       notice("");
     } else {
+      $("knowledge-control").hidden = true;
       setLocalMode(false); player.src = "/demo/video"; player.poster = "/media/demo_parcel/frames/0.jpg";
       $("video-heading").textContent = "包裹移动 · 合成演示";
       $("attached-source-name").textContent = "包裹移动演示.mp4";
+      $("video-meta").textContent = "18 秒 · 1600 × 900 · 无音轨";
       $("source-thumbnail").src = "/media/demo_parcel/frames/0.jpg";
       $("source-thumbnail").hidden = false;
       window.FrameSeekWorkbench.describe({id:"demo_parcel",name:"包裹移动 · 合成演示",metadata:{duration:18,audio:false}});

@@ -1,0 +1,22 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "evidenceSelection": "05:03 caption and pass.jpg verified after selecting the pass evidence",
+  "keyboardSlider": "Home then ArrowRight selected 05:03",
+  "keyboardTabs": "ArrowLeft from Canvas selected Questions and restored its panel",
+  "playback": "advanced to 05:10 and automatically returned to paused",
+  "workspaceEntry": "Open workspace reached /workspace and displayed the existing labeled synthetic demo",
+  "workflowAnchor": "How it works reached /#how-it-works",
+  "desktop1200": {
+    "width": 1200,
+    "scrollWidth": 1200,
+    "brokenVisibleImages": []
+  },
+  "narrow390": {
+    "width": 390,
+    "scrollWidth": 390
+  },
+  "console": []
+}

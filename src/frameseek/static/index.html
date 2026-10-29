@@ -14,14 +14,14 @@
       crossorigin
     />
     <link rel="stylesheet" href="/static/styles.css?v=136d47b61d96" />
-    <link rel="stylesheet" href="/static/workbench.css?v=f6bfc957829f" />
-    <script src="/static/demo-conversation.js?v=fc40894c3313" defer></script>
-    <script src="/static/investigation-canvas.js?v=7ee82329b349" defer></script>
-    <script src="/static/workbench-model.js?v=0c1cfaf7d431" defer></script>
+    <link rel="stylesheet" href="/static/workbench.css?v=a24fe6d59de9" />
+    <script src="/static/demo-conversation.js?v=dc6be859d3f4" defer></script>
+    <script src="/static/investigation-canvas.js?v=e14342950b01" defer></script>
+    <script src="/static/workbench-model.js?v=a631c2bf32c6" defer></script>
     <script src="/static/investigation-report.js?v=8411abe357f8" defer></script>
-    <script src="/static/workbench.js?v=69313d444432" defer></script>
-    <script src="/static/workspace.js?v=2332c66692d3" defer></script>
-    <script src="/static/app.js?v=9b5e4fbce9a4" defer></script>
+    <script src="/static/workbench.js?v=99a5fcef29c4" defer></script>
+    <script src="/static/workspace.js?v=a9defb47dfc4" defer></script>
+    <script src="/static/app.js?v=acc5aa93fdde" defer></script>
   </head>
   <body>
     <a href="#question" class="skip-link">跳到对话输入</a>
@@ -29,7 +29,7 @@
       <h1>FrameSeek</h1>
       <p>调查画布需要桌面空间。请在电脑浏览器中打开。</p>
     </div>
-    <div class="agent-shell workbench-shell">
+    <div class="agent-shell workbench-shell conversation-mode">
       <header class="studio-header">
         <a class="brand" href="/" aria-label="FrameSeek 首页">FrameSeek</a>
         <div class="header-project">
@@ -51,6 +51,7 @@
             alt=""
           />上传视频
         </button>
+        <a class="english-guide-link" href="/static/demo-guide-en.html" target="_blank" rel="noopener" aria-label="Open the English synthetic demo guide in a new tab">EN guide ↗</a>
         <details id="header-more" class="header-more">
           <summary class="outline-button" aria-label="更多操作">更多 <span aria-hidden="true">⌄</span></summary>
           <div class="header-more-panel">
@@ -104,6 +105,7 @@
         aria-label="调查画布"
         tabindex="0"
       >
+        <div id="conversation-root"></div>
         <canvas id="canvas-links" aria-hidden="true"></canvas>
         <div id="canvas-plane">
           <div id="finding-group-region" hidden>
@@ -135,6 +137,7 @@
         </div>
       </main>
       <section class="canvas-topbar" aria-label="画布操作">
+        <div id="workspace-view-tabs"></div>
         <div class="canvas-actions">
         <button id="rail-video" class="source-tile" aria-label="显示当前视频播放器" aria-controls="source-dock" title="显示当前视频播放器">
           <img
@@ -213,6 +216,7 @@
             <span id="video-heading" hidden>包裹移动 · 合成演示</span
             ><span id="video-state">演示素材</span>
             <span id="composer-mode-text" class="video-analysis-mode">预设演示 · 未调用模型</span>
+            <button id="knowledge-control" class="text-button" type="button" hidden>建立基础索引</button>
           </div>
           <div class="player-wrap">
             <video
@@ -316,6 +320,7 @@
       <section class="composer-area" aria-label="与 FrameSeek 对话">
         <p id="form-notice" class="form-notice" role="status" hidden></p>
         <form id="question-form">
+          <div id="conversation-context-chip" hidden></div>
           <div class="composer-context">
             <label id="composer-label" for="question">向 FrameSeek 提问</label
             ><button
@@ -331,7 +336,7 @@
             id="question"
             rows="2"
             maxlength="1000"
-            placeholder="问问这段视频，或继续追问…"
+            placeholder="继续问这个视频…"
           ></textarea>
           <div class="composer-tools">
             <button
@@ -346,17 +351,21 @@
                 alt=""
               /></button>
             <div class="composer-secondary">
-              <label class="index-engine-label" for="chat-engine">
+              <span id="auto-engine-indicator" class="auto-engine-indicator">自动</span>
+              <details id="reading-tools" class="reading-tools"><summary aria-label="更多提问工具"><img class="icon" src="/static/icons/list.svg" alt=""/><span class="sr-only">更多</span></summary><div class="reading-tools-panel"><details id="engine-settings"><summary>高级设置</summary><div class="engine-settings-panel"><p>通常由 Agent 自动选择。需要时可手动指定处理方式，预算检查始终生效。</p>              <label class="index-engine-label" for="chat-engine">
                 <span class="sr-only">提问方式</span>
-                <select id="chat-engine" aria-label="提问方式" title="索引检索不调用模型；模型分析需通过预算检查"><option value="index" selected>索引 · 零模型</option><option id="local-engine-option" value="local" hidden disabled>本机视觉 · 免费</option><option id="cloud-engine-option" value="cloud" hidden disabled>云端视觉 · Token Factory</option><option value="model">模型分析</option></select>
+                <select id="chat-engine" aria-label="提问方式" title="索引检索不调用模型；模型分析需通过预算检查"><option value="auto" selected>自动选择</option><option value="index">索引 · 零模型</option><option id="local-engine-option" value="local" hidden disabled>本机视觉 · 免费</option><option id="cloud-engine-option" value="cloud" hidden disabled>云端视觉 · Token Factory</option><option value="model">模型分析</option></select>
               </label>
+</div></details>
               <button id="search-index" class="composer-tool-button" type="button" title="打开已有索引的时间线，不调用模型" hidden>时间线</button>
               <div id="composer-suggestions"></div>
               <details class="composer-info composer-popup" name="composer-popover">
                 <summary>说明</summary>
                 <div class="composer-info-panel"><strong>检索与预算</strong><p>索引模式读取已有分析，不会重新识别视频。模型分析须通过现有预算检查。</p><p id="chat-budget-status" role="status" hidden></p></div>
               </details>
+              </div></details>
             </div>
+            <button id="cancel-question" class="composer-tool-button" type="button" hidden>停止处理</button>
             <span class="composer-keyhint" title="Enter 发送，Shift + Enter 换行">Enter 发送</span
             ><button
               id="send-question"
@@ -373,7 +382,7 @@
       <dialog id="question-feedback-dialog" class="question-feedback-dialog" aria-labelledby="question-feedback-title" aria-describedby="question-feedback-message">
         <h2 id="question-feedback-title">问题已收到，需要调整后再发送</h2>
         <p id="question-feedback-message"></p>
-        <p class="question-feedback-note">本次没有调用模型，原问题已保留。</p>
+        <p class="question-feedback-note">原问题已保留；不会自动重复发送。</p>
         <button id="question-feedback-edit" type="button" class="outline-button" autofocus>返回编辑问题</button>
       </dialog>
       <dialog id="visual-search-dialog" aria-labelledby="visual-search-title">

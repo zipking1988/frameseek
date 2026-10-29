@@ -11,6 +11,7 @@ from frameseek.semantic_search import (
     available_conditions,
     caption_matches,
     interpret,
+    remove_time_range,
     resolve_conditions,
 )
 from frameseek.visual_search import compile_index, requires_aggregation
@@ -27,14 +28,38 @@ def source_digest(directory):
     return digest.hexdigest()
 
 
-def search_source(root, source, question, offset=0, limit=40, snapshot=None, conditions=None):
+def search_source(
+    root,
+    source,
+    question,
+    offset=0,
+    limit=40,
+    snapshot=None,
+    conditions=None,
+    knowledge=None,
+    candidate_offset=0,
+    candidate_time=None,
+    include_candidates=False,
+):
     aggregate = not conditions and requires_aggregation(question)
     video, generation = source["id"], source["generation"]
     directory = root / video
     metadata = json.loads(source["metadata"])
+    from frameseek.agent import AgentError, explicit_time_window
+
+    try:
+        time_window = explicit_time_window(question, metadata["duration"], max_seconds=3600)
+    except AgentError:
+        return {
+            "kind": "clarification_required",
+            "message": "指定的视频时间范围无效。",
+            "available_conditions": [],
+            "model_requests_sent": 0,
+        }
+    query_for_terms = remove_time_range(question) if time_window else question
     artifact = directory / f"observations-g{generation}.json"
-    if artifact.exists() or artifact.is_symlink():
-        index = load_index(
+    if knowledge is not None or artifact.exists() or artifact.is_symlink():
+        index = knowledge or load_index(
             artifact,
             video=video,
             generation=generation,
@@ -43,6 +68,13 @@ def search_source(root, source, question, offset=0, limit=40, snapshot=None, con
         if index.duration != metadata["duration"]:
             raise ValueError("stale_index_duration")
         if aggregate:
+            if time_window:
+                return {
+                    "kind": "clarification_required",
+                    "message": "当前事件统计不支持指定时间范围；不会推断未观察的事件。",
+                    "available_conditions": [],
+                    "model_requests_sent": 0,
+                }
             from frameseek.event_search import search_events
 
             result = search_events(index, question, offset, limit, snapshot)
@@ -50,7 +82,7 @@ def search_source(root, source, question, offset=0, limit=40, snapshot=None, con
                 return result
             result["provenance"] = index.extractor_revision
         else:
-            predicates, problems = resolve_conditions(index, question, conditions)
+            predicates, problems = resolve_conditions(index, query_for_terms, conditions)
             if problems:
                 return {
                     "kind": "clarification_required",
@@ -58,15 +90,27 @@ def search_source(root, source, question, offset=0, limit=40, snapshot=None, con
                     "available_conditions": available_conditions(index),
                     "model_requests_sent": 0,
                 }
-            result = search_occurrences(index, predicates, offset, limit, snapshot)
+            result = search_occurrences(
+                index,
+                predicates,
+                offset,
+                limit,
+                snapshot,
+                time_window=time_window,
+                candidate_offset=candidate_offset,
+                candidate_time=candidate_time,
+                include_candidates=include_candidates,
+            )
             result.update(
                 conditions=[c.model_dump() for c in predicates],
                 available_conditions=available_conditions(index),
-                verified_matches=True,
+                structured_conditions_evaluated=True,
+                verified_matches=False,
                 explicit_conditions=bool(conditions),
                 provenance=index.extractor_revision,
             )
         frames = [e for hit in result["occurrences"] for e in hit["evidence"]]
+        frames.extend(result.get("uncertain_candidates", []))
     else:
         if aggregate:
             return {
@@ -85,7 +129,7 @@ def search_source(root, source, question, offset=0, limit=40, snapshot=None, con
                 "available_conditions": [],
                 "model_requests_sent": 0,
             }
-        terms, problems = interpret(question)
+        terms, problems = interpret(query_for_terms)
         if problems or not terms:
             return {
                 "kind": "clarification_required",
@@ -103,7 +147,12 @@ def search_source(root, source, question, offset=0, limit=40, snapshot=None, con
         )
         if (offset and snapshot is None) or snapshot is not None and snapshot != identity:
             raise ValueError("index_snapshot_conflict")
-        matches = [frame for frame in index["frames"] if caption_matches(frame["caption"], terms)]
+        matches = [
+            frame
+            for frame in index["frames"]
+            if (not time_window or time_window["start"] <= frame["t"] < time_window["end"])
+            and caption_matches(frame["caption"], terms)
+        ]
         end = offset + limit
         result = {
             "kind": "index_candidates",
@@ -147,7 +196,10 @@ def chat_answer(result):
     coverage = result["coverage"]
     if result["kind"] == "indexed_occurrences":
         for hit in result["occurrences"][:100]:
-            start = hit["start"]
+            # A fully catalogued frame can begin just before the requested
+            # window but remain visible inside it. Keep its real presentation
+            # timestamp within the answer event rather than inventing a frame.
+            start = min(hit["start"], *(e["t"] for e in hit["evidence"]))
             end = hit["end"] if hit["end"] is not None else min(result["duration"], start + 0.001)
             if end <= start:
                 continue
@@ -162,7 +214,14 @@ def chat_answer(result):
                     "summary": (
                         "已有事件观察的连续证据片段；同一已确认事件的回放只计一次。"
                         if result.get("aggregation")
-                        else "同一画面主体满足全部检索条件；不推断跨镜头身份。"
+                        else (
+                            "索引记录的同一画面主体匹配全部检索条件；不推断跨镜头身份。"
+                            + (
+                                "首帧在所选时段开始前呈现，并持续到时段内。"
+                                if start < hit["start"]
+                                else ""
+                            )
+                        )
                     ),
                     "support_level": "low",
                     "evidence": [
@@ -174,7 +233,7 @@ def chat_answer(result):
                             "caption": (
                                 "已有事件观察的原视频画面；本轮未新增模型复核。"
                                 if result.get("aggregation")
-                                else "已有结构化观察满足全部条件；本轮未新增模型复核。"
+                                else "索引记录匹配条件；识别结果尚未验证，请回看原画面。"
                             ),
                             "asr": None,
                         }
@@ -184,14 +243,37 @@ def chat_answer(result):
             )
         total = result["total_occurrences"]
         text = (
-            f"在已有观察索引中找到{total}个出现区间/时点。"
+            (
+                f"在已有观察索引中找到{total}个匹配的抽样画面时点；这不是人数或事件次数。"
+                if coverage.get("catalog_complete") is False and not result.get("aggregation")
+                else f"在已有观察索引中找到{total}个出现区间/时点。"
+            )
             if total
             else "已有观察索引中没有满足全部条件的匹配。"
         )
+        if total and "有没有" in result.get("question", "") and not result.get("aggregation"):
+            text = "索引中观察到有匹配。" + text
+        if events and not result.get("aggregation"):
+            # Quote actual frame timestamps, not the edges of an inferred span.
+            times = list(dict.fromkeys(e["t_hms"] for event in events for e in event["evidence"]))
+            if times:
+                label = (
+                    "部分引用画面时间"
+                    if len(times) > 3 or result.get("next_offset")
+                    else "引用画面时间"
+                )
+                text += f" {label}：{'、'.join(times[:3])}。"
         if not coverage["exhaustive_under_index"]:
             text += " 视频存在未检查或不确定范围，不能据此断言全部出现时间或全片不存在。"
         else:
             text += " 已遍历当前索引的全部源帧；识别准确性仍取决于原观察，未进行新的视觉复核。"
+        if events and coverage.get("recognition_accuracy_verified") is not True:
+            text += " 识别结果尚未验证，请回看引用画面。"
+        if any(
+            condition.get("value") in {"male", "female"}
+            for condition in result.get("conditions", [])
+        ):
+            text += " 性别相关标签来自已有观察，未核实本人身份或性别认同。"
     else:
         total = result["total_candidates"]
         text = (

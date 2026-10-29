@@ -58,6 +58,28 @@ It is Token Factory only, including with the private shared-ledger adapter.
 The free owned `search-index` operation is available without this flag and never
 dispatches a provider request. See [engine scope](VIDEO_CTRL_F_ENGINE.md).
 
+The experimental Token Factory base-knowledge upload worker is separately
+opt-in with `FS_KNOWLEDGE_TOKENFACTORY=1` and a trusted private JSON file at
+`FS_KNOWLEDGE_CALIBRATION_FILE`. Its exact fields are `reference`,
+`processor_revision`, `contract`, `max_frames`, `max_output_tokens`,
+`max_cost_units`, `currency_unit`, and `valid_until`; supported contracts are
+`video_knowledge_extraction_v3`, `video_knowledge_extraction_v4`, and
+`video_knowledge_extraction_v5`. V4 binds clothing attributes; v5 additionally
+requests visible object colors. Each calibration must cover its exact prompt
+and cannot be reused for another version. Interrupted jobs must keep their
+matching configuration; changing versions cannot replay an unknown
+call or silently rebuild its checkpoints. These values must come from real,
+authorized calibration, not invented values or a test fixture.
+Admission checks source checkpoints and both existing approval scopes, then each
+request reserves normally; no flag creates or raises an approval. Insufficient
+approval leaves the job in `waiting_budget`. Ambiguous dispatches are not
+replayed. Cloud supplements also require a separate private calibration at
+`FS_KNOWLEDGE_SUPPLEMENT_CALIBRATION_FILE`, covering both one-frame extraction
+and verification under contract `video_knowledge_supplement_v6`. Admission
+reserves the worst-case cost for missing responses and blocks unknown receipts;
+each actual call still reserves against both scopes. The default remains off,
+and no real extraction calibration or live recognition acceptance is claimed.
+
 `budget_admin settle` 仅由可信本机操作者按已核对的用量证据下调 completed 请求的金额占用；不退调用次数，不释放 unknown，不改变原 attempt 身份，也不自动启用审批。`budget_admin resume` 需新的明确继续授权引用，恢复同一审批版本，保留原金额和调用上限及消耗。账本 v2 保留 v1 数据并增加结算/恢复审计表；没有 HTTP 或普通配置绕过入口。详情见 [Token Factory 核账记录](TOKEN_FACTORY_LOCAL.md#reconciliation-and-user-continuation-2026-10-24)。
 
 ## Explicit retention for an existing source

@@ -1,17 +1,31 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { resolve } = require("../src/frameseek/static/demo-conversation.js");
+const { composerSuggestions } = require("../src/frameseek/static/workbench-model.js");
 const queries = [
   { id: "center", question: "包裹什么时候出现在中央？" },
   { id: "right", question: "什么时候移到右侧？" },
   { id: "person", question: "能确认是谁搬动的吗？" },
   { id: "forklift", question: "有叉车出现吗？" },
 ];
+test("every suggested synthetic question resolves to its preset without context", () => {
+  const suggestions = composerSuggestions({sourceInfo:{id:"demo_parcel"},records:[],local:false});
+  assert.deepEqual(suggestions.items.map(question => resolve(question, queries, null).query?.id),
+    ["center", "right", "forklift"]);
+});
 test("完整问题不依赖上下文", () => {
   assert.deepEqual(resolve("包裹什么时候出现在中央?", queries, null), {
     query: queries[0],
     usedContext: false,
   });
+});
+test("合成演示接受明确同义问法，不把其他问题当成示例", () => {
+  for (const question of ["包裹何时在中央？", "包裹何时出现在中央？", "When is the parcel in the center?"]) {
+    assert.equal(resolve(question, queries, null).query.id, "center");
+  }
+  for (const question of ["包裹没有在中央吗？", "包裹何时在右侧？", "when is the person in the center?"]) {
+    assert.equal(resolve(question, queries, null).query, null);
+  }
 });
 test("连续的指代追问承接包裹，再确认搬运者", () => {
   const first = resolve("包裹什么时候出现在中央？", queries, null);
@@ -21,6 +35,18 @@ test("连续的指代追问承接包裹，再确认搬运者", () => {
   assert.equal(third.query.id, "person");
   assert.equal(second.usedContext, true);
   assert.equal(third.usedContext, true);
+});
+test("English next-step fixture requires its actual center context", () => {
+  assert.deepEqual(resolve("What happens next?", queries, "center"), {
+    query: queries[1], usedContext: true,
+  });
+  assert.deepEqual(resolve("When is the parcel on the right?", queries, null), {
+    query: queries[1], usedContext: false,
+  });
+  for (const context of [null, "right", "person", "forklift", "failure"]) {
+    assert.equal(resolve("What happens next?", queries, context).query, null);
+  }
+  assert.equal(resolve("What happens next?", queries.filter(q => q.id !== "right"), "center").usedContext, false);
 });
 test("查看证据引用上一轮而不产生新的事件", () => {
   assert.equal(resolve("看看证据", queries, "center").query, queries[0]);

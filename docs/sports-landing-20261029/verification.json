@@ -1,0 +1,18 @@
+{
+  "preview": "http://127.0.0.1:8781/",
+  "mode": "fixture",
+  "model_requests_sent": 0,
+  "asset_hashes": {
+    "landing.css": "4ceabcaee647",
+    "landing.js": "de5fd3bd0e3a"
+  },
+  "frontend_tests_passed": 209,
+  "focused_backend_tests_passed": 27,
+  "checks": [
+    "npm run build",
+    "make check",
+    "node --check src/frameseek/static/landing.js",
+    "git diff --check"
+  ],
+  "deployment": "not performed"
+}

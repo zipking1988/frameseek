@@ -63,9 +63,17 @@ class OccurrenceSearchInput(Input):
     question: str = Field(min_length=1, max_length=4000)
     generation: int = Field(ge=1)
     offset: int = Field(default=0, ge=0, le=216000)
+    candidate_offset: int = Field(default=0, ge=0, le=216000)
+    candidate_time: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     limit: int = Field(default=40, ge=1, le=100)
     snapshot: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     conditions: list[dict] | None = Field(default=None, max_length=12)
+    answer_request_id: Key | None = None
+
+
+class OcrCandidateInput(Input):
+    question: str = Field(min_length=1, max_length=4000)
+    generation: int = Field(ge=1)
 
 
 class IndexSearchInput(Input):
@@ -133,6 +141,78 @@ def register(app, settings, root, runtime=None, transport=None):
     upload_gate = asyncio.Semaphore(2)
     index_gate = threading.BoundedSemaphore(2)
     worker_lock = threading.Lock()
+    from frameseek.knowledge_jobs import FixtureKnowledgeJobs
+
+    knowledge_jobs = FixtureKnowledgeJobs(ws, app, settings)
+
+    def knowledge_enabled():
+        return bool(
+            settings.mode == "fixture"
+            and (
+                getattr(app.state, "knowledge_fixture_refactor", False)
+                or os.environ.get("FS_KNOWLEDGE_LOCAL") == "1"
+            )
+            or settings.mode == "real"
+            and os.environ.get("FS_KNOWLEDGE_TOKENFACTORY") == "1"
+        )
+
+    def require_unified_chat(desk):
+        if knowledge_enabled() and desk["video"] != "demo_parcel":
+            raise HTTPException(409, "use_unified_knowledge_chat")
+
+    def knowledge_status(video, owner, *, source=None, connection=None):
+        source = source or ws.owned("videos", video, owner)
+        if connection is None:
+            with ws.db() as owned_connection:
+                row = owned_connection.execute(
+                    "SELECT * FROM knowledge_jobs WHERE video=? AND generation=?",
+                    (video, source["generation"]),
+                ).fetchone()
+        else:
+            row = connection.execute(
+                "SELECT * FROM knowledge_jobs WHERE video=? AND generation=?",
+                (video, source["generation"]),
+            ).fetchone()
+        return {
+            "state": row["state"] if row else "not_started",
+            "version": row["version"] if row else None,
+            "completed_segments": row["completed"] if row else 0,
+            "total_segments": row["total"] if row else 0,
+            "error": row["error"] if row else None,
+            "coverage": "sampled_frames_only" if row and row["version"] else "not_indexed",
+            "capabilities": {"speech_transcription": "not_enabled"},
+            "required_for_chat": knowledge_enabled(),
+            "ocr_candidates_available": bool(
+                knowledge_enabled()
+                and os.environ.get("FS_OCR_CANDIDATES") == "1"
+                and shutil.which("tesseract")
+            ),
+            "processor_available": (
+                bool(
+                    getattr(
+                        getattr(app.state, "knowledge_fixture_processor", None),
+                        "fixture_only",
+                        False,
+                    )
+                    or (os.environ.get("FS_KNOWLEDGE_LOCAL") == "1" and local_configured())
+                )
+                if knowledge_enabled() and settings.mode == "fixture"
+                else None
+            ),
+            "processor": (
+                "synthetic_fixture"
+                if knowledge_enabled()
+                and getattr(
+                    getattr(app.state, "knowledge_fixture_processor", None), "fixture_only", False
+                )
+                else "local"
+                if knowledge_enabled() and settings.mode == "fixture"
+                else "tokenfactory"
+                if knowledge_enabled() and settings.mode == "real"
+                else None
+            ),
+        }
+
     workers = set()
 
     def owned(request: Request):
@@ -187,13 +267,69 @@ def register(app, settings, root, runtime=None, transport=None):
             **result,
         }
 
-    def indexed_search(source, question, offset=0, limit=40, snapshot=None, conditions=None):
+    def current_knowledge(source, version=None):
+        from frameseek.index_service import source_digest
+        from frameseek.video_knowledge import load_published_knowledge
+
+        with ws.db() as c:
+            job = c.execute(
+                "SELECT state,version,cache_key FROM knowledge_jobs WHERE video=? AND generation=?",
+                (source["id"], source["generation"]),
+            ).fetchone()
+        if not job or job["state"] != "ready" or not job["version"]:
+            raise HTTPException(409, "knowledge_index_not_ready")
+        directory = root / source["id"]
+        version = version or job["version"]
+        index = load_published_knowledge(
+            directory,
+            source["id"],
+            source["generation"],
+            job["cache_key"],
+            version,
+            source_digest(directory),
+        )
+        return index, version
+
+    def indexed_search(
+        source,
+        question,
+        offset=0,
+        limit=40,
+        snapshot=None,
+        conditions=None,
+        version=None,
+        candidate_offset=0,
+        candidate_time=None,
+        include_candidates=False,
+    ):
         from frameseek.index_service import search_source
 
         if not index_gate.acquire(blocking=False):
             raise HTTPException(429, "index_search_capacity")
         try:
-            result = search_source(root, source, question, offset, limit, snapshot, conditions)
+            knowledge = None
+            if knowledge_enabled():
+                knowledge, version = current_knowledge(source, version)
+            elif version:
+                raise ValueError("knowledge_index_unavailable")
+            result = search_source(
+                root,
+                source,
+                question,
+                offset,
+                limit,
+                snapshot,
+                conditions,
+                knowledge=knowledge,
+                candidate_offset=candidate_offset,
+                candidate_time=candidate_time,
+                include_candidates=include_candidates,
+            )
+            from frameseek.ocr_candidates import eligible_index_scope
+
+            result["ocr_eligible"] = not conditions and eligible_index_scope(knowledge, question)
+            if version:
+                result["knowledge_version"] = version
         except (ValueError, KeyError, TypeError, OSError):
             raise HTTPException(409, "observation_index_unavailable_or_stale") from None
         finally:
@@ -213,23 +349,104 @@ def register(app, settings, root, runtime=None, transport=None):
         source = ws.owned("videos", key, owner)
         if source["generation"] != body.generation:
             raise HTTPException(409, "stale_video_generation")
+        version = None
+        if body.answer_request_id:
+            with ws.db() as c:
+                row = c.execute(
+                    "SELECT investigation,result FROM queries "
+                    "WHERE owner=? AND id=? AND state='done'",
+                    (owner, body.answer_request_id),
+                ).fetchone()
+            if not row:
+                raise HTTPException(409, "invalid_index_answer_anchor")
+            desk = ws.owned("investigations", row["investigation"], owner)
+            saved = json.loads(row["result"])
+            if (
+                desk["video"] != key
+                or saved.get("engine") != "index"
+                or saved.get("source_generation") != source["generation"]
+            ):
+                raise HTTPException(409, "invalid_index_answer_anchor")
+            version = (saved.get("index_search") or {}).get("knowledge_version")
+            if not version:
+                raise HTTPException(409, "index_answer_version_unavailable")
         response.headers["Cache-Control"] = "no-store"
         return indexed_search(
-            source, body.question, body.offset, body.limit, body.snapshot, body.conditions
+            source,
+            body.question,
+            body.offset,
+            body.limit,
+            body.snapshot,
+            body.conditions,
+            version,
+            candidate_offset=body.candidate_offset,
+            candidate_time=body.candidate_time,
+            include_candidates=True,
         )
 
-    def index_chat_input(body, owner):
+    @router.post("/api/videos/{key}/ocr-candidates")
+    def ocr_candidates(
+        key: str, body: OcrCandidateInput, response: Response, owner=owner_dependency
+    ):
+        if os.environ.get("FS_OCR_CANDIDATES") != "1" or not knowledge_enabled():
+            raise HTTPException(409, "ocr_candidates_not_enabled")
+        source = ws.owned("videos", key, owner)
+        if source["generation"] != body.generation:
+            raise HTTPException(409, "stale_video_generation")
+        if not index_gate.acquire(blocking=False):
+            raise HTTPException(429, "index_search_capacity")
+        try:
+            from frameseek.ocr_candidates import find_candidates
+
+            index, version = current_knowledge(source)
+            result = find_candidates(root / key, index, body.question)
+            # Reject results if the source or published version changed during OCR.
+            latest = ws.owned("videos", key, owner)
+            if (
+                latest["generation"] != source["generation"]
+                or current_knowledge(latest)[1] != version
+            ):
+                raise HTTPException(409, "knowledge_version_changed")
+            response.headers["Cache-Control"] = "no-store"
+            return {**result, "knowledge_version": version}
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from None
+        finally:
+            index_gate.release()
+
+    def checked_supplement_request(connection, body, owner, source):
+        row = connection.execute(
+            "SELECT * FROM knowledge_supplement_jobs WHERE owner=? AND request_id=?",
+            (owner, body.request_id),
+        ).fetchone()
+        if row:
+            chat_body = ChatInput.model_validate(body.model_dump(exclude={"engine"}))
+            if (
+                row["payload_hash"] != digest(chat_body.model_dump_json())
+                or row["investigation"] != body.investigation_id
+                or row["video"] != source["id"]
+                or row["generation"] != source["generation"]
+                or row["desk_epoch"] != body.generation
+            ):
+                raise HTTPException(409, "request_payload_conflict")
+        return row
+
+    def index_chat_input(body, owner, *, allow_model_context=None):
+        if allow_model_context is None:
+            allow_model_context = knowledge_enabled()
         desk = ws.owned("investigations", body.investigation_id, owner)
         if json.loads(desk["state"]).get("epoch", 0) != body.generation:
             raise HTTPException(409, "stale_chat_generation")
         if desk["video"] == "demo_parcel":
             raise HTTPException(409, "demo_uses_explicit_fixtures")
         source = ws.owned("videos", desk["video"], owner)
+        with ws.db() as c:
+            checked_supplement_request(c, body, owner, source)
         question = body.question
         if body.parent_request_id:
             with ws.db() as c:
                 parent = c.execute(
-                    "SELECT result FROM queries WHERE owner=? AND id=? AND investigation=? "
+                    "SELECT result,input FROM queries WHERE owner=? AND id=? AND investigation=? "
                     "AND generation=? AND state='done'",
                     (owner, body.parent_request_id, desk["id"], body.generation),
                 ).fetchone()
@@ -241,17 +458,115 @@ def register(app, settings, root, runtime=None, transport=None):
                 and prior_result.get("source_generation") != source["generation"]
             ):
                 raise HTTPException(409, "stale_index_context")
-            if re.fullmatch(
+            repeat = re.fullmatch(
                 r"\s*(?:继续|还有吗|再找一次|同样条件|same criteria|again)[？?。\s]*",
                 question,
                 re.I,
-            ):
-                if prior_result.get("engine") != "index":
-                    raise HTTPException(409, "index_context_required")
-                question = prior_result.get("index_search", {}).get(
-                    "resolved_question", prior_result["question"]
-                )
+            )
+            if repeat and prior_result.get("engine") != "index" and not allow_model_context:
+                raise HTTPException(409, "index_context_required")
+            if prior_result.get("engine") == "index" or allow_model_context:
+                from frameseek.question_context import resolve_followup, saved_question
+
+                if prior_result.get("video_id") != source["id"]:
+                    raise HTTPException(409, "foreign_context_video")
+
+                def load_ancestor(key):
+                    with ws.db() as connection:
+                        row = connection.execute(
+                            "SELECT result,input FROM queries WHERE owner=? AND investigation=? "
+                            "AND id=? AND generation=? AND state='done'",
+                            (owner, desk["id"], key, body.generation),
+                        ).fetchone()
+                    return (
+                        (json.loads(row["result"]), json.loads(row["input"] or "{}"))
+                        if row
+                        else None
+                    )
+
+                try:
+                    previous = saved_question(
+                        prior_result,
+                        json.loads(parent["input"] or "{}"),
+                        load_ancestor,
+                        video=source["id"],
+                        generation=source["generation"],
+                    )
+                    question = (
+                        previous if repeat else resolve_followup(question, {"question": previous})
+                    )
+                except ValueError as error:
+                    raise HTTPException(409, str(error)) from None
         return desk, source, question
+
+    def completed_question_supplement(body, owner, desk, source, version):
+        if not version:
+            return None
+        with ws.db() as connection:
+            candidates = connection.execute(
+                "SELECT request_id,state,version,base_version FROM knowledge_supplement_jobs "
+                "WHERE owner=? AND investigation=? AND video=? AND generation=? "
+                "AND desk_epoch=? AND state='done' "
+                "AND json_extract(input, '$.question')=? "
+                "AND json_extract(input, '$.parent_request_id') IS ? ORDER BY updated DESC",
+                (
+                    owner,
+                    desk["id"],
+                    source["id"],
+                    source["generation"],
+                    body.generation,
+                    body.question,
+                    body.parent_request_id,
+                ),
+            ).fetchall()
+            job = connection.execute(
+                "SELECT cache_key FROM knowledge_jobs WHERE video=? AND generation=?",
+                (source["id"], source["generation"]),
+            ).fetchone()
+        if not candidates:
+            return None
+        for candidate in candidates:
+            if candidate["version"] == version:
+                return candidate
+        if not job:
+            raise HTTPException(409, "observation_index_unavailable_or_stale")
+        from frameseek.index_service import source_digest
+        from frameseek.video_knowledge import load_published_state
+
+        try:
+            directory = root / source["id"]
+            source_hash = source_digest(directory)
+
+            def load(revision):
+                return load_published_state(
+                    directory,
+                    source["id"],
+                    source["generation"],
+                    job["cache_key"],
+                    revision,
+                    source_hash,
+                )
+
+            current = load(version)
+            current_by_base = {item.source_version: item for item in current.supplements}
+            if len(current_by_base) != len(current.supplements):
+                raise ValueError("supplement_provenance_ambiguous")
+            for candidate in candidates:
+                current_item = current_by_base.get(candidate["base_version"])
+                if current_item is None:
+                    continue
+                older = load(candidate["version"])
+                original = [
+                    item
+                    for item in older.supplements
+                    if item.source_version == candidate["base_version"]
+                ]
+                if len(original) == 1 and original[0] == current_item:
+                    return candidate
+        except (ValueError, KeyError, TypeError, OSError):
+            # An unverifiable receipt cannot authorize an automatic new dispatch.
+            raise HTTPException(409, "observation_index_unavailable_or_stale") from None
+        return None
 
     @router.post("/api/index-chat/prepare")
     def prepare_index_chat(body: IndexChatInput, owner=owner_dependency):
@@ -266,6 +581,10 @@ def register(app, settings, root, runtime=None, transport=None):
             return {"kind": "ready", "request_id": body.request_id}
         result = indexed_search(source, question, limit=1)
         if result["kind"] == "clarification_required":
+            if completed_question_supplement(
+                body, owner, desk, source, result.get("knowledge_version")
+            ):
+                return {"kind": "ready", "request_id": body.request_id, "model_requests_sent": 0}
             return result
         return {"kind": "ready", "request_id": body.request_id, "model_requests_sent": 0}
 
@@ -288,14 +607,157 @@ def register(app, settings, root, runtime=None, transport=None):
                 raise HTTPException(409, "index_request_not_terminal")
             return JSONResponse(json.loads(old["result"]), headers={"Cache-Control": "no-store"})
         result = indexed_search(source, question, limit=20)
+        completed_supplement = None
+        checked_frame_refs = []
         if result["kind"] == "clarification_required":
-            return JSONResponse(result, status_code=409)
-        answer = chat_answer(result)
+            completed_supplement = completed_question_supplement(
+                body, owner, desk, source, result.get("knowledge_version")
+            )
+            if not completed_supplement:
+                return JSONResponse(result, status_code=409)
+            from frameseek.schema import Answer
+            from frameseek.video_knowledge import load_published_state
+
+            with ws.db() as c:
+                job = c.execute(
+                    "SELECT cache_key FROM knowledge_jobs WHERE video=? AND generation=?",
+                    (source["id"], source["generation"]),
+                ).fetchone()
+            if not job:
+                raise HTTPException(409, "observation_index_unavailable_or_stale")
+            try:
+                from frameseek.index_service import source_digest
+
+                state = load_published_state(
+                    root / source["id"],
+                    source["id"],
+                    source["generation"],
+                    job["cache_key"],
+                    result["knowledge_version"],
+                    source_digest(root / source["id"]),
+                )
+                checked = [
+                    item
+                    for item in state.supplements
+                    if item.source_version == completed_supplement["base_version"]
+                ]
+                if len(checked) != 1:
+                    raise ValueError("supplement_provenance_ambiguous")
+                checked_frames = len(checked[0].observations)
+                frame_map = {
+                    frame.frame_id: frame for segment in state.segments for frame in segment.frames
+                }
+                frame_dir = root / source["id"] / "frames"
+                if frame_dir.is_symlink() or not frame_dir.is_dir():
+                    raise ValueError("indexed_evidence_missing")
+                for observation in checked[0].observations:
+                    frame = frame_map[observation.frame_id]
+                    path = frame_dir / frame.file
+                    if (
+                        path.is_symlink()
+                        or not path.is_file()
+                        or path.resolve().parent != frame_dir.resolve()
+                    ):
+                        raise ValueError("indexed_evidence_missing")
+                    checked_frame_refs.append(
+                        {"frame_id": frame.frame_id, "t": frame.t, "uri": frame.uri}
+                    )
+                checked_frame_refs.sort(key=lambda frame: frame["t"])
+            except (ValueError, KeyError, TypeError, OSError):
+                raise HTTPException(409, "observation_index_unavailable_or_stale") from None
+
+            answer = Answer.model_validate(
+                {
+                    "schema_version": "0.1",
+                    "status": "no_result",
+                    "timebase": "video_absolute_seconds",
+                    "answer": "相关画面已补查，但系统仍无法确认满足全部条件的画面。"
+                    "识别可能遗漏，不能断定视频中不存在。",
+                    "events": [],
+                    "unresolved": [],
+                    "followups": [],
+                    "errors": [],
+                    "trace": {
+                        "visible": {
+                            "channels": [],
+                            "segments_reviewed": checked_frames,
+                            "evidence_segments": 0,
+                        },
+                        "debug": None,
+                    },
+                }
+            ).model_dump(mode="json")
+            result.update(
+                kind="supplement_unconfirmed",
+                total_candidates=0,
+                coverage={
+                    "reviewed_frames": checked_frames,
+                    "recognition_accuracy_verified": False,
+                    "exhaustive_under_index": False,
+                },
+                provenance="bounded_supplement_unconfirmed",
+            )
+        else:
+            answer = chat_answer(result)
+        from frameseek.question_context import CONTINUATION, PRONOUN_TIME
+
+        if (
+            (PRONOUN_TIME.fullmatch(body.question) or CONTINUATION.fullmatch(body.question))
+            and question != body.question
+            and not any(
+                condition.get("field") == "text" for condition in result.get("conditions", [])
+            )
+        ):
+            answer["answer"] += " 本次按上一问题的描述匹配，未确认跨镜头为同一对象。"
+        with ws.db() as c:
+            supplement = checked_supplement_request(c, body, owner, source)
+        if supplement and supplement["state"] == "running":
+            raise HTTPException(409, "supplement_still_running")
+        supplemented = bool(
+            supplement
+            and supplement["state"] == "done"
+            and supplement["version"] == result.get("knowledge_version")
+        )
+        cached_supplement = bool(
+            completed_supplement and completed_supplement["request_id"] != body.request_id
+        )
+        supplement_incomplete = bool(
+            supplement and supplement["state"] in {"failed", "unknown", "waiting_budget"}
+        )
+        synthetic = bool(
+            knowledge_enabled()
+            and getattr(
+                getattr(app.state, "knowledge_fixture_processor", None), "fixture_only", False
+            )
+        )
+        if supplemented:
+            cloud_supplement = settings.mode == "real"
+            description = (
+                "合成测试数据" if synthetic else "云端视觉" if cloud_supplement else "本机视觉"
+            )
+            answer["answer"] = answer["answer"].replace(
+                "本次模型调用0次。",
+                f"结果包含{description}补查的观察。"
+                if cloud_supplement
+                else f"结果包含{description}补查的观察，未调用云端模型。",
+            )
+            for event in answer["events"]:
+                for evidence in event["evidence"]:
+                    evidence["caption"] = "引用更新后的结构化观察；请回看原视频画面。"
+            if completed_supplement:
+                answer["answer"] += " 本次处理包含此前完成的局部补查。"
+        elif cached_supplement:
+            answer["answer"] += " 已复用之前的补查，本次未调用模型。"
+        elif supplement_incomplete:
+            answer["answer"] = answer["answer"].replace(
+                "本次模型调用0次。", "补查未完成或结果不明；以下结果来自已有索引。"
+            )
         terminal = {
             "id": body.request_id,
             "question": body.question,
             "response": answer,
             "mode": "real",
+            "synthetic_fixture": synthetic,
             "engine": "index",
             "video_id": source["id"],
             "usedContext": question != body.question,
@@ -305,12 +767,27 @@ def register(app, settings, root, runtime=None, transport=None):
                 "resolved_question": question,
                 "total": result.get("total_occurrences", result.get("total_candidates", 0)),
                 "coverage": {k: v for k, v in result["coverage"].items() if not k.endswith("_ids")},
-                "model_requests_sent": 0,
+                "model_requests_sent": None
+                if (supplemented or supplement_incomplete) and not synthetic
+                else 0,
+                "cloud_requests_sent": None
+                if (supplemented or supplement_incomplete) and settings.mode == "real"
+                else 0,
                 "aggregation": result.get("aggregation"),
+                "knowledge_version": result.get("knowledge_version"),
+                "provenance": result.get("provenance"),
+                "supplemented": supplemented,
+                "supplement_reused": cached_supplement,
+                "checked_frames": checked_frame_refs,
+                "ocr_eligible": result.get("ocr_eligible", False),
+                "supplement_incomplete": supplement_incomplete,
             },
         }
         with ws.db() as c:
             c.execute("BEGIN IMMEDIATE")
+            pending_supplement = checked_supplement_request(c, body, owner, source)
+            if pending_supplement and pending_supplement["state"] == "running":
+                raise HTTPException(409, "supplement_still_running")
             old = c.execute(
                 "SELECT * FROM queries WHERE owner=? AND id=?", (owner, body.request_id)
             ).fetchone()
@@ -392,6 +869,12 @@ def register(app, settings, root, runtime=None, transport=None):
             if analysis:
                 agent.ingest(video, owner, expected_generation=generation)
             else:
+                with ws.db() as c:
+                    c.execute(
+                        "UPDATE knowledge_jobs SET state='waiting_probe',error=NULL,updated=? "
+                        "WHERE video=? AND generation=? AND state='failed'",
+                        (time.time(), video, generation),
+                    )
                 ws.stage(video, owner, generation, "probing", lease=time.time() + 180)
                 metadata = scene_windows(directory, probe(directory), settings.scene_threshold)
                 previews = frames(
@@ -417,6 +900,19 @@ def register(app, settings, root, runtime=None, transport=None):
                     error=None if local_configured() else "real_blocked",
                     lease=None,
                 )
+                with ws.db() as c:
+                    c.execute(
+                        "UPDATE knowledge_jobs SET state='waiting_processor',total=?,updated=? "
+                        "WHERE video=? AND generation=? AND state='waiting_probe'",
+                        (math.ceil(metadata["duration"] / 8), time.time(), video, generation),
+                    )
+                if knowledge_enabled():
+                    try:
+                        if knowledge_jobs.processor():
+                            knowledge_jobs.start(video, owner)
+                    except (HTTPException, OSError, ValueError):
+                        # Playback preflight remains valid if indexing cannot start.
+                        pass
         except (
             MediaError,
             AgentError,
@@ -436,6 +932,12 @@ def register(app, settings, root, runtime=None, transport=None):
                     str(error) if isinstance(error, (MediaError, AgentError)) else "analysis_failed"
                 )
                 ws.stage(video, owner, generation, "failed", error=code[:100], lease=None)
+                with ws.db() as c:
+                    c.execute(
+                        "UPDATE knowledge_jobs SET state='failed',error=?,updated=? "
+                        "WHERE video=? AND generation=? AND state='waiting_probe'",
+                        (code[:100], time.time(), video, generation),
+                    )
             except HTTPException:
                 pass
         finally:
@@ -636,7 +1138,31 @@ def register(app, settings, root, runtime=None, transport=None):
 
     @router.get("/api/videos")
     def videos(owner=owner_dependency):
-        return {"items": ws.list("videos", owner)}
+        # A list can otherwise combine metadata from before preflight finished
+        # with a job or index status from after it finished.
+        with ws.db() as connection:
+            connection.execute("BEGIN")
+            rows = connection.execute(
+                "SELECT * FROM videos WHERE owner=? AND deleted=0 AND expires>?",
+                (owner, time.time()),
+            ).fetchall()
+            items = []
+            for raw in rows:
+                row = dict(raw)
+                job = connection.execute(
+                    "SELECT * FROM jobs WHERE video=? ORDER BY updated DESC LIMIT 1", (row["id"],)
+                ).fetchone()
+                status = knowledge_status(row["id"], owner, source=row, connection=connection)
+                item = {k: v for k, v in row.items() if k not in {"state", "owner", "manifest"}}
+                item["metadata"] = json.loads(row["metadata"])
+                item["job"] = dict(job) if job else None
+                item["knowledge_status"] = status
+                items.append(item)
+        return {
+            "items": sorted(
+                items, key=lambda item: item.get("updated", item["expires"]), reverse=True
+            )
+        }
 
     @router.post("/api/videos", status_code=201)
     async def upload(request: Request, owner=owner_dependency):
@@ -696,6 +1222,11 @@ def register(app, settings, root, runtime=None, transport=None):
                         "VALUES(?,?,1,'queued',?)",
                         (job, video, time.time()),
                     )
+                    c.execute(
+                        "INSERT INTO knowledge_jobs(video,generation,state,updated) "
+                        "VALUES(?,1,'waiting_probe',?)",
+                        (video, time.time()),
+                    )
                 dispatch(video, owner)
             except BaseException:
                 with ws.db() as c:
@@ -706,18 +1237,54 @@ def register(app, settings, root, runtime=None, transport=None):
 
     @router.get("/api/videos/{video}")
     def video_detail(video: str, owner=owner_dependency):
-        row = ws.owned("videos", video, owner)
+        # Video metadata, preflight state and knowledge state must reflect the
+        # same SQLite snapshot; the worker can finish between independent reads.
+        with ws.db() as connection:
+            connection.execute("BEGIN")
+            row = connection.execute(
+                "SELECT * FROM videos WHERE id=? AND owner=?", (video, owner)
+            ).fetchone()
+            if not row:
+                raise HTTPException(404, "not_found")
+            row = dict(row)
+            if row["deleted"] or row["expires"] <= time.time():
+                raise HTTPException(410, "expired_or_deleted")
+            job = connection.execute(
+                "SELECT * FROM jobs WHERE video=? ORDER BY updated DESC LIMIT 1", (video,)
+            ).fetchone()
+            status = knowledge_status(video, owner, source=row, connection=connection)
         return {
             "id": video,
             "name": row["name"],
             "metadata": json.loads(row["metadata"]),
             "generation": row["generation"],
-            "job": ws.job(video, owner),
+            "job": dict(job) if job else None,
+            "knowledge_status": status,
             "expires": row["expires"],
             "capabilities": json.loads(row["manifest"])["capabilities"]
             if row["manifest"]
             else None,
         }
+
+    @router.get("/api/videos/{video}/knowledge")
+    def get_knowledge_status(video: str, owner=owner_dependency):
+        return knowledge_status(video, owner)
+
+    @router.post("/api/videos/{video}/knowledge/build", status_code=202)
+    def build_knowledge(video: str, owner=owner_dependency):
+        ws.owned("videos", video, owner)
+        if not knowledge_enabled():
+            raise HTTPException(409, "knowledge_processor_unavailable")
+        knowledge_jobs.start(video, owner)
+        return knowledge_status(video, owner)
+
+    @router.post("/api/videos/{video}/knowledge/cancel", status_code=202)
+    def cancel_knowledge(video: str, owner=owner_dependency):
+        ws.owned("videos", video, owner)
+        if not knowledge_enabled():
+            raise HTTPException(409, "knowledge_processor_unavailable")
+        knowledge_jobs.cancel(video, owner)
+        return knowledge_status(video, owner)
 
     @router.patch("/api/videos/{video}")
     def rename_video(video: str, body: RenameVideo, owner=owner_dependency):
@@ -836,6 +1403,17 @@ def register(app, settings, root, runtime=None, transport=None):
                 "AND generation=? ORDER BY updated DESC LIMIT 100",
                 (key, owner, generation),
             ).fetchall()
+            supplements = c.execute(
+                "SELECT request_id,state,input FROM knowledge_supplement_jobs s "
+                "WHERE investigation=? AND owner=? AND desk_epoch=? AND s.video=? "
+                "AND EXISTS (SELECT 1 FROM videos v WHERE v.id=s.video AND v.owner=s.owner "
+                "AND v.generation=s.generation AND v.deleted=0 AND v.expires>?) "
+                "AND state IN ('running','unknown','done','failed','cancelled','waiting_budget') "
+                "AND NOT EXISTS "
+                "(SELECT 1 FROM queries q WHERE q.id=s.request_id AND q.owner=s.owner) "
+                "ORDER BY updated DESC LIMIT 100",
+                (key, owner, generation, desk["video"], time.time()),
+            ).fetchall()
         return {
             "items": [
                 {
@@ -845,7 +1423,15 @@ def register(app, settings, root, runtime=None, transport=None):
                     "result": json.loads(r["result"]) if r["result"] else None,
                 }
                 for r in rows
-            ]
+            ],
+            "supplements": [
+                {
+                    "id": r["request_id"],
+                    "state": r["state"],
+                    "input": json.loads(r["input"]) if r["input"] else None,
+                }
+                for r in supplements
+            ],
         }
 
     def prepare(body: ChatInput, owner, check_budget=True):
@@ -960,9 +1546,320 @@ def register(app, settings, root, runtime=None, transport=None):
                     }
         return {"kind": "ready", "request_id": body.request_id}
 
+    @router.post("/api/auto-chat/prepare")
+    def prepare_auto_chat(body: ChatInput, owner=owner_dependency):
+        from frameseek.auto_routing import choose_engine, needs_audio
+
+        # Same owned source/generation/context validation as index chat, before any
+        # capability inspection. This endpoint never dispatches or writes a query.
+        desk, source, question = index_chat_input(body, owner, allow_model_context=True)
+        with ws.db() as connection:
+            existing = connection.execute(
+                "SELECT id FROM queries WHERE id=? AND owner=?", (body.request_id, owner)
+            ).fetchone()
+        if existing:
+            return {
+                "kind": "request_exists",
+                "engine": "model",
+                "model_requests_sent": 0,
+                "message": "这条请求已存在，请恢复原请求；不会重新选择模型或重发。",
+            }
+        if knowledge_enabled():
+            status = knowledge_status(source["id"], owner)
+            if status["state"] != "ready" or not status["version"]:
+                return {
+                    "kind": "knowledge_not_ready",
+                    "plan_kind": "index_not_ready",
+                    "engine": "index",
+                    "knowledge_status": status,
+                    "model_requests_sent": 0,
+                    "message": "基础索引尚未完成；可继续播放视频和查看已有回答。",
+                }
+        if not knowledge_enabled() and ws.job(source["id"], owner)["state"] != "ready":
+            raise HTTPException(409, "source_not_ready")
+        model_continuation = False
+        if body.parent_request_id:
+            with ws.db() as connection:
+                saved = json.loads(
+                    connection.execute(
+                        "SELECT result FROM queries WHERE owner=? AND id=? AND investigation=?",
+                        (owner, body.parent_request_id, desk["id"]),
+                    ).fetchone()["result"]
+                )
+            model_continuation = question != body.question and saved.get("engine") != "index"
+        if knowledge_enabled():
+            if needs_audio(question):
+                return {
+                    "kind": "capability_blocked",
+                    "plan_kind": "capability_missing",
+                    "engine": "index",
+                    "message": "当前基础索引没有语音转写，无法根据画面判断声音内容。",
+                    "model_requests_sent": 0,
+                }
+
+            def supplement_response(plan, message):
+                if settings.mode == "fixture" and knowledge_jobs.processor() is None:
+                    if result["kind"] == "indexed_occurrences":
+                        return {
+                            "kind": "ready",
+                            "engine": "index",
+                            "plan_kind": "direct_retrieval",
+                            "route_message": "本机补查暂不可用，将显示已有索引及覆盖限制。",
+                            "knowledge_version": result["knowledge_version"],
+                            "model_requests_sent": 0,
+                        }
+                    return {
+                        **result,
+                        "engine": "index",
+                        "plan_kind": "processor_unavailable",
+                        "message": message + " 本机补查暂不可用。",
+                        "model_requests_sent": 0,
+                    }
+                response = {
+                    "kind": "supplement_required",
+                    "plan_kind": "bounded_supplement",
+                    "engine": "index",
+                    "message": message,
+                    "supplement_plan": plan,
+                    "model_requests_sent": 0,
+                    "has_index_matches": bool(
+                        result.get("kind") == "indexed_occurrences"
+                        and result.get("total_occurrences")
+                    ),
+                }
+                if settings.mode == "real":
+                    try:
+                        estimate = knowledge_jobs.preview_cloud_supplement(
+                            source, owner, question, plan
+                        )
+                    except BudgetDenied as error:
+                        unknown = "unknown" in str(error).lower()
+                        return {
+                            **response,
+                            "kind": "supplement_unknown" if unknown else "budget_blocked",
+                            "message": (
+                                "之前的补查调用结果不确定；不会自动重发，原问题已保留。"
+                                if unknown
+                                else "补查的配置或预算未通过；本次未调用模型，原问题已保留。"
+                            ),
+                        }
+                    except (ValueError, KeyError, TypeError, OSError):
+                        raise HTTPException(409, "observation_index_unavailable_or_stale") from None
+                    response["estimated_new_calls"] = estimate["new_calls"]
+                    response["estimated_max_cost_units"] = estimate["maximum_cost_units"]
+                    response["currency_unit"] = runtime.currency_unit
+                return response
+
+            result = indexed_search(source, question, limit=1)
+            from frameseek.question_context import CONTINUATION, PRONOUN_TIME
+
+            reuse_parent = bool(
+                body.parent_request_id
+                and (
+                    PRONOUN_TIME.fullmatch(body.question)
+                    or CONTINUATION.fullmatch(body.question)
+                    or re.fullmatch(
+                        r"\s*(?:还有吗|再找一次|同样条件|same criteria|again)[？?。\s]*",
+                        body.question,
+                        re.I,
+                    )
+                )
+                and saved.get("engine") == "index"
+                and (saved.get("index_search") or {}).get("knowledge_version")
+                == result.get("knowledge_version")
+            )
+            # Repeating the same question against the unchanged published
+            # version must reuse its completed supplement. Match the original
+            # parent as well: the same words may mean something different in
+            # another conversation context. Never reuse cancelled/unknown work.
+            previous_supplement = completed_question_supplement(
+                body, owner, desk, source, result.get("knowledge_version")
+            )
+            reuse_exact = bool(previous_supplement)
+            if result["kind"] == "clarification_required":
+                if reuse_exact:
+                    return {
+                        **result,
+                        "kind": "ready",
+                        "engine": "index",
+                        "plan_kind": "supplement_unconfirmed",
+                        "route_message": "补查已完成，正在整理未确认结果。",
+                        "model_requests_sent": 0,
+                    }
+                from frameseek.knowledge_planning import plan_supplement
+
+                try:
+                    index, version = current_knowledge(source)
+                    if version != result.get("knowledge_version"):
+                        raise ValueError("knowledge_version_changed")
+                    plan = plan_supplement(index, question, version)
+                except (ValueError, KeyError, TypeError, OSError):
+                    raise HTTPException(409, "observation_index_unavailable_or_stale") from None
+                message = result.get("message", "现有索引无法确认这个问题。")
+                if plan["kind"] == "supplement_candidates":
+                    return supplement_response(
+                        plan, message + " 已定位相关片段，可以进行局部补查。"
+                    )
+                elif plan["kind"] == "coverage_gap":
+                    message += " 没有可定位的候选片段，不会自动重扫全片。"
+                return {
+                    **result,
+                    "kind": (
+                        "supplement_required"
+                        if plan["kind"] == "supplement_candidates"
+                        else result["kind"]
+                    ),
+                    "engine": "index",
+                    "message": message,
+                    "supplement_plan": plan,
+                    "plan_kind": (
+                        "bounded_supplement"
+                        if plan["kind"] == "supplement_candidates"
+                        else plan["kind"]
+                    ),
+                    "model_requests_sent": 0,
+                }
+            coverage_scope = result.get("coverage", {}).get("time_scope")
+            short_scope = bool(
+                coverage_scope
+                and math.ceil(coverage_scope["end"] / 8) - math.floor(coverage_scope["start"] / 8)
+                <= 2
+            )
+            # Quoted video text is data, not evidence of search intent. For
+            # example, an existence question about the word "when" must not
+            # initiate a time-listing supplement just because of that literal.
+            intent_text = re.sub(r'“[^”]*”|"[^"\n]*"|‘[^’]*’', " ", question)
+            if (
+                result.get("kind") == "indexed_occurrences"
+                and not (reuse_parent or reuse_exact)
+                and re.search(
+                    r"找出|找到|列出|出现时间|出现在哪|什么时候|何时|全部|所有|"
+                    r"\bfind\b|\blist\b|\bshow\b|\bwhen\b|\bwhere\b",
+                    intent_text,
+                    re.I,
+                )
+                and not (
+                    result.get("total_occurrences")
+                    and not short_scope
+                    and any(
+                        condition.get("field") == "text" and condition.get("operator") == "contains"
+                        for condition in result.get("conditions", [])
+                    )
+                )
+            ):
+                with ws.db() as c:
+                    prior_supplement = c.execute(
+                        "SELECT state,version FROM knowledge_supplement_jobs "
+                        "WHERE owner=? AND investigation=? AND request_id=?",
+                        (owner, desk["id"], body.request_id),
+                    ).fetchone()
+                if not (
+                    prior_supplement
+                    and prior_supplement["state"] == "done"
+                    and prior_supplement["version"] == result.get("knowledge_version")
+                ):
+                    from frameseek.knowledge_planning import plan_supplement
+
+                    try:
+                        index, version = current_knowledge(source)
+                        if version != result.get("knowledge_version"):
+                            raise ValueError("knowledge_version_changed")
+                        plan = plan_supplement(index, question, version)
+                    except (ValueError, KeyError, TypeError, OSError):
+                        raise HTTPException(409, "observation_index_unavailable_or_stale") from None
+                    if plan["kind"] == "supplement_candidates":
+                        return supplement_response(plan, "部分画面仍不确定，将补查相关片段。")
+            return {
+                "kind": "ready",
+                "engine": "index",
+                "plan_kind": "direct_retrieval",
+                "route_message": "正在检索已建立的基础索引；抽帧可能遗漏短暂内容。",
+                "knowledge_version": result["knowledge_version"],
+                "model_requests_sent": 0,
+            }
+        result = {}
+        if not needs_audio(question) and not model_continuation:
+            try:
+                result = indexed_search(source, question, limit=1)
+            except HTTPException as error:
+                if (
+                    error.status_code != 409
+                    or error.detail != "observation_index_unavailable_or_stale"
+                ):
+                    raise
+        engine, message = choose_engine(
+            question,
+            result,
+            local_ready=bool(local_configured()),
+            cloud_ready=cloud_vision.configured(),
+        )
+        if engine == "index":
+            admission = {"kind": "ready"}
+        elif engine == "local":
+            admission = {"kind": "ready"}
+        elif engine == "cloud":
+            admission = cloud_vision.prepare(source, owner, question)
+        else:
+            admission = prepare(body, owner)
+        return {**admission, "engine": engine, "route_message": message, "model_requests_sent": 0}
+
     @router.post("/api/chat/prepare")
     def prepare_chat(body: ChatInput, owner=owner_dependency):
+        require_unified_chat(ws.owned("investigations", body.investigation_id, owner))
         return prepare(body, owner)
+
+    @router.post("/api/knowledge-chat/supplement", status_code=202)
+    def start_knowledge_supplement(body: ChatInput, owner=owner_dependency):
+        if not knowledge_enabled():
+            raise HTTPException(409, "knowledge_processor_unavailable")
+        desk, source, question = index_chat_input(body, owner)
+        if body.parent_request_id:
+            with ws.db() as c:
+                row = c.execute(
+                    "SELECT result FROM queries WHERE owner=? AND investigation=? AND id=? "
+                    "AND generation=? AND state='done'",
+                    (owner, desk["id"], body.parent_request_id, body.generation),
+                ).fetchone()
+            if not row:
+                raise HTTPException(409, "invalid_context_anchor")
+            parent = json.loads(row["result"])
+            if parent.get("video_id") != source["id"]:
+                raise HTTPException(409, "foreign_context_video")
+            if parent.get("source_generation", source["generation"]) != source["generation"]:
+                raise HTTPException(409, "stale_context_generation")
+        with ws.db() as c:
+            previous = c.execute(
+                "SELECT * FROM knowledge_supplement_jobs WHERE owner=? AND request_id=?",
+                (owner, body.request_id),
+            ).fetchone()
+        if previous:
+            if previous["payload_hash"] != digest(body.model_dump_json()) or (
+                previous["investigation"] != desk["id"]
+            ):
+                raise HTTPException(409, "request_payload_conflict")
+            return {
+                "state": previous["state"],
+                "version": previous["version"],
+                "error": previous["error"],
+            }
+        from frameseek.knowledge_planning import plan_supplement
+
+        try:
+            index, version = current_knowledge(source)
+            plan = plan_supplement(index, question, version)
+        except (ValueError, KeyError, TypeError, OSError):
+            raise HTTPException(409, "observation_index_unavailable_or_stale") from None
+        if plan["kind"] != "supplement_candidates":
+            raise HTTPException(409, "knowledge_no_supplement_candidates")
+        return knowledge_jobs.start_supplement(source, desk, owner, body, question, plan)
+
+    @router.get("/api/investigations/{key}/supplements/{request_id}")
+    def knowledge_supplement_status(key: str, request_id: Key, owner=owner_dependency):
+        return knowledge_jobs.supplement_status(key, owner, request_id)
+
+    @router.post("/api/investigations/{key}/supplements/{request_id}/cancel", status_code=202)
+    def cancel_knowledge_supplement(key: str, request_id: Key, owner=owner_dependency):
+        return {"state": knowledge_jobs.cancel_supplement(key, owner, request_id)}
 
     @router.post("/api/investigations/{key}/requests/{request_id}/cancel")
     def cancel_query(key: str, request_id: Key, owner=owner_dependency):
@@ -996,11 +1893,15 @@ def register(app, settings, root, runtime=None, transport=None):
                 "WHERE id=? AND owner=?",
                 (json.dumps(terminal, ensure_ascii=False), time.time(), request_id, owner),
             )
+        from frameseek.local_routes import interrupt_local_query
+
+        interrupt_local_query(owner, key, request_id)
         return terminal
 
     @router.post("/api/chat")
     def chat(body: ChatInput, owner=owner_dependency):
         desk = ws.owned("investigations", body.investigation_id, owner)
+        require_unified_chat(desk)
         if desk["video"] == "demo_parcel":
             raise HTTPException(409, "demo_uses_explicit_fixtures")
         generation = json.loads(desk["state"]).get("epoch", 0)
@@ -1219,7 +2120,9 @@ def register(app, settings, root, runtime=None, transport=None):
 
     from frameseek.local_routes import install_local_routes
 
-    install_local_routes(router, ws, owner_dependency, ChatInput)
-    install_local_routes(router, ws, owner_dependency, ChatInput, cloud=cloud_vision)
+    install_local_routes(router, ws, owner_dependency, ChatInput, chat_guard=require_unified_chat)
+    install_local_routes(
+        router, ws, owner_dependency, ChatInput, cloud=cloud_vision, chat_guard=require_unified_chat
+    )
     app.include_router(router)
     return ws

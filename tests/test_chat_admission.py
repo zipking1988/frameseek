@@ -66,7 +66,12 @@ async def test_invalid_time_windows_are_actionable_without_dispatch(tmp_path, mo
     )
     try:
         before = len(calls)
-        for window in ("99:00至99:05", "00:08至00:05"):
+        for window in (
+            "99:00至99:05",
+            "00:08至00:05",
+            "00:05至00:99",
+            "00:01至00:02和00:03至00:04",
+        ):
             result = await client.post(
                 "/api/chat/prepare",
                 json={

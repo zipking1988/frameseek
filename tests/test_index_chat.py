@@ -18,7 +18,7 @@ def anyio_backend():
     return "asyncio"
 
 
-async def setup_index_page(tmp_path, monkeypatch, event_fixture=False):
+async def setup_index_page(tmp_path, monkeypatch, event_fixture=False, partial_fixture=False):
     monkeypatch.setenv("FS_DATA_DIR", str(tmp_path / "workspace"))
     for key in (
         "FS_SHARED_LEDGER_SSH",
@@ -103,7 +103,8 @@ async def setup_index_page(tmp_path, monkeypatch, event_fixture=False):
         facts = {
             "kind": ["person"],
             "color": ["white" if positive else "blue"],
-            "garment": ["jersey"],
+            # The human-authored fixture explicitly binds the colour to the item.
+            "garment": ["white jersey" if positive else "blue jersey"],
         }
         annotations.append(
             {
@@ -136,6 +137,14 @@ async def setup_index_page(tmp_path, monkeypatch, event_fixture=False):
                         "event_keys": {"lift": "first" if i < 10 else "second"},
                     }
                 )
+    if partial_fixture:
+        for row in annotations[:2]:
+            row["subjects"] = [
+                {
+                    "id": "person",
+                    "facts": {"kind": ["person"], "garment": ["jersey"], "color": ["white"]},
+                }
+            ]
     for offset in range(0, len(annotations), 8):
         index = checkpoint(index, annotations[offset : offset + 8], index.snapshot())
     save_index(directory / f"observations-g{source['generation']}.json", index)
@@ -147,6 +156,63 @@ async def setup_index_page(tmp_path, monkeypatch, event_fixture=False):
         )
     ).json()
     return app, client, video, desk, session, index
+
+
+@pytest.mark.anyio
+async def test_uncertain_candidates_are_owned_replayable_and_never_answer_evidence(
+    tmp_path, monkeypatch
+):
+    app, client, video, desk, _, index = await setup_index_page(
+        tmp_path, monkeypatch, partial_fixture=True
+    )
+    try:
+        question = "请在00:00至00:01找出穿白色球衣的人"
+        found = await client.post(
+            f"/api/videos/{video}/occurrences/search", json={"question": question, "generation": 1}
+        )
+        assert found.status_code == 200, found.text
+        result = found.json()
+        assert result["total_occurrences"] == 0
+        assert result["uncertain_candidate_total"] == 2
+        for frame in result["uncertain_candidates"]:
+            assert (await client.get(frame["uri"])).status_code == 200
+        jump_body = {
+            "question": question,
+            "generation": 1,
+            "snapshot": result["snapshot"],
+            "candidate_time": 0.5,
+        }
+        jumped = await client.post(f"/api/videos/{video}/occurrences/search", json=jump_body)
+        assert jumped.status_code == 200
+        assert [frame["t"] for frame in jumped.json()["uncertain_candidates"]] == [0.5]
+        mismatched = await client.post(
+            f"/api/videos/{video}/occurrences/search",
+            json=jump_body | {"question": "请在00:00至00:01找出穿蓝色球衣的人"},
+        )
+        assert mismatched.status_code == 409
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as stranger:
+            stranger_session = (await stranger.get("/api/session")).json()
+            stranger.headers["x-fs-csrf"] = stranger_session["csrf"]
+            assert (
+                await stranger.post(f"/api/videos/{video}/occurrences/search", json=jump_body)
+            ).status_code == 404
+            assert (await stranger.get(result["uncertain_candidates"][0]["uri"])).status_code == 404
+        body = {
+            "engine": "index",
+            "investigation_id": desk["id"],
+            "request_id": "partial-lead",
+            "generation": 0,
+            "question": question,
+        }
+        answer = await client.post("/api/index-chat", json=body)
+        assert answer.status_code == 200, answer.text
+        assert answer.json()["response"]["status"] == "no_result"
+        assert answer.json()["response"]["events"] == []
+        assert answer.json()["index_search"]["model_requests_sent"] == 0
+    finally:
+        await client.aclose()
 
 
 @pytest.mark.anyio
@@ -190,11 +256,49 @@ async def test_owned_semantic_occurrences_and_durable_zero_model_chat(tmp_path, 
             "generation": 0,
             "question": "找出穿白色球衣的人，列出所有出现时间",
         }
+        scoped = await client.post(
+            f"/api/videos/{video}/occurrences/search",
+            json={"question": "请在00:04至00:06找出穿白色球衣的人", "generation": 1},
+        )
+        assert scoped.status_code == 200, scoped.text
+        assert [(hit["start"], hit["end"]) for hit in scoped.json()["occurrences"]] == [(4, 6)]
+        point = await client.post(
+            f"/api/videos/{video}/occurrences/search",
+            json={"question": "请在00:04找出穿白色球衣的人", "generation": 1},
+        )
+        assert point.status_code == 200, point.text
+        assert point.json()["coverage"]["time_scope"] == {"start": 4, "end": 5}
+        assert [(hit["start"], hit["end"]) for hit in point.json()["occurrences"]] == [(4, 5)]
+        text_only = await client.post(
+            f"/api/videos/{video}/occurrences/search",
+            json={"question": "请在00:04找文字“EXIT”", "generation": 1},
+        )
+        assert text_only.status_code == 200 and text_only.json()["ocr_eligible"] is False
+        additional_attribute = await client.post(
+            f"/api/videos/{video}/occurrences/search",
+            json={"question": "请在00:04找红色文字“EXIT”", "generation": 1},
+        )
+        assert additional_attribute.status_code == 200
+        assert additional_attribute.json()["ocr_eligible"] is False
+        explicit_filter = await client.post(
+            f"/api/videos/{video}/occurrences/search",
+            json={
+                "question": "请在00:04找文字“EXIT”",
+                "generation": 1,
+                "conditions": [{"field": "kind", "value": "person", "operator": "is"}],
+            },
+        )
+        assert explicit_filter.status_code == 200
+        assert explicit_filter.json()["ocr_eligible"] is False
         assert (await client.post("/api/index-chat/prepare", json=body)).json()["kind"] == "ready"
         sent = await client.post("/api/index-chat", json=body)
         assert sent.status_code == 200, sent.text
         result = sent.json()
         assert result["response"]["status"] == "partial" and len(result["response"]["events"]) == 3
+        assert "引用画面时间：" in result["response"]["answer"]
+        assert (
+            result["response"]["events"][0]["evidence"][0]["t_hms"] in result["response"]["answer"]
+        )
         assert result["engine"] == "index" and result["index_search"]["model_requests_sent"] == 0
         assert (await client.post("/api/index-chat", json=body)).json() == result
         conflict = await client.post("/api/index-chat", json=body | {"question": "blue jersey"})
@@ -236,6 +340,38 @@ async def test_owned_semantic_occurrences_and_durable_zero_model_chat(tmp_path, 
             assert (await other.post("/api/index-chat", json=body)).status_code == 404
     finally:
         await client.aclose()
+
+
+def test_sampled_answer_labels_partial_timestamp_list_and_keeps_exact_frames():
+    from test_occurrences import CRITERIA, catalog, checkpoint, observation
+
+    from frameseek.index_service import chat_answer
+    from frameseek.occurrences import search_occurrences
+
+    index = catalog(5, complete=False)
+    data = index.model_dump(mode="json")
+    for frame in data["frames"]:
+        frame["t"] += 0.125
+    index = type(index).model_validate(data)
+    index = checkpoint(index, [observation(i) for i in range(5)], index.snapshot())
+    result = search_occurrences(index, CRITERIA, limit=5)
+    result.update(video_id=index.video, duration=index.duration, question="find red hats")
+    answer = chat_answer(result)
+    assert "5个匹配的抽样画面时点；这不是人数或事件次数" in answer["answer"]
+    assert "识别结果尚未验证，请回看引用画面" in answer["answer"]
+    assert "索引记录" in answer["events"][0]["summary"]
+    assert "部分引用画面时间：00:00:00.125、00:00:01.125、00:00:02.125" in answer["answer"]
+    assert "00:00:03.125" not in answer["answer"]
+    gender_result = result | {"conditions": [{"field": "gender", "value": "male"}]}
+    assert "未核实本人身份或性别认同" in chat_answer(gender_result)["answer"]
+    assert [event["evidence"][0]["t"] for event in answer["events"]] == [
+        0.125,
+        1.125,
+        2.125,
+        3.125,
+        4.125,
+    ]
+    assert "不能据此断言全部出现时间" in answer["answer"]
 
 
 def test_data_driven_arbitrary_semantic_alias_and_same_subject_binding():

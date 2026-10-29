@@ -18,11 +18,13 @@ from frameseek.agent import explicit_time_window, referenced_frame_window
 from frameseek.index_service import source_digest
 from frameseek.media import frames
 from frameseek.occurrences import fingerprint
+from frameseek.question_context import resolve_followup
 from frameseek.schema import Answer, hms
 from frameseek.visual_search import requires_aggregation
 
 _LOCK = threading.Lock()
 _CLIENT = None
+_STARTING_CLIENT = None
 
 
 def configured():
@@ -40,6 +42,7 @@ def configured():
 
 class LocalClient:
     def __init__(self, python, model, logs):
+        global _STARTING_CLIENT
         self.identity = (python, model)
         env = {
             k: v
@@ -66,9 +69,14 @@ class LocalClient:
                     self.replies.put(line[9:])
             self.replies.put(None)
 
-        threading.Thread(target=read_lines, daemon=True).start()
-        if not self.read(180).get("ready"):
-            raise ValueError("local_model_start_failed")
+        _STARTING_CLIENT = self
+        try:
+            threading.Thread(target=read_lines, daemon=True).start()
+            if not self.read(180).get("ready"):
+                raise ValueError("local_model_start_failed")
+        finally:
+            if _STARTING_CLIENT is self:
+                _STARTING_CLIENT = None
 
     def read(self, timeout):
         try:
@@ -95,6 +103,27 @@ class LocalClient:
         self.process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
         self.process.stdin.flush()
         return self.read(600)
+
+
+def cancel_worker():
+    """Interrupt only the installed free local worker, never a paid transport."""
+    client = _STARTING_CLIENT or _CLIENT
+    if client is not None:
+        client.cancelled = True
+        process = getattr(client, "process", None)
+        if process is not None and process.poll() is None:
+            process.terminate()
+
+
+def clear_cancelled_markers(cache, started_at):
+    """Explicitly cancelled free work can be retried; old unknown receipts stay."""
+    for path in cache.glob("*.started"):
+        try:
+            value = json.loads(path.read_text())
+            if value.get("started", 0) >= started_at:
+                path.unlink(missing_ok=True)
+        except (OSError, ValueError, TypeError):
+            continue
 
 
 def json_response(text):
@@ -580,15 +609,21 @@ def answer_source(root, source, question, context, progress, active):
         ):
             progress("正在加载本机视觉模型…")
             _CLIENT = LocalClient(*configuration, cache / "worker.log")
-        return run_source(
-            root, source, question, context, progress, active, _CLIENT, identity, cache
-        )
+        started_at = time.time()
+        try:
+            return run_source(
+                root, source, question, context, progress, active, _CLIENT, identity, cache
+            )
+        finally:
+            if getattr(_CLIENT, "cancelled", False) and not active():
+                clear_cancelled_markers(cache, started_at)
 
 
 def run_source(
     root, source, question, context, progress, active, client, identity, cache, cloud=False
 ):
     """Shared sampled compiler; caller supplies a local or budget-guarded client."""
+    question = resolve_followup(question, context)
     directory = root / source["id"]
     metadata = json.loads(source["metadata"])
     source_hash = source_digest(directory)
@@ -683,6 +718,26 @@ def run_source(
         rows.append(row)
     if not active():
         raise ValueError("query_cancelled")
+    if not cloud:
+        from frameseek.score_events import answer_scores, score_target
+        from frameseek.score_events import configured as score_configured
+
+        if score_target(question) and score_configured():
+            answer = answer_scores(
+                directory,
+                source,
+                question,
+                rows,
+                cache,
+                client,
+                progress,
+                active,
+                write_private,
+                json_response,
+            )
+            if not active() or source_digest(directory) != source_hash:
+                raise ValueError("local_source_changed_or_cancelled")
+            return answer
     progress("全片已扫描，正在根据已识别的画面回答…")
     result = select_observations(
         client, cache, identity, question, inference_context, rows, progress, active

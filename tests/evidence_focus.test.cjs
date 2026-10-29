@@ -147,6 +147,7 @@ async function harness(readyState = 1, width = 1440) {
       innerWidth: width,
       matchMedia: () => ({ matches: true }),
       addEventListener() {},
+      dispatchEvent() {},
     },
     navigator: { clipboard: { writeText: async () => {} } },
     fetch: async () => ({ ok: true, json: async () => ({ queries: [] }) }),
@@ -187,6 +188,22 @@ async function conversation(ready = 1, width = 375) {
   h.run(`demo.queries = [${JSON.stringify({ question: "center", response: { status: "ok", answer: "center", events: [event], unresolved: [], errors: [], followups: [] } })}]`);
   return h;
 }
+test("canvas frame and time replay do not replace the draft's reply context", async () => {
+  const h = await conversation(1, 1440);
+  const evidence = evidenceButton(h);
+  const row = h.get("messages").children[0].children.find(n => n.classList.contains("event"));
+  const timeButton = row.children.find(n => n.classList.contains("event-toolbar")).children[0];
+  h.get("question").value = "draft to retain";
+  h.run(`globalThis.selectedDuringReplay = [];
+    investigation = { choose: id => selectedDuringReplay.push(id), evidence() {} };
+    window.FrameSeekWorkbench = { select: id => selectedDuringReplay.push(id) };`);
+  evidence.click();
+  assert.equal(h.player.currentTime, 6);
+  timeButton.click();
+  assert.equal(h.player.currentTime, 5);
+  assert.deepEqual([...h.run("selectedDuringReplay")], []);
+  assert.equal(h.get("question").value, "draft to retain");
+});
 test("mobile evidence hands focus to return action, then restores clicked evidence and draft", async () => {
   const h = await conversation();
   const evidence = evidenceButton(h);
@@ -249,6 +266,20 @@ test("uploaded source uses its own preview poster before analysis and replaces i
   assert.equal(h.get('evidence-question').textContent,'素材预览');
   assert.equal(h.player.poster, "/media/vid_b/frames/preview_001.jpg");
   assert.equal(h.get("question").disabled, false);
+});
+
+test("switching from an uploaded video resets synthetic metadata before and after media load", async () => {
+  const h = await harness();
+  h.run("window.FrameSeekWorkbench = { source() {}, describe() {}, clear() {} }");
+  h.run('window.FrameSeekSessionUI.applySource({id:"vid_long", name:"Long video", job:{state:"ready"}, metadata:{duration:384}})');
+  Object.assign(h.player, {duration:384, videoWidth:1280, videoHeight:720});
+  h.player.dispatch("loadedmetadata");
+  assert.match(h.get("video-meta").textContent, /06:24/);
+  h.run('window.FrameSeekSessionUI.applySource({id:"demo_parcel",metadata:{duration:18,audio:false}})');
+  assert.equal(h.get("video-meta").textContent, "18 秒 · 1600 × 900 · 无音轨");
+  Object.assign(h.player, {duration:18, videoWidth:1600, videoHeight:900});
+  h.player.dispatch("loadedmetadata");
+  assert.equal(h.get("video-meta").textContent, "18 秒 · 1600 × 900 · 无音轨");
 });
 
 test("retrying a failed real turn preserves the draft and explains a fresh question without dispatch", async () => {

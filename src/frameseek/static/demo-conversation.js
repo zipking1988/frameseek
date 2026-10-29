@@ -1,12 +1,29 @@
 /* Deterministic fixture conversation and review routes, never general NLP or a model. */
 (function (root) {
   "use strict";
-  const normalize = (value) => value.replace(/[\s？?。！!，,]/g, "");
+  const normalize = (value) => value.normalize("NFKC").toLowerCase().replace(/[\s？?。！!，,]/g, "");
   function resolve(question, queries, previousId) {
     const value = normalize(question);
     const exact = queries.find((query) => normalize(query.question) === value);
     if (exact) return { query: exact, usedContext: false };
+    // These are explicit aliases for the labeled synthetic demonstration, not
+    // general video understanding or a keyword-based inference.
+    const aliases = {
+      包裹何时在中央: "center",
+      包裹何时出现在中央: "center",
+      whenistheparcelinthecenter: "center",
+      whenistheparcelontheright: "right",
+      包裹什么时候移到右侧: "right",
+      视频中有没有叉车: "forklift",
+    };
+    const example = queries.find((query) => query.id === aliases[value]);
+    if (example) return { query: example, usedContext: false };
     const previous = queries.find((query) => query.id === previousId);
+    // One explicit English fixture follow-up, scoped to the preceding center answer.
+    if (value === "whathappensnext" && previous?.id === "center") {
+      const query = queries.find((item) => item.id === "right") || null;
+      return { query, usedContext: Boolean(query) };
+    }
     const repeat = ["看看证据", "能看一下证据吗"].includes(value);
     if (previous && repeat) return { query: previous, usedContext: true };
     const match = Object.entries(previous?.followup_map || {}).find(

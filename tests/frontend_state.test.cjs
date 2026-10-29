@@ -230,6 +230,13 @@ test("local playback and new task retain unindexed state and disabled question",
   assert.equal(h.get("empty-state").hidden, false);
   assert.equal(h.get("restore-demo").hidden, false);
 });
+test("preflight metadata is shown as complete even while model configuration is pending", async () => {
+  const h = await harness();
+  h.run('activeVideo={metadata:{duration:2},job:{state:"awaiting_configuration"}}; mediaLoaded()');
+  assert.match(h.get("video-meta").textContent, /视频预检完成/);
+  h.run('activeVideo={metadata:{},job:{state:"probing"}}; mediaLoaded()');
+  assert.match(h.get("video-meta").textContent, /视频预检未完成/);
+});
 test("bounded session history removes the same oldest task as the conversation", async () => {
   const h = await harness();
   for (let i = 0; i < 13; i++)
@@ -292,6 +299,7 @@ test("a remote seek reports loading until the target frame is ready, preserving 
   const h = await harness();
   h.player.duration = 384; h.player.seeking = true;
   h.run("seek(60)");
+  assert.ok(h.emitted.includes("frameseek-explicit-seek"));
   assert.match(h.get("seek-status").textContent, /正在定位 01:00/);
   assert.equal(h.get("evidence-step-state").textContent, "加载中");
   h.player.readyState = 4;

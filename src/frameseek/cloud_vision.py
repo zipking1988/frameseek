@@ -48,9 +48,14 @@ def validate_shape(value, schema):
 class CloudClient:
     confirm_batch_negatives = False
 
-    def __init__(self, provider, owner, identity, directory, active):
+    def __init__(
+        self, provider, owner, identity, directory, active, *, attempt_kind=None, category="query"
+    ):
+        if attempt_kind not in {None, "coarse", "zoom"} or category not in {"query", "ingest"}:
+            raise ValueError("invalid_cloud_vision_attempt")
         self.provider, self.owner, self.identity = provider, owner, identity
         self.directory, self.active = directory, active
+        self.attempt_kind, self.category = attempt_kind, category
 
     @staticmethod
     def context_for_model(context):
@@ -111,13 +116,16 @@ class CloudClient:
             payload,
             owner=self.owner,
             attempt="cloud_visual_" + identity,
-            kind="coarse"
-            if schema and "summary" in schema.get("properties", {})
-            else "zoom"
-            if images
-            else "text",
+            kind=self.attempt_kind
+            or (
+                "coarse"
+                if schema and "summary" in schema.get("properties", {})
+                else "zoom"
+                if images
+                else "text"
+            ),
             version=self.provider.runtime.budget_version,
-            category="query",
+            category=self.category,
             deadline=time.monotonic() + self.provider.runtime.attempt_seconds + 5,
         )
         text = response["choices"][0]["message"]["content"]
@@ -217,6 +225,9 @@ class CloudVision:
         return {"kind": "ready", "estimate": estimate}
 
     def answer(self, source, owner, question, context, progress, active):
+        from frameseek.question_context import resolve_followup
+
+        question = resolve_followup(question, context)
         admitted = self.prepare(source, owner, question)
         if admitted["kind"] != "ready":
             raise BudgetDenied("cloud_visual_admission_denied")

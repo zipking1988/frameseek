@@ -86,6 +86,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def index():
+        return FileResponse(static / "landing.html")
+
+    @app.get("/workspace", include_in_schema=False)
+    def workspace():
         return FileResponse(static / "index.html")
 
     @app.get("/demo/catalog")

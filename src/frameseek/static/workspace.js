@@ -6,8 +6,37 @@
   const store = () => window.FrameSeekWorkbench;
   const demo = {id:"demo_parcel",name:"包裹移动 · 合成演示",metadata:{duration:18,audio:false},job:{state:"ready"}};
   const labels = { queued:"等待预检", probing:"检查素材", captioning:"理解画面", transcribing:"转写音轨", indexing:"建立索引", ready:"可以提问", failed:"处理失败", cancelled:"已取消", awaiting_configuration:"等待模型配置" };
+  const sourceReady = video => video.knowledge_status?.required_for_chat ? video.knowledge_status.state === 'ready' : video.job?.state === 'ready';
+  function shortOcrRange(question, duration) {
+    const scopeText=question.replace(/“[^”\n]*”|"[^"\n]*"|‘[^’\n]*’/g, match=>' '.repeat(match.length));
+    const stamps=[...scopeText.matchAll(/(?<![\d:])\d{1,3}:[0-5]\d(?![\d:])/g)];
+    const seconds=stamp=>{const [minutes,second]=stamp.split(':').map(Number);return minutes*60+second;};
+    if(stamps.length===1) {
+      const point=scopeText.match(/(?:\bat\s+|(?:请)?在\s*)(\d{1,3}:[0-5]\d)(?![\d:])(?!\s*(?:前|后|之前|之后|以前|以后|左右|附近|至|到|\b(?:or\s+)?(?:before|after|earlier|later)\b))/i);
+      if(!point || /(?:不|未|没|\bnot\s+)\s*$/i.test(scopeText.slice(0,point.index)))return false;
+      return Number.isFinite(duration) && seconds(point[1])<duration;
+    }
+    if(stamps.length!==2)return false;
+    const range=scopeText.match(/(?:(\bbetween\b|\bfrom\b|请在|在)\s*)?(?<![\d:])(\d{1,3}:[0-5]\d)\s*(至|到|[-–—~～]|\bto\b|\band\b)\s*(\d{1,3}:[0-5]\d)(?![\d:])/i);
+    if(!range || (range[3].toLowerCase()==='and' && range[1]?.toLowerCase()!=='between'))return false;
+    const start=seconds(range[2]),end=seconds(range[4]);
+    return Number.isFinite(duration) && start<end && end<=duration && end-start<=8;
+  }
+  function canSearchOcr(question) {
+    return typeof question==='string' && !!currentVideo?.knowledge_status?.ocr_candidates_available
+      && shortOcrRange(question,currentVideo.metadata?.duration)
+      && /(?:文字|文本|text)\s*(?:包含|是|为|contains|[:：])?\s*[“"‘]/i.test(question);
+  }
+  function sourceStatus(video) {
+    const knowledge=video.knowledge_status;
+    if (!knowledge?.required_for_chat) return labels[video.job?.state] || '已上传';
+    const states={waiting_probe:'等待视频预检',waiting_processor:'等待索引配置',waiting_budget:'等待预算或授权',queued:'等待建立索引',indexing:'建立基础索引',ready:'可以提问',cancelled:'索引已停止',failed:'索引失败',unknown:'索引状态待确认',not_started:'等待建立索引'};
+    const status=states[knowledge.state] || '索引尚未就绪';
+    return knowledge.state==='indexing' && knowledge.total_segments ? `${status} · ${knowledge.completed_segments}/${knowledge.total_segments} 段` : status;
+  }
+  const needsWatch = video => ["queued","probing","captioning","transcribing","indexing"].includes(video.job?.state) || (video.knowledge_status?.required_for_chat && ["waiting_probe","queued","indexing"].includes(video.knowledge_status.state));
   let session, current, currentVideo = demo, suspended = true, saving = null, lastSaved = "", lastSavedEdits = "", timer;
-  let conflict = false, requestEpoch = 0, activeRequest = null, libraryEpoch = 0;
+  let conflict = false, requestEpoch = 0, activeRequest = null, libraryEpoch = 0, submissionEpoch = 0, watchEpoch = 0;
   let pendingSave = null;
   let lastVideoDesks = {};
   try {
@@ -17,18 +46,17 @@
   const owns = (id, epoch) => current?.id === id && requestEpoch === epoch;
   let sourceChoices = new Map([[demo.id, demo]]), sourceListEpoch = 0, sourceSwitching = false;
   let searchEpoch = 0, searchDesk = null, searchGeneration = null;
-  let localSelected=false;
   function syncSourceSwitcher(videos) {
     const localReady=!!session?.local_vision_ready;
     const cloudOption=$('cloud-engine-option');
     if(cloudOption){cloudOption.hidden=!session?.cloud_vision_ready;cloudOption.disabled=!session?.cloud_vision_ready;}
     $('local-engine-option').hidden=!localReady;
     $('local-engine-option').disabled=!localReady;
-    if(localReady && !localSelected) {$('chat-engine').value='local';localSelected=true;}
 
+    $('auto-engine-indicator').textContent=$('chat-engine').value==='auto' ? '自动' : '手动';
     $('chat-engine').parentElement && ($('chat-engine').parentElement.hidden=currentVideo.id===demo.id);
-    $('search-index').hidden = currentVideo.id === demo.id || currentVideo.job?.state !== 'ready';
-    if(currentVideo.id!==demo.id && currentVideo.job?.state==='ready') $('composer-mode-text').textContent=$('chat-engine').value==='local' ? '本机视觉 · 免费' : $('chat-engine').value==='index' ? '已有索引 · 零模型调用' : $('chat-engine').value==='cloud' ? '云端视觉 · 需预算准入' : '模型分析 · 需预算准入';
+    $('search-index').hidden = currentVideo.id === demo.id || !sourceReady(currentVideo);
+    if(currentVideo.id!==demo.id && sourceReady(currentVideo)) $('composer-mode-text').textContent=currentVideo.knowledge_status?.required_for_chat ? (currentVideo.knowledge_status.processor_available===false ? '已有索引可查询 · 本机补查暂不可用' : currentVideo.knowledge_status.processor==='synthetic_fixture' ? '合成测试索引 · 模拟补查' : currentVideo.knowledge_status.processor==='tokenfactory' ? '基础索引 · 云端补查需预算准入' : '本机索引 · 按需补查') : $('chat-engine').value==='auto' ? 'Agent 自动选择 · 云端处理仍需预算准入' : $('chat-engine').value==='local' ? '本机视觉 · 免费' : $('chat-engine').value==='index' ? '已有索引 · 零模型调用' : $('chat-engine').value==='cloud' ? '云端视觉 · 需预算准入' : '模型分析 · 需预算准入';
     if(searchDesk && (searchDesk !== current?.id || searchGeneration !== currentVideo.generation)) {
       searchEpoch++; searchDesk=null; $('visual-search-dialog').close(); $('visual-search-results').replaceChildren();
     }
@@ -41,7 +69,7 @@
       option.value = video.id; option.textContent = video.id === demo.id ? "箱子 · 包裹移动（合成演示）" : video.name;
       option.dataset.thumbnail = video.id === demo.id ? "/media/demo_parcel/frames/0.jpg" : video.metadata?.preview?.[0]?.uri || "";
       const duration = Math.round(video.metadata?.duration || 0);
-      option.dataset.detail = `${Math.floor(duration / 60).toString().padStart(2,"0")}:${(duration % 60).toString().padStart(2,"0")} · ${video.id === demo.id ? "合成演示" : labels[video.job?.state] || "已上传"}`;
+      option.dataset.detail = `${Math.floor(duration / 60).toString().padStart(2,"0")}:${(duration % 60).toString().padStart(2,"0")} · ${video.id === demo.id ? "合成演示" : sourceStatus(video)}`;
       select.append(option);
     }
     select.value = currentVideo.id;
@@ -169,7 +197,7 @@
       if(recoverDraftShadow())changed();
       await recover();
       if (!owns(desk.id,epoch)) return false;
-      if (["queued","probing","captioning","transcribing","indexing"].includes(video.job?.state)) watch(video.id,epoch);
+      if (needsWatch(video)) watch(video.id,epoch);
       refreshChatBudget();
       return true;
     } finally { if (epoch===requestEpoch) {suspended=false;ui().busy(false);} }
@@ -191,7 +219,7 @@
       suspended=false;
       await flush(); if (!owns(desk.id,epoch)) return false;
       $("workspace-library").close();
-      if (["queued","probing","captioning","transcribing","indexing"].includes(video.job?.state)) watch(video.id,epoch);
+      if (needsWatch(video)) watch(video.id,epoch);
       refreshChatBudget();
       return true;
     } finally { if (epoch===requestEpoch) {suspended=false;ui().busy(false);} }
@@ -209,7 +237,10 @@
     const line=$('chat-budget-status');
     if(!line)return;
     const desk=current?.id,epoch=requestEpoch,check=++budgetEpoch;
+    $('chat-engine').disabled=!!currentVideo.knowledge_status?.required_for_chat;
+    if(currentVideo.knowledge_status?.required_for_chat) {line.hidden=false;line.textContent=currentVideo.knowledge_status.processor_available===false?'已有索引可查询；本机补查暂不可用。':'自动读取基础索引；需要时只补查相关画面。';return;}
     if(currentVideo.id==='demo_parcel') {line.hidden=true;return;}
+    if($('chat-engine').value==='auto') {line.hidden=false;line.textContent='先检查已有证据，必要时选择可用视觉分析；云端处理仍受原预算限制，失败不会自动切换重试。';return;}
     if($('chat-engine').value==='local') {
       line.hidden=false;line.textContent='本机视觉识别，不使用 Token Factory 额度。首次扫描全片，完成的片段会缓存；不会自动调用付费 API。';return;
     }
@@ -255,15 +286,17 @@
     finally {button.disabled=false;}
   }
   async function searchSavedFrames(savedQuestion=null) {
-    const question=typeof savedQuestion==='string' ? savedQuestion.trim() : $('question').value.trim();
+    const question=typeof savedQuestion==='string' ? savedQuestion.trim() : typeof savedQuestion?.question==='string' ? savedQuestion.question.trim() : $('question').value.trim();
+    const answerRequestId=typeof savedQuestion?.answerRequestId==='string' ? savedQuestion.answerRequestId : null;
+    let autoOcr=!!savedQuestion?.autoOcr;
     if(!question) {ui().notify('先在输入框描述要找的内容，再查找已有画面；不会发送给模型。');return;}
     const desk=current?.id, epoch=requestEpoch, source=currentVideo, generation=source.generation, check=++searchEpoch;
-    if(!desk || source.id===demo.id || source.job?.state!=='ready')return;
+    if(!desk || source.id===demo.id || !sourceReady(source))return;
     const dialog=$('visual-search-dialog'), list=$('visual-search-results');
     searchDesk=desk; searchGeneration=generation; list.replaceChildren();
     $('visual-search-summary').textContent='正在检索已有索引，不调用模型…';
     if(!dialog.open)dialog.showModal();
-    let offset=0, snapshot=null, displayed=0, selectedConditions=null;
+    let offset=0, snapshot=null, displayed=0, selectedConditions=null, filterRevision=0, candidateSection=null;
     const active=()=>check===searchEpoch && owns(desk,epoch) && currentVideo.id===source.id && currentVideo.generation===generation && dialog.open;
     $('visual-search-conditions').textContent='';$('visual-search-coverage').textContent='';
     $('visual-search-track').replaceChildren();$('visual-search-track').hidden=true;
@@ -272,14 +305,16 @@
       if(!active())return;
       selectedConditions=[...$('visual-search-options').children].filter(row=>row.firstElementChild.checked).map(row=>JSON.parse(row.dataset.condition));
       if(!selectedConditions.length){ui().notify('请至少选择一个明确条件。');return;}
-      offset=0;snapshot=null;displayed=0;list.replaceChildren();$('visual-search-track').replaceChildren();loadPage();
+      filterRevision++;offset=0;snapshot=null;displayed=0;candidateSection=null;list.replaceChildren();$('visual-search-track').replaceChildren();loadPage();
     };
     async function loadPage(button=null) {
+      const revision=filterRevision, currentResult=()=>active() && revision===filterRevision;
+      if(!currentResult())return;
       if(button)button.disabled=true;
       try {
         const data=await api(`/api/videos/${source.id}/occurrences/search`,'POST',
-          {question,generation,offset,limit:40,snapshot,conditions:selectedConditions});
-        if(!active())return;
+          {question,generation,offset,limit:40,snapshot,conditions:selectedConditions,answer_request_id:answerRequestId});
+        if(!currentResult())return;
         const options=$('visual-search-options');
         if(!offset) {
           options.replaceChildren();
@@ -292,20 +327,63 @@
         }
         if(data.kind==='clarification_required') {
           $('visual-search-summary').textContent=data.message;
-          $('visual-search-coverage').textContent='未执行新的视觉识别；明确条件后可继续检索已有索引。';return;
+          $('visual-search-coverage').textContent=autoOcr
+            ? '文字候选未运行：请先按提示明确检索条件；已有索引未改变，未调用模型。'
+            : '未执行新的视觉识别；明确条件后可继续检索已有索引。';return;
         }
         if(button)button.remove();
         const structured=data.kind==='indexed_occurrences', rows=structured ? data.occurrences : data.frames;
         displayed+=rows.length;
-        $('visual-search-conditions').textContent=data.conditions?.length ? `${data.explicit_conditions ? "已选属性（替代原问题）" : "全部条件"}：${data.conditions.map(c=>`${c.field} ${c.operator==='is_not' ? '不是' : '是'} ${c.value}`).join('；')}（同一物体）` : `检索概念：${(data.terms || []).join(' + ')}`;
+        $('visual-search-conditions').textContent=data.conditions?.length ? `${data.explicit_conditions ? "已选属性（替代原问题）" : "全部条件"}：${data.conditions.map(c=>`${c.field} ${c.operator==='is_not' ? '不是' : c.operator==='contains' || c.operator==='color_item' ? '包含' : '是'} ${c.value}`).join('；')}（同一物体）` : `检索概念：${(data.terms || []).join(' + ')}`;
         const coverage=data.coverage || {};
         $('visual-search-summary').textContent=structured
-          ? `已有观察匹配 ${displayed} / ${data.total_occurrences} 个区间或时点；本次模型调用 0 次。`
+          ? `已有观察匹配 ${displayed} / ${data.total_occurrences} ${coverage.catalog_complete === false ? '个抽样画面时点（不是人数或事件次数）' : '个区间或时点'}；本次模型调用 0 次。`
           : `已检索全部 ${data.indexed_frames} 张保存画面的描述，已显示 ${displayed} / ${data.total_candidates ?? rows.length} 张文字候选。候选不等于满足全部条件；不是整段视频的全部出现时间。没有新增模型调用。`;
         $('visual-search-coverage').textContent=structured
-          ? `${data.provenance} · 已检查 ${coverage.reviewed_frames} / ${coverage.catalog_frames} 帧；未检查 ${coverage.missing_frame_ids?.length || 0} 帧，不确定 ${coverage.uncertain_frame_ids?.length || 0} 帧。${coverage.exhaustive_under_index ? '已遍历索引内全部源帧；识别准确性依赖原观察。' : '覆盖未完成，不能断言全部出现时间或全片不存在。'}`
+          ? `${data.provenance} · 已检索 ${coverage.reviewed_frames} / ${coverage.catalog_frames} 张索引画面的观察；缺少观察 ${coverage.missing_frame_ids?.length || 0} 张，不确定 ${coverage.uncertain_frame_ids?.length || 0} 张。${coverage.catalog_complete === false ? '索引仅包含抽样画面，并非逐帧检查。' : ''}${coverage.exhaustive_under_index ? '已遍历索引内全部源帧；识别准确性依赖原观察。' : '覆盖未完成，不能断言全部出现时间或全片不存在。'}`
           : '缺少全片结构化观察索引。以下只检索已有描述，不能确认同一主体的多个属性，也不能推断连续出现区间。';
+        if(autoOcr && (data.ocr_eligible!==true || !canSearchOcr(question))) {
+          autoOcr=false;
+          $('visual-search-coverage').textContent+=!currentVideo?.knowledge_status?.ocr_candidates_available
+            ? ' 文字候选未运行：当前服务未启用 OCR。未调用模型。'
+            : ' 文字候选不可用：目前只支持英文和数字；该时段也可能没有可用抽样画面，或问题包含不支持的条件。未调用模型。';
+        }
         if(!rows.length) {const empty=document.createElement('p');empty.textContent=coverage.exhaustive_under_index ? '当前已有观察中没有匹配。' : '当前索引未找到匹配；未检查范围仍可能出现。';list.append(empty);}
+        if(!offset && !selectedConditions && data.ocr_eligible===true && canSearchOcr(question)) {
+          const ocr=document.createElement('button');ocr.type='button';ocr.textContent='查找此时段的文字候选 · OCR';
+          ocr.onclick=async()=>{
+            if(!currentResult())return;
+            ocr.disabled=true;$('visual-search-summary').textContent='正在查找文字候选…';
+            try {
+              const candidates=await api(`/api/videos/${source.id}/ocr-candidates`,'POST',{question,generation});
+              if(!currentResult())return;
+              if(!data.knowledge_version || candidates.knowledge_version!==data.knowledge_version) {
+                ocr.remove();
+                $('visual-search-summary').textContent='索引版本已变化或无法确认；旧回答与新文字候选未混合。请从当前视频重新查询最新索引。';
+                const latest=document.createElement('button');latest.type='button';latest.textContent='查看最新索引';
+                latest.onclick=()=>{if(currentResult())searchSavedFrames({question});};
+                list.append(latest);
+                return;
+              }
+              ocr.remove();
+              const observed=new Set(structured ? rows.flatMap(entry=>(entry.evidence || []).map(frame=>frame.frame_id).filter(Boolean)) : rows.map(frame=>frame.frame_id).filter(Boolean));
+              const newCandidates=candidates.frames.filter(frame=>!observed.has(frame.frame_id));
+              $('visual-search-summary').textContent=`已有索引结果保留；OCR 另找到 ${newCandidates.length} 张未核实候选画面，请自行回看。`;
+              $('visual-search-coverage').textContent+=` OCR 检查 ${candidates.checked_frames} 张抽样画面，${candidates.failed_frames} 张处理失败；不能据此断言其他时间不存在。未调用云端模型。`;
+              for(const frame of newCandidates) {
+                if(!frame.uri.startsWith(`/media/${source.id}/frames/`))continue;
+                const row=document.createElement('article'), image=document.createElement('img'), caption=document.createElement('p'), seek=document.createElement('button');
+                image.src=frame.uri;image.alt='OCR 文字候选，需回看核实';image.loading='lazy';
+                caption.textContent='OCR 候选 · 待核实，文字可能识别错误';
+                seek.type='button';seek.textContent=`回看 ${Math.floor(frame.t/60).toString().padStart(2,'0')}:${(frame.t%60).toFixed(3).padStart(6,'0')} · 待核实`;
+                seek.onclick=()=>{if(!currentResult())return;dialog.close();ui().seek(frame.t,seek);};
+                row.append(image,caption,seek);list.append(row);
+              }
+            } catch(error) {if(currentResult())$('visual-search-summary').textContent='文字候选未完成。请指定不超过 8 秒的时间段和引号中的文字，或稍后重试；已有索引未改变。';}
+            finally {ocr.disabled=false;}
+          };list.append(ocr);
+          if(autoOcr){autoOcr=false;await ocr.onclick();if(!currentResult())return;}
+        }
         for(const entry of rows) {
           const frame=structured ? entry.evidence[0] : entry;
           if(!frame?.uri.startsWith(`/media/${source.id}/frames/`))continue;
@@ -315,7 +393,7 @@
           caption.textContent=structured ? `同一画面主体满足全部条件 · ${entry.evidence_count} 帧支持；不代表跨镜头同一个人。` : frame.caption;
           const clock=t=>`${Math.floor(t/60).toString().padStart(2,'0')}:${(t%60).toFixed(3).padStart(6,'0')}`;
           seek.textContent=structured ? `回看 ${clock(entry.start)}${entry.end==null ? ' · 抽样时点' : `—${clock(entry.end)}`} · 已有观察` : `回看 ${clock(frame.t)} · 索引候选`;
-          seek.type='button';seek.onclick=()=>{if(!active())return;dialog.close();ui().seek(frame.t,seek);};
+          seek.type='button';seek.onclick=()=>{if(!currentResult())return;dialog.close();ui().seek(frame.t,seek);};
           if(structured && data.duration>0) {
             const marker=document.createElement('button');marker.type='button';
             marker.textContent='';marker.title=seek.textContent;marker.setAttribute('aria-label',`时间线 ${clock(entry.start)}`);
@@ -323,14 +401,83 @@
             marker.style.width=`${Math.max(.5,100*((entry.end ?? entry.start+.001)-entry.start)/data.duration)}%`;
             marker.onclick=seek.onclick;$('visual-search-track').append(marker);$('visual-search-track').hidden=false;
           }
-          row.append(image,caption,seek);list.append(row);
+          row.append(image,caption,seek);candidateSection ? list.insertBefore(row,candidateSection) : list.append(row);
+        }
+        if(!offset && structured && Array.isArray(data.uncertain_candidates) && data.uncertain_candidates.length) {
+          candidateSection=document.createElement('section');candidateSection.className='uncertain-candidate-group';
+          candidateSection.setAttribute('aria-label','待核实候选画面');
+          const heading=document.createElement('p');
+          heading.textContent=`待核实候选 · 共 ${data.uncertain_candidate_total} 张；部分条件不明确，不计入匹配结果。`;
+          const controls=document.createElement('div'), timeInput=document.createElement('input'), jump=document.createElement('button');
+          controls.className='candidate-time-controls';timeInput.type='text';timeInput.placeholder='例如 05:20';
+          timeInput.setAttribute('aria-label','候选画面起始时间');
+          jump.type='button';jump.textContent='跳到时间';controls.append(timeInput,jump);
+          candidateSection.append(heading,controls);list.append(candidateSection);
+          const candidateSnapshot=data.snapshot, candidateVersion=data.knowledge_version;
+          let candidateEpoch=0;
+          const appendCandidates=page=>{
+            for(const frame of page.uncertain_candidates || []) {
+              if(typeof frame.uri!=='string' || !frame.uri.startsWith(`/media/${source.id}/frames/`) || !Number.isFinite(frame.t) || frame.t<0 || frame.t>=data.duration)continue;
+              const row=document.createElement('article'), image=document.createElement('img'), caption=document.createElement('p'), seek=document.createElement('button');
+              image.src=frame.uri;image.alt='部分条件不明确的候选画面';image.loading='lazy';
+              caption.textContent='候选画面 · 部分条件不明确，请回看核实';
+              seek.type='button';seek.textContent=`回看 ${Math.floor(frame.t/60).toString().padStart(2,'0')}:${(frame.t%60).toFixed(3).padStart(6,'0')} · 待核实`;
+              seek.onclick=()=>{if(!currentResult())return;dialog.close();ui().seek(frame.t,seek);};
+              row.append(image,caption,seek);candidateSection.append(row);
+            }
+            if(page.uncertain_candidate_next_offset!=null) {
+              const moreCandidates=document.createElement('button');moreCandidates.type='button';
+              moreCandidates.textContent='加载更多待核实画面 · 不调用模型';
+              moreCandidates.onclick=async()=>{
+                if(!currentResult())return;const request=++candidateEpoch;moreCandidates.disabled=true;
+                try {
+                  const next=await api(`/api/videos/${source.id}/occurrences/search`,'POST',{
+                    question,generation,offset:0,limit:40,snapshot:candidateSnapshot,conditions:selectedConditions,
+                    answer_request_id:answerRequestId,candidate_offset:page.uncertain_candidate_next_offset
+                  });
+                  if(!currentResult() || request!==candidateEpoch)return;
+                  if(next.snapshot!==candidateSnapshot || next.knowledge_version!==candidateVersion)throw new Error('index_version_changed');
+                  moreCandidates.remove();appendCandidates(next);
+                } catch(error) {if(currentResult() && request===candidateEpoch)$('visual-search-coverage').textContent+=' 候选画面加载失败，请重新打开索引；未调用模型。';}
+                finally {moreCandidates.disabled=false;}
+              };candidateSection.append(moreCandidates);
+            }
+          };
+          jump.onclick=async()=>{
+            if(!currentResult())return;
+            const match=timeInput.value.trim().match(/^(\d{1,3}):([0-5]\d)$/);
+            const seconds=match ? Number(match[1])*60+Number(match[2]) : NaN;
+            if(!Number.isFinite(seconds) || seconds>=data.duration) {heading.textContent='请输入视频范围内的时间，例如 05:20。';return;}
+            const request=++candidateEpoch;jump.disabled=true;
+            try {
+              const page=await api(`/api/videos/${source.id}/occurrences/search`,'POST',{
+                question,generation,offset:0,limit:40,snapshot:candidateSnapshot,conditions:selectedConditions,
+                answer_request_id:answerRequestId,candidate_time:seconds
+              });
+              if(!currentResult() || request!==candidateEpoch)return;
+              if(page.snapshot!==candidateSnapshot || page.knowledge_version!==candidateVersion)throw new Error('index_version_changed');
+              candidateSection.replaceChildren(heading,controls);
+              heading.textContent=`待核实候选 · 共 ${data.uncertain_candidate_total} 张；显示 ${timeInput.value.trim()} 起的画面，不计入匹配结果。`;
+              if(!page.uncertain_candidates?.length) {const empty=document.createElement('p');empty.textContent='此时间之后没有待核实候选。';candidateSection.append(empty);}
+              appendCandidates(page);
+            } catch(error) {if(currentResult() && request===candidateEpoch)heading.textContent='跳转失败，请重新打开索引；未调用模型。';}
+            finally {jump.disabled=false;}
+          };
+          appendCandidates(data);
         }
         if(data.next_offset!=null) {
           offset=data.next_offset;snapshot=data.snapshot;
           const more=document.createElement('button');more.type='button';
-          more.textContent='加载后续时间 · 不调用模型';more.onclick=()=>loadPage(more);list.append(more);
+          more.textContent='加载后续时间 · 不调用模型';more.onclick=()=>currentResult() && loadPage(more);
+          candidateSection ? list.insertBefore(more,candidateSection) : list.append(more);
         }
-      } catch(error) {if(active())$('visual-search-summary').textContent=`索引暂不可用：${error.message}。原问题和聊天保留，未调用模型。`;}
+      } catch(error) {
+        if(currentResult() && error.message==='index_answer_version_unavailable') {
+          $('visual-search-summary').textContent='这条旧回答没有保存索引版本，不能确认原有依据。可查看最新索引；原回答和聊天不会改变。';
+          const latest=document.createElement('button');latest.type='button';latest.textContent='查看最新索引';
+          latest.onclick=()=>{if(currentResult())searchSavedFrames({question});};list.append(latest);
+        } else if(currentResult())$('visual-search-summary').textContent=`索引暂不可用：${error.message}。原问题和聊天保留，未调用模型。`;
+      }
       finally {if(button)button.disabled=false;}
     }
     await loadPage();
@@ -353,10 +500,11 @@
       body.append(item(demo.name,"18 秒 · 公开合成演示 · 预设回答",()=>openSource(demo)));
       const data=await api("/api/videos");
       if (!active()) return;
+      if (data.items.some(video=>video.knowledge_status?.required_for_chat)) $("library-intro").textContent="每段素材独立保存问题与证据。上传后先预检并建立基础索引，完成后可以提问。";
       syncSourceSwitcher(data.items);
       for (const video of data.items) {
         const job=video.job;
-        const row=item(video.name,`${Math.round(video.bytes/1024/1024)} MB · ${labels[job?.state] || "已上传"}${job?.total ? ` · ${job.completed}/${job.total} 窗口` : ""}`,()=>openSource(video));
+        const row=item(video.name,`${Math.round(video.bytes/1024/1024)} MB · ${sourceStatus(video)}${!video.knowledge_status?.required_for_chat && job?.total ? ` · ${job.completed}/${job.total} 窗口` : ""}`,()=>openSource(video));
         if (["failed","cancelled"].includes(job?.state) && !video.metadata?.windows) {
           const retry=document.createElement("button");retry.className="outline-button";retry.textContent="重新预检";
           retry.onclick=async()=>{try {await api(`/api/videos/${video.id}/retry`,"POST");libraryNotice("已重新开始预检。");if(currentVideo.id===video.id) watch(video.id,requestEpoch);}catch(e){libraryNotice(e.message);}};
@@ -378,7 +526,7 @@
         remove.setAttribute("aria-label",`删除素材：${video.name}`);
         remove.onclick=()=>confirmDelete(video,"videos");row.append(remove);body.append(row);
       }
-      if (!session.real_ready) libraryNotice("真实分析等待模型地址与预算配置。上传、预检、播放和调查保存已可使用。");
+      if (!session.real_ready && !data.items.some(video=>video.knowledge_status?.required_for_chat)) libraryNotice("真实分析等待模型地址与预算配置。上传、预检、播放和调查保存已可使用。");
     } else {
       const data=await api("/api/investigations");
       if (!active()) return;
@@ -463,26 +611,50 @@
     }catch(error){ui().notify(error.message);}
   }
   async function watch(videoId, epoch) {
-    const deskId=current?.id;
-    for (let i=0;i<90 && owns(deskId,epoch);i++) {
-      await new Promise(r=>setTimeout(r,2000));
-      if (!owns(deskId,epoch)) return;
+    const deskId=current?.id, token=++watchEpoch;
+    const knowledgeWatch=!!currentVideo?.knowledge_status?.required_for_chat;
+    const active=()=>token===watchEpoch && owns(deskId,epoch) && currentVideo?.id===videoId;
+    let readFailures=0;
+    for (let i=0;active() && (knowledgeWatch || i<90);i++) {
+      await new Promise(r=>setTimeout(r,readFailures ? Math.min(16000,2000*2**readFailures) : 2000));
+      if (!active()) return;
+      let video;
       try {
-        const video=await api(`/api/videos/${videoId}`);
-        if (!owns(deskId,epoch)) return;
+        video=await api(`/api/videos/${videoId}`);
+      } catch(error) {
+        if (!active()) return;
+        if (knowledgeWatch && (error.status==null || error.status===429 || error.status>=500) && ++readFailures<=3) {
+          ui().notify('暂时无法读取索引进度，正在重新连接；不会重新处理视频。');
+          continue;
+        }
+        ui().notify(knowledgeWatch ? '无法读取索引进度。请重新打开该视频查看；已完成的处理会保留。' : error.message);
+        return;
+      }
+      if (!active()) return;
+      readFailures=0;
+      try {
+        const knowledge=video.knowledge_status;
+        currentVideo=video;ui().updateKnowledge?.(video);
+        if (knowledge?.required_for_chat && ["queued","indexing"].includes(knowledge.state)) {
+          const label=`建立基础索引 · ${knowledge.completed_segments}/${knowledge.total_segments} 段`;
+          $("video-state").textContent=label;ui().notify(label);continue;
+        }
         ui().notify(`${labels[video.job?.state] || "处理素材"}${video.job?.total ? ` · ${video.job.completed}/${video.job.total} 窗口` : ""}`);
-        if (["ready","failed","awaiting_configuration","cancelled"].includes(video.job?.state)) {
-          await flush(); if (!owns(deskId,epoch)) return;
+        if (["ready","failed","awaiting_configuration","cancelled"].includes(video.job?.state) && !needsWatch(video)) {
+          await flush(); if (!active()) return;
           currentVideo=video; const saved=snapshot();suspended=true;
           try {ui().restore(saved,video);} finally {suspended=false;}
           syncSourceSwitcher();
           refreshChatBudget();
           changed();
-          if (video.job?.state === "failed") ui().notify(`预检或分析失败：${video.job.error}。素材保留，可重新处理或删除。`);
-          if (video.job?.state === "awaiting_configuration") ui().notify("预检完成，等待模型服务与预算配置。不会发送模型请求。");
+          if (knowledge?.required_for_chat && knowledge.state === "ready") ui().notify("基础索引完成，可以开始提问。");
+          else if (knowledge?.required_for_chat && knowledge.state === "waiting_budget") ui().notify("基础索引等待预算或授权；视频和已有回答仍可查看，已完成片段会保留。");
+          else if (knowledge?.required_for_chat && ["failed","unknown","cancelled","waiting_processor"].includes(knowledge.state)) ui().notify("基础索引尚未完成；视频和已有回答仍可查看。");
+          else if (video.job?.state === "failed") ui().notify(`预检或分析失败：${video.job.error}。素材保留，可重新处理或删除。`);
+          else if (video.job?.state === "awaiting_configuration") ui().notify("预检完成，等待模型服务与预算配置。不会发送模型请求。");
           return;
         }
-      }catch(error){if (owns(deskId,epoch)) ui().notify(error.message);return;}
+      }catch(error){if (active()) ui().notify(error.message);return;}
     }
   }
   async function recover() {
@@ -513,29 +685,129 @@
         $('resume-query').hidden=false;
       }
     }
+    for (const supplement of data.supplements || []) {
+      const wasActive=activeRequest?.desk===deskId && activeRequest.id===supplement.id;
+      if (supplement.state === 'running') {
+        if (!activeRequest || (activeRequest.desk===deskId && activeRequest.id===supplement.id)) {
+          activeRequest={desk:deskId,id:supplement.id,state:'running',kind:'supplement'};
+          $('resume-query').hidden=false;$('cancel-question').hidden=false;
+          ui().notify('先前补查仍在处理；可以恢复查看或停止。原问题已保留。');
+        }
+        break;
+      }
+      if (supplement.state === 'unknown') {
+        if (activeRequest?.desk===deskId && activeRequest.id===supplement.id) {
+          activeRequest=null;$('resume-query').hidden=true;$('cancel-question').hidden=true;
+        }
+        if (wasActive || (draft && supplement.input?.question===draft))
+          ui().notify('先前补查结果不确定，不会自动重发；原问题已保留。');
+        continue;
+      }
+      if (supplement.state === 'done' && activeRequest?.desk===deskId && activeRequest.id===supplement.id) {
+        activeRequest=null;$('resume-query').hidden=true;$('cancel-question').hidden=true;
+      }
+      if (['failed','cancelled','waiting_budget'].includes(supplement.state) &&
+          activeRequest?.desk===deskId && activeRequest.id===supplement.id) {
+        activeRequest=null;$('resume-query').hidden=true;$('cancel-question').hidden=true;
+        ui().notify(supplement.state==='waiting_budget'
+          ? '补查等待预算或授权；原问题已保留，不会自动重发。'
+          : '先前补查未完成；原问题已保留，不会自动重发。');
+        continue;
+      }
+      if (supplement.state === 'done' && !supplement.input) {
+        if (wasActive) ui().notify('先前补查已完成，但缺少原问题记录；请检查已保留的草稿。');
+        continue;
+      }
+      if (supplement.state === 'done' && supplement.input && !activeRequest) {
+        const original=supplement.input;
+        const prepared=await api('/api/auto-chat/prepare','POST',original);
+        if (!owns(deskId,epoch)) return;
+        if (prepared.kind!=='ready' || prepared.engine!=='index') {
+          ui().notify(prepared.message || '补查已完成，但仍无法确认答案；原问题已保留。');
+          continue;
+        }
+        const result=await api('/api/index-chat','POST',{...original,engine:'index'});
+        if (!owns(deskId,epoch)) return;
+        if (result?.response && !store().getSnapshot().records.some(r=>r.query.id===result.id)) {
+          const parent=store().getSnapshot().records.find(r=>r.query.id===original.parent_request_id);
+          ui().answer({...result,parentTurn:parent?.id || null},original.question);added=true;
+          ui().notify('已恢复补查结果。');
+        }
+      }
+    }
+    if ($('question').value !== initialDraft) draft=$('question').value;
     ui().restoreDraft(draft);
     if (added || draft!==initialDraft) {await flush();if (!owns(deskId,epoch)) return;}
   }
   async function ask(question) {
-    if (suspended || !current || currentVideo.job?.state!=="ready") return;
+    if (suspended || !current || !sourceReady(currentVideo)) return;
     if (activeRequest?.state!=="unknown" && activeRequest) {
       $('resume-query').hidden=false;ui().notify("查询仍在执行，请恢复当前请求，勿发起重复尝试。");return;
     }
-    const desk=current,epoch=requestEpoch;
+    const desk=current,epoch=requestEpoch,submission=++submissionEpoch;
     const context=ui().currentContext();
     const parentTurn=context?.mode==="real" ? store().getSnapshot().records.find(r=>r.query.id===context.id)?.id || null : null;
     const body={investigation_id:desk.id,request_id:crypto.randomUUID().replaceAll("-",""),
       generation:store().getSnapshot().epoch,question,parent_request_id:context?.mode==="real" ? context.id : null};
-    const indexMode=$('chat-engine').value==='index',localMode=$('chat-engine').value==='local',cloudMode=$('chat-engine').value==='cloud';
-    if(indexMode)body.engine='index';
-    const endpoint=cloudMode ? '/api/cloud-chat' : localMode ? '/api/local-chat' : indexMode ? '/api/index-chat' : '/api/chat';
+    let engine=currentVideo.knowledge_status?.required_for_chat ? 'auto' : ($('chat-engine').value || 'auto');
+    let indexMode=false,localMode=false,cloudMode=false,endpoint;
     ui().busy(true);
     let pending=null;
     try {
       ui().notify("已收到问题，正在检查…");
       await flush(); if (!owns(desk.id,epoch)) return;
       if (activeRequest) {await stopRequest();if (!owns(desk.id,epoch)) return;}
-      const prepared=await api(`${endpoint}/prepare`,"POST",body);
+      let prepared, partialNotice='';
+      if(engine==='auto') {
+        prepared=await api('/api/auto-chat/prepare',"POST",body);
+        if(!owns(desk.id,epoch)) return;
+        if(!['index','local','cloud','model'].includes(prepared.engine)) throw new Error('自动处理方案无效，未发送问题');
+        engine=prepared.engine;
+        ui().notify(prepared.route_message || "已选择处理方式，正在检查…");
+      }
+      if (prepared?.has_index_matches && ['budget_blocked','supplement_unknown'].includes(prepared.kind)) {
+        partialNotice=prepared.message+' 将显示已有索引结果。';
+        prepared={...prepared,kind:'ready'};
+      }
+      if(prepared?.kind==='supplement_required') {
+        pending={desk:desk.id,id:body.request_id,state:'running',kind:'supplement'};activeRequest=pending;
+        $('cancel-question').hidden=false;
+        ui().notify(Number.isSafeInteger(prepared.estimated_new_calls)
+          ? `正在补查相关画面，最多 ${prepared.estimated_new_calls} 次云端请求…`
+          : '正在补查相关画面…');
+        const started=await api('/api/knowledge-chat/supplement','POST',body);
+        if(!owns(desk.id,epoch) || activeRequest!==pending)return;
+        let supplement=started;
+        for(let i=0;i<1800 && supplement.state==='running';i++) {
+          await new Promise(r=>setTimeout(r,2000));
+          if(!owns(desk.id,epoch) || activeRequest!==pending)return;
+          supplement=await api(`/api/investigations/${desk.id}/supplements/${body.request_id}`);
+        }
+        if(!owns(desk.id,epoch) || activeRequest!==pending)return;
+        if(supplement.state!=='done') {
+          activeRequest=null;pending=null;
+          const message=supplement.state==='waiting_budget'
+            ? '补查等待预算或授权；原问题已保留，不会自动重发。'
+            : '补查未完成或结果不明；原问题已保留，不会自动重发。';
+          if (!prepared.has_index_matches || !['waiting_budget','failed','unknown'].includes(supplement.state)) {
+            ui().notify(message);status('补查未完成','error');return;
+          }
+          partialNotice='补查未完成或结果不明，不会自动重发；以下为已有索引结果。';
+          prepared={...prepared,kind:'ready'};
+        } else {
+          activeRequest=null;pending=null;
+          prepared=await api('/api/auto-chat/prepare','POST',body);
+          if(!owns(desk.id,epoch))return;
+          if(prepared.kind==='supplement_required') {
+            prepared={...prepared,kind:'clarification_required',message:'已补查相关画面，但仍无法确认完整条件。原问题已保留，不会自动重复补查。'};
+          }
+          engine=prepared.engine;
+        }
+      }
+      indexMode=engine==='index';localMode=engine==='local';cloudMode=engine==='cloud';
+      if(indexMode)body.engine='index';
+      endpoint=cloudMode ? '/api/cloud-chat' : localMode ? '/api/local-chat' : indexMode ? '/api/index-chat' : '/api/chat';
+      if(!prepared)prepared=await api(`${endpoint}/prepare`,"POST",body);
       if(!owns(desk.id,epoch)) return;
       if (prepared.kind!=="ready") {
         preflightNotice=true;ui().notify(prepared.message);
@@ -543,33 +815,71 @@
       }
       preflightNotice=false;
       pending={desk:desk.id,id:body.request_id,state:"running"};activeRequest=pending;
+      $("cancel-question").hidden=false;
       status("正在查找证据…");
       let data;
       for (let i=0;i<15 || localMode || cloudMode;i++) {
+        if(activeRequest!==pending)return;
         try {data=await api(endpoint,"POST",body);}catch(error){if(error.data?.kind==="query_control") {data=error.data;}else if(error.data?.response) {data=error.data;} else throw error;}
-        if(data?.response && activeRequest===pending) activeRequest=null;
+        if(activeRequest!==pending)return;
+        if(data?.response) activeRequest=null;
         if(!owns(desk.id,epoch)) return;
         if(data.kind!=="query_control") break;
         if(localMode && data.suggested_action) ui().notify(data.suggested_action);
         if(data.state==="unknown") {pending.state="unknown";$('resume-query').hidden=false;ui().notify(data.suggested_action);status("调用结果不确定","error");return;}
         await new Promise(r=>setTimeout(r,Math.min(10000,3000+i*500)));
-        if (!owns(desk.id,epoch)) return;
+        if (!owns(desk.id,epoch) || activeRequest!==pending) return;
       }
       if(data?.response) {
         $('resume-query').hidden=true;
         if (!store().getSnapshot().records.some(r=>r.query.id===data.id)) ui().answer({...data,parentTurn},question);
-        ui().notify("");await flush();if (!owns(desk.id,epoch)) return;
+        ui().notify(partialNotice);await flush();if (!owns(desk.id,epoch)) return;
       } else {$('resume-query').hidden=false;ui().notify("查询仍在执行，保留原问题。请从当前请求恢复，勿发起重复尝试。");}
-    }catch(error){if(owns(desk.id,epoch)){if(activeRequest===pending && pending) $('resume-query').hidden=false;ui().notify(error.message === "context_has_no_verified_anchor"
+    }catch(error){if(owns(desk.id,epoch) && submission===submissionEpoch){if(activeRequest===pending && pending?.kind==='supplement'){activeRequest=null;pending=null;}else if(activeRequest===pending && pending) $('resume-query').hidden=false;ui().notify(error.message === "context_has_no_verified_anchor"
       ? "所选问题没有有效证据，请点击「另起问题」并写出完整问题。输入已保留。"
       : `${error.message} · 原问题已保留。`);status("查找未完成","error");}}
-    finally {if(owns(desk.id,epoch)) {ui().busy(false);refreshChatBudget();}}
+    finally {if(owns(desk.id,epoch) && submission===submissionEpoch && (!activeRequest || activeRequest===pending)) {$("cancel-question").hidden=true;ui().busy(false);refreshChatBudget();}}
+  }
+  async function cancelCurrent() {
+    const pending=activeRequest,desk=current?.id,epoch=requestEpoch;
+    if(!pending)return;
+    const control=$("cancel-question");control.disabled=true;
+    try {
+      const outcome=await stopRequest();
+      if(!owns(desk,epoch))return;
+      submissionEpoch++;
+      const cancelledSubmission=submissionEpoch;
+      control.hidden=true;
+      const completed=outcome?.state==='done';
+      const unknown=outcome?.state==='unknown';
+      const failed=['failed','waiting_budget'].includes(outcome?.state);
+      if (completed && pending.kind==='supplement') {
+        ui().busy(true);
+        ui().notify("补查在停止前已完成，正在恢复结果…");
+        try { await recover(); }
+        catch { if (owns(desk,epoch)) ui().notify("补查已完成，但恢复失败；重新打开调查可再查看。输入已保留。"); }
+        finally { if (owns(desk,epoch) && cancelledSubmission===submissionEpoch) ui().busy(false); }
+        return;
+      }
+      ui().busy(false);
+      ui().notify(unknown ? "补查结果不确定，不会自动重发；输入已保留。"
+        : failed ? "补查在停止前未完成；输入已保留，不会自动重发。"
+        : "已停止本轮处理，输入已保留。可以修改后重新发送。");
+      status(completed ? "补查已完成" : unknown ? "结果不确定" : failed ? "补查未完成" : "已停止处理");await flush();
+    }catch(error){if(owns(desk,epoch))ui().notify("停止未完成："+error.message+"；输入已保留，可再次点击停止。");}
+    finally{control.disabled=false;}
   }
   async function stopRequest() {
     const pending=activeRequest;
     if(!pending) return;
-    await api(`/api/investigations/${pending.desk}/requests/${pending.id}/cancel`,"POST");
-    if (activeRequest===pending) activeRequest=null;
+    const kind=pending.kind==='supplement' ? 'supplements' : 'requests';
+    const outcome=await api(`/api/investigations/${pending.desk}/${kind}/${pending.id}/cancel`,"POST");
+    if (activeRequest===pending) {
+      activeRequest=null;
+      $('cancel-question').hidden=true;
+      $('resume-query').hidden=true;
+    }
+    return outcome;
   }
   async function start() {
     if(!ui()?.ready())return;
@@ -582,8 +892,23 @@
       else if(desks.length)await openDesk(desks[0].id);else await create(demo);
       store().subscribe(changed);
       window.addEventListener("frameseek-canvas-changed",changed);
+      window.addEventListener("frameseek-explicit-seek",changed);
       ["pointerup","keyup","wheel","input"].forEach(event=>document.addEventListener(event,()=>{if(JSON.stringify(snapshot())!==lastSaved)changed();},{passive:true}));
       $('question').addEventListener('input',()=>{keepDraftShadow();if(preflightNotice){preflightNotice=false;ui().notify('');}});
+      $('knowledge-control').onclick=async()=>{
+        const video=currentVideo,deskId=current?.id,epoch=requestEpoch,control=$('knowledge-control');
+        if(!video?.knowledge_status?.required_for_chat || control.disabled)return;
+        const cancelling=['queued','indexing'].includes(video.knowledge_status.state);
+        control.disabled=true;
+        try {
+          const status=await api(`/api/videos/${video.id}/knowledge/${cancelling?'cancel':'build'}`,'POST');
+          if(!owns(deskId,epoch))return;
+          currentVideo={...video,knowledge_status:status};ui().updateKnowledge?.(currentVideo);
+          ui().notify(cancelling?'已停止索引，已完成片段保留。':'正在建立基础索引；视频仍可播放。');
+          if(!cancelling)watch(video.id,epoch);
+        } catch(error) {if(owns(deskId,epoch))ui().notify(`${error.message} · 视频与记录已保留。`);}
+        finally {if(owns(deskId,epoch))control.disabled=false;}
+      };
       document.addEventListener("visibilitychange",()=>{if(document.hidden)flush().catch(()=>{});});
       $("open-investigations").onclick=()=>library().catch(e=>ui().notify(e.message));
       $("open-sources").onclick=()=>library("videos").catch(e=>ui().notify(e.message));
@@ -595,6 +920,7 @@
       $('chat-engine').onchange=()=>{syncSourceSwitcher();refreshChatBudget();};
       $('close-visual-search').onclick=()=>{searchEpoch++;$('visual-search-dialog').close();};
       $("save-state").onclick=()=>conflict ? openDesk(current.id).catch(e=>ui().notify(e.message)) : flush().catch(()=>{});
+      $("cancel-question").onclick=()=>cancelCurrent();
       $("resume-query").onclick=()=>recover().catch(e=>ui().notify(e.message));
       $("source-switcher").onchange=switchSelectedSource;
       refreshSourceSwitcher().catch(error=>ui().notify(`视频列表读取失败：${error.message}。可在管理视频中重试。`));
@@ -602,7 +928,7 @@
       $("delete-cancel").onclick=()=>$("delete-dialog").close();
     }catch(error){suspended=true;status("调查服务暂不可用","error");ui().notify(error.message);}
   }
-  window.FrameSeekPersistence={flush,upload,ask,library,searchIndex:searchSavedFrames,openDemo:()=>openSource(demo).catch(e=>ui().notify(e.message)),
+  window.FrameSeekPersistence={flush,upload,ask,library,searchIndex:searchSavedFrames,canSearchOcr,openDemo:()=>openSource(demo).catch(e=>ui().notify(e.message)),
     newInvestigation:()=>create(currentVideo).catch(e=>ui().notify(e.message))};
   window.addEventListener("frameseek-catalog-ready",start,{once:true});
   if(ui()?.ready())start();
