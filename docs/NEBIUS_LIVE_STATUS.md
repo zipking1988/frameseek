@@ -1,5 +1,22 @@
 # Nebius deployment record
 
+## Current static release — 2026-10-30 JST
+
+Frontend assets from commit `8338957` are served by the existing Nebius service.
+The landing page shows the interactive basketball preview in the hero and clearer
+workspace links. The workspace waits for investigation restoration before showing
+its contents, avoiding a flash of the parcel fixture. Fresh sessions still use
+the labeled parcel demo. The private basketball investigation restored locally
+was not transferred to the server.
+
+Validation: 234 frontend tests and five API tests passed locally; after the final
+compatibility change, 113 workspace persistence tests passed. The deployed HTML,
+changed scripts, styles and basketball image matched local SHA-256 hashes, public
+pages and health returned HTTP 200, and the service remained active. The landing
+page was opened in a browser. No model request, service restart, budget change or
+private media/database transfer was performed. Static rollback copies are under
+`/srv/frameseek/releases/static-8338957-20261030`.
+
 ## Current release — 2026-10-30 JST, investigation recovery
 
 Code commit `67805ac` is deployed on the existing single-process Nebius server
