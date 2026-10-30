@@ -1,7 +1,7 @@
 /* Illustrative marketing interactions only. No workspace state or model requests. */
 (() => {
   const frames = [
-    { time: "04:58", title: "Defender steps toward help", image: "court.jpg", alt: "Illustrative wide view of an indoor basketball game" },
+    { time: "04:58", title: "Players face off", image: "basketball-drive.png", alt: "Illustrative basketball player dribbling against a defender" },
     { time: "05:03", title: "Pass to the wing", image: "pass.jpg", alt: "Illustrative basketball pass to the wing" },
     { time: "05:08", title: "Defender closes out", image: "court.jpg", alt: "Illustrative basketball court and defensive positioning" },
     { time: "05:10", title: "Shot is taken", image: "shot.jpg", alt: "Illustrative basketball scene: a defender contests a jump shot" },
@@ -60,7 +60,10 @@
     caption.textContent = `${frame.time} · ${frame.title}`;
     position.value = String(index);
     position.setAttribute("aria-valuetext", `${frame.time} — ${frame.title}`);
-    if (changed) animateChange(image, 5);
+    if (changed) {
+      animateChange(image, 5);
+      animateChange(caption, 4);
+    }
     for (const button of frameButtons) {
       const selected = Number(button.dataset.frame) === index;
       button.classList.toggle("is-selected", selected);

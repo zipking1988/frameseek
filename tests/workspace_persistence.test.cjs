@@ -43,7 +43,7 @@ class Element {
   scrollIntoView() {}
   querySelector() { return new Element(); }
 }
-async function harness({ state = {}, requests = [], job = "ready", realReady = true, storage = new Map(), owner = "owner-A", revision = 1, queryReferences = false } = {}) {
+async function harness({ state = {}, requests = [], job = "ready", realReady = true, storage = new Map(), owner = "owner-A", revision = 1, queryReferences = false, startupGate = null, awaitStartup = true } = {}) {
   const store = createStore(), ids = new Map(), calls = [], answers = [], timers = new Map();
   let seq = 100, timerSeq = 0, ready = false, busy = false, context = null, override = null;
   const get = id => { if (!ids.has(id)) ids.set(id, new Element()); return ids.get(id); };
@@ -74,7 +74,10 @@ async function harness({ state = {}, requests = [], job = "ready", realReady = t
     calls.push(call);
     const special = override?.(call);
     if (special !== undefined) return special;
-    if (url === "/api/session") return response({ csrf: "csrf", owner_id: owner, ttl_hours: 24, real_ready: realReady, query_reference_snapshots: queryReferences });
+    if (url === "/api/session") {
+      if (startupGate) await startupGate.promise;
+      return response({ csrf: "csrf", owner_id: owner, ttl_hours: 24, real_ready: realReady, query_reference_snapshots: queryReferences });
+    }
     if (url === "/api/investigations" && call.method === "GET") return response({ items: [...desks.values()] });
     if (url === "/api/investigations" && call.method === "POST") {
       const desk = { id: "new-demo", video: call.body.video_id, title: call.body.title, revision: 1, state: {} };
@@ -99,7 +102,8 @@ async function harness({ state = {}, requests = [], job = "ready", realReady = t
   const window = { FrameSeekSessionUI: ui, FrameSeekWorkbench: store,
     addEventListener(type,fn) { (windowEvents[type] ||= []).push(fn); },
     dispatchEvent(event) { (windowEvents[event.type] || []).forEach(fn=>fn(event)); } };
-  const sandbox = vm.createContext({ Event: class { constructor(type) { this.type=type; } }, window, document: { getElementById: get, createElement: () => new Element(), addEventListener() {} }, fetch,
+  const body = new Element(); body.setAttribute("data-workspace-startup", "loading");
+  const sandbox = vm.createContext({ Event: class { constructor(type) { this.type=type; } }, window, document: { body, getElementById: get, createElement: () => new Element(), addEventListener() {} }, fetch,
     sessionStorage: {getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},
     localStorage: { getItem: () => "desk-A", setItem() {} }, crypto: { randomUUID: () => `request-${++seq}` },
     setTimeout: (fn, delay) => { const id = ++timerSeq; timers.set(id, { fn, delay }); return id; }, clearTimeout: id => timers.delete(id),
@@ -109,12 +113,28 @@ async function harness({ state = {}, requests = [], job = "ready", realReady = t
     .replace("window.FrameSeekPersistence={flush,", "window.testWorkspace={start,openDesk,openSource,refreshSourceSwitcher,recover,confirmDelete,watch,get:()=>({current,currentVideo,activeRequest,requestEpoch})}; window.FrameSeekPersistence={flush,");
   vm.runInContext(source, sandbox);
   get("chat-engine").value="model";
-  ready = true; await window.testWorkspace.start();
-  return { store, get, calls, answers, desks, videos, requestLists, ui, window, timers,
+  ready = true; const startup = window.testWorkspace.start(); if (awaitStartup) await startup;
+  return { store, get, calls, answers, desks, videos, requestLists, ui, window, timers, body, startup,
     get busy() { return busy; }, setContext(value) { context = value; }, setOverride(fn) { override = fn; },
     async timer(delay) { const entry = [...timers].find(([, timer]) => timer.delay === delay); assert.ok(entry, `Missing ${delay}ms timer`); timers.delete(entry[0]); entry[1].fn(); await tick(); },
   };
 }
+
+test("startup keeps the fixture hidden until the remembered investigation is restored", async () => {
+  const gate = deferred();
+  const h = await harness({ startupGate: gate, awaitStartup: false });
+  assert.equal(h.body.getAttribute("data-workspace-startup"), "loading");
+  gate.resolve(); await h.startup;
+  assert.equal(h.body.getAttribute("data-workspace-startup"), null);
+  assert.equal(h.window.testWorkspace.get().currentVideo.id, "video-A");
+});
+
+test("startup failures show a retry state instead of the fixture", async () => {
+  const gate = deferred();
+  const h = await harness({ startupGate: gate, awaitStartup: false });
+  gate.reject(new Error("offline")); await h.startup;
+  assert.equal(h.body.getAttribute("data-workspace-startup"), "error");
+});
 
 test("a fresh completed question clears recovery left by a prior unknown request", async () => {
   const h = await harness({ requests: [{ id: "old-unknown", state: "unknown", input: { question: "old question" } }] });

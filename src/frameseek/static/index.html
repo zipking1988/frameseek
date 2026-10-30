@@ -14,17 +14,24 @@
       crossorigin
     />
     <link rel="stylesheet" href="/static/styles.css?v=136d47b61d96" />
-    <link rel="stylesheet" href="/static/workbench.css?v=09046fcca0b3" />
+    <link rel="stylesheet" href="/static/workbench.css?v=fc4fac210be4" />
     <script src="/static/demo-conversation.js?v=dc6be859d3f4" defer></script>
     <script src="/static/investigation-canvas.js?v=e14342950b01" defer></script>
     <script src="/static/workbench-model.js?v=a631c2bf32c6" defer></script>
     <script src="/static/investigation-report.js?v=8411abe357f8" defer></script>
     <script src="/static/workbench.js?v=eb509300df2c" defer></script>
-    <script src="/static/workspace.js?v=814e7ef73447" defer></script>
-    <script src="/static/app.js?v=acc5aa93fdde" defer></script>
+    <script src="/static/workspace.js?v=36ce8f058897" defer></script>
+    <script src="/static/app.js?v=da1bdd32053e" defer></script>
   </head>
-  <body>
+  <body data-workspace-startup="loading">
     <a href="#question" class="skip-link">跳到对话输入</a>
+    <div class="workspace-startup" role="status" aria-live="polite">
+      <strong>FrameSeek</strong>
+      <p class="workspace-startup-loading">正在恢复上次的调查…</p>
+      <p class="workspace-startup-error">无法连接调查服务。已保存的调查不会因此删除。</p>
+      <button id="startup-retry" type="button">重新加载</button>
+      <noscript>请启用 JavaScript 后重新加载工作台。</noscript>
+    </div>
     <div class="desktop-message">
       <h1>FrameSeek</h1>
       <p>调查画布需要桌面空间。请在电脑浏览器中打开。</p>

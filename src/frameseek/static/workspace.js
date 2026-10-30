@@ -1008,10 +1008,13 @@
       refreshSourceSwitcher().catch(error=>ui().notify(`视频列表读取失败：${error.message}。可在管理视频中重试。`));
       $("close-library").onclick=()=>$("workspace-library").close();
       $("delete-cancel").onclick=()=>$("delete-dialog").close();
-    }catch(error){suspended=true;status("调查服务暂不可用","error");ui().notify(error.message);}
+      document.body?.removeAttribute("data-workspace-startup");
+    }catch(error){suspended=true;status("调查服务暂不可用","error");ui().notify(error.message);document.body?.setAttribute("data-workspace-startup","error");}
   }
   window.FrameSeekPersistence={flush,upload,ask,library,searchIndex:searchSavedFrames,canSearchOcr,openDemo:()=>openSource(demo).catch(e=>ui().notify(e.message)),
     newInvestigation:()=>create(currentVideo).catch(e=>ui().notify(e.message))};
+  $("startup-retry").onclick=()=>window.location.reload();
+  window.addEventListener("frameseek-catalog-error",()=>document.body?.setAttribute("data-workspace-startup","error"),{once:true});
   window.addEventListener("frameseek-catalog-ready",start,{once:true});
   if(ui()?.ready())start();
 })();

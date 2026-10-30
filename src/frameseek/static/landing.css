@@ -473,3 +473,106 @@ h1, h2, h3, p { margin: 0; }
   from { transform: scale(1.025); }
   to { transform: scale(1); }
 }
+
+/* The workspace is the first thing visitors can explore. */
+.sports-hero { height: auto; min-height: 0; padding-bottom: 48px; }
+.hero-image { opacity: .16; object-position: center; }
+.site-header.page-width { max-width: 1600px; height: 82px; }
+.site-header .wordmark { font-size: 30px; letter-spacing: -1.5px; }
+.site-header .main-nav { font-size: 15px; }
+.site-header .header-cta { min-height: 46px; min-width: 0; padding: 12px 20px; font-size: 14px; }
+.hero-layout { max-width: 1600px; display: grid; grid-template-columns: minmax(300px, .74fr) minmax(0, 1.7fr); gap: clamp(28px, 4vw, 70px); align-items: center; padding-top: 20px; }
+.hero-copy { width: auto; margin: 0; padding: 0; }
+.hero-copy h1 { font-size: clamp(48px, 4.2vw, 70px); }
+.hero-description { font-size: clamp(17px, 1.3vw, 20px); }
+.hero-note { font-size: 13px; }
+.hero-actions { flex-wrap: wrap; gap: 16px 26px; margin-top: 26px; }
+.hero-actions .primary { min-width: 0; }
+.hero-actions .button { min-height: 52px; padding: 14px 22px; font-size: 15px; }
+.hero-actions .text-link { font-size: 15px; }
+.hero-preview { min-width: 0; scroll-margin-top: 24px; }
+.hero-preview .film-header { height: 54px; grid-template-columns: 43% auto 1fr; }
+.hero-preview .film-wordmark { font-size: 21px; padding-left: 18px; }
+.hero-preview .preview-tabs { gap: 20px; padding-left: 12px; }
+.hero-preview .preview-tabs button { font-size: 13px; }
+.hero-preview .preview-open { font-size: 11px; padding: 8px; margin-right: 12px; }
+.hero-preview .film-body { grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1fr); min-height: 0; }
+.hero-preview .film-rail { padding-top: 8px; }
+.hero-preview .rail-item { min-height: 67px; font-size: 10px; }
+.hero-preview .rail-item img { width: 19px; height: 19px; }
+.hero-preview .film-source, .hero-preview .film-investigation { padding: 18px; }
+.hero-preview .film-investigation { padding-block: 14px; }
+.hero-preview .film-source-image { aspect-ratio: 16 / 10; }
+.hero-preview .sample-player-controls { padding: 4px 10px 0; font-size: 12px; }
+.hero-preview .sample-player-controls button { min-height: 36px; font-size: 11px; }
+.hero-preview #sequence-position { margin-top: 0; margin-bottom: 8px; }
+.hero-preview .sample-filmstrip { margin-top: 14px; gap: 5px; }
+.hero-preview .frame-thumb img { aspect-ratio: 16 / 10; }
+.hero-preview .frame-thumb span { padding: 5px 0 0; font-size: 11px; }
+.hero-preview .sequence-caption { margin-top: 14px; font-size: 13px; }
+.hero-preview .sequence-note { font-size: 12px; }
+.hero-preview .example-label { font-size: 10px; }
+.hero-preview .question-thread h3 { font-size: 18px; }
+.hero-preview .example-answer { margin-top: 10px; padding: 11px; font-size: 12px; }
+.hero-preview .evidence-pair { margin: 10px 0 0; gap: 7px; }
+.hero-preview .evidence-card { grid-template-columns: minmax(65px, 35%) 1fr; column-gap: 10px; min-height: 62px; }
+.hero-preview .evidence-card img { min-height: 62px; }
+.hero-preview .evidence-time { font-size: 12px; margin-top: 7px; }
+.hero-preview .evidence-description { font-size: 11px; }
+.hero-preview .question-thread + .question-thread { margin-top: 15px; }
+.hero-preview .followup-thread h3 { font-size: 15px; }
+.hero-preview .preview-disclosure { font-size: 11px; }
+.canvas-story-nodes > .story-connector { flex: none; width: 18px; height: 18px; aspect-ratio: auto; margin: 0; align-self: center; filter: invert(1); opacity: .55; }
+@media (prefers-reduced-motion: no-preference) {
+  .hero-preview { animation: workspace-arrive 700ms var(--motion-ease) 100ms both; }
+  .hero-preview .evidence-card, .hero-preview .frame-thumb { transition: transform 180ms var(--motion-ease), border-color 180ms var(--motion-ease), background-color 180ms var(--motion-ease); }
+  .hero-preview .evidence-card:hover { transform: translateX(3px); }
+  .hero-preview .frame-thumb.is-selected { transform: translateY(-2px); }
+}
+@keyframes workspace-arrive { from { opacity: .7; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 1100px) {
+  .hero-layout { grid-template-columns: 1fr; gap: 36px; padding-top: 30px; }
+  .hero-copy { max-width: 680px; padding: 0; }
+  .hero-preview { width: 100%; }
+}
+@media (max-width: 850px) {
+  .sports-hero { height: auto; }
+  .hero-copy { padding: 0; }
+  .hero-preview .film-body { grid-template-columns: 1fr; }
+  .hero-preview .film-rail { display: none; }
+  .hero-preview .film-source { border-right: 0; border-bottom: 1px solid var(--line); }
+  .hero-preview .film-header { grid-template-columns: auto 1fr auto; }
+  .hero-preview .preview-tabs { justify-content: center; }
+}
+@media (max-width: 480px) {
+  .site-header .wordmark { font-size: 26px; }
+  .site-header .header-cta { font-size: 12px; padding: 10px 14px; }
+  .hero-layout { padding-top: 15px; }
+  .hero-copy h1 { font-size: 48px; }
+  .hero-preview .film-wordmark { font-size: 17px; padding-left: 10px; }
+  .hero-preview .preview-tabs { gap: 12px; padding-left: 6px; }
+  .hero-preview .preview-open { margin-right: 8px; font-size: 10px; }
+  .canvas-story-nodes > .story-connector { transform: rotate(90deg); }
+}
+
+/* Chosen direction: a centered introduction above the live preview. */
+.hero-layout { display: flex; flex-direction: column; align-items: stretch; gap: 18px; max-width: 1320px; padding-top: 6px; }
+.hero-copy { max-width: 1000px; margin-inline: auto; text-align: center; }
+.hero-copy h1 { margin-top: 10px; font-size: clamp(46px, 5vw, 76px); }
+.hero-copy h1 br { display: none; }
+.hero-description, .hero-note { margin-inline: auto; max-width: 720px; }
+.hero-description { margin-top: 8px; }
+.hero-note { margin-top: 12px; }
+.hero-actions { justify-content: center; margin-top: 14px; }
+.hero-preview { width: 100%; }
+@media (min-width: 851px) {
+  .hero-preview .film-source-image { max-height: 260px; object-fit: cover; }
+  .hero-preview .evidence-card img { height: 70px; min-height: 70px; }
+}
+@media (max-width: 850px) {
+  .hero-layout { gap: 32px; padding-top: 22px; }
+  .hero-copy { text-align: left; margin-inline: 0; }
+  .hero-copy h1 br { display: block; }
+  .hero-description, .hero-note { margin-inline: 0; }
+  .hero-actions { justify-content: flex-start; }
+}

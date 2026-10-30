@@ -1167,6 +1167,7 @@ fetch("/demo/catalog")
   .catch(() => {
     notice("演示数据暂时无法加载，请刷新页面重试。");
     announce("演示数据加载失败。");
+    window.dispatchEvent(new Event("frameseek-catalog-error"));
   });
 
 window.FrameSeekSessionUI = {
