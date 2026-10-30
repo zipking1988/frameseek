@@ -1,8 +1,37 @@
 # Nebius deployment record
 
-## Current release — 2026-10-30 JST
+## Current release — 2026-10-30 JST, investigation recovery
 
-The reviewed code from `61ab279` is deployed on the original single-process
+Code commit `67805ac` is deployed on the existing single-process Nebius server
+and pushed to private GitHub. The release protects verified evidence across
+query cancellation and recovery, binds new query artifacts to their source and
+request identity, checks source generations for follow-ups, and releases worker
+capacity on additional failure paths. An explicit same-request retry is available
+in the current page after an interrupted submission. The compatibility limits for
+older unidentified partial checkpoints and source generations are documented in
+[the workspace runtime guide](WORKSPACE_RUNTIME.md).
+
+Release validation passed 610 local backend and 232 frontend tests, the frontend
+build, lint, format and schema checks. On Linux, an isolated fixture precheck
+passed without using production data. Before restart there were no running or
+unknown queries or active ingest/index/supplement jobs. Both installed code
+trees matched the release; logical hashes of the private databases, original
+videos and evidence frames, and private configuration were unchanged across the
+switch. Public `/`, `/workspace` and `/health` returned 200, and the served
+`workspace.js` matched the release hash. The previous code and consistent SQLite
+backups are retained under `/srv/frameseek/releases/67805ac-20261030-0019/backup`;
+rollback must preserve the live ledger and workspace rather than restore old
+database copies over new work.
+
+No model question, new GPU, resource provisioning or budget change was made;
+the model counter remained 40 and GPU resources started remained zero. These
+checks do not establish live model quality, exhaustive video recall or renewed
+spending authorization. The three unrelated local hackathon-video files were not
+included in this release.
+
+## Previous release — 2026-10-30 JST
+
+The reviewed code from `61ab279` was deployed on the original single-process
 Nebius server. The sports landing page is at `/` and the existing investigation
 workspace is at `/workspace`. The deployment passed a separate Linux fixture
 precheck, source and installed-package hash comparisons, and protected-data and
@@ -50,9 +79,9 @@ calibration and real-material human evaluation; the existing model allowance is
 still 40/40 requests used. Continue deployment only after management connectivity
 is restored and the available recovery allowance is rechecked.
 
-## Current release — 2026-10-29 JST
+## Previous release — 2026-10-29 JST
 
-The reviewed supplement-retention/admission fixes are deployed to the existing
+The reviewed supplement-retention/admission fixes were deployed to the existing
 single-process service at framefix.net. Current-IP SSH was recovered, the original
 VM/disk specification restored, and both temporary CPU rescue machines and their
 boot disks deleted. Their combined conservative estimate is $0.043891 before tax
