@@ -1013,7 +1013,8 @@
   }
   window.FrameSeekPersistence={flush,upload,ask,library,searchIndex:searchSavedFrames,canSearchOcr,openDemo:()=>openSource(demo).catch(e=>ui().notify(e.message)),
     newInvestigation:()=>create(currentVideo).catch(e=>ui().notify(e.message))};
-  $("startup-retry").onclick=()=>window.location.reload();
+  const startupRetry=$("startup-retry");
+  if(startupRetry)startupRetry.onclick=()=>window.location.reload();
   window.addEventListener("frameseek-catalog-error",()=>document.body?.setAttribute("data-workspace-startup","error"),{once:true});
   window.addEventListener("frameseek-catalog-ready",start,{once:true});
   if(ui()?.ready())start();
