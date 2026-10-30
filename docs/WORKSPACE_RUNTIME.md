@@ -9,6 +9,9 @@ play or shot outcome. The legacy `demo_parcel` catalog and media remain availabl
 for existing investigations; unparameterized demo endpoints keep their prior
 parcel behavior for cached clients. The real Nemotron basketball results are
 separate private history and are not presented as a new model response.
+Landing, workspace and static HTML pages are served with `Cache-Control: no-store`
+so browsers load the current shell; scripts and styles use content-hashed URLs.
+An already cached older release may require one browser refresh to pick this up.
 
 ## 当前状态（2026-10-29）
 
