@@ -251,7 +251,10 @@ def checked_matches(result, frames, duration):
         if "no" in verdicts:
             continue
         if "uncertain" in verdicts:
-            uncertain.append("候选画面中有条件无法确认，未作为匹配结果。")
+            uncertain.append(
+                "Some conditions could not be confirmed in a candidate frame, "
+                "so it was not counted as a match."
+            )
             continue
         if (frame_id, subject) in seen:
             raise SearchError("duplicate_visual_match")

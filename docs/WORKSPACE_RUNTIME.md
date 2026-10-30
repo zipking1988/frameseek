@@ -1,5 +1,15 @@
 # 调查、素材与真实 Agent 实施状态
 
+## Current synthetic demo
+
+New workspaces use `demo_basketball`: generated court, pass and shot stills in
+an 18-second video, with English preset answers and frames extracted at 00:00,
+00:06 and 00:13. The demo sends no model requests and does not prove continuous
+play or shot outcome. The legacy `demo_parcel` catalog and media remain available
+for existing investigations; unparameterized demo endpoints keep their prior
+parcel behavior for cached clients. The real Nemotron basketball results are
+separate private history and are not presented as a new model response.
+
 ## 当前状态（2026-10-29）
 
 本地源码首页 `/` 现为体育视频落地页；现有调查工作台位于 `/workspace`。

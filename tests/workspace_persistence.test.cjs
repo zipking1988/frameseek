@@ -467,7 +467,7 @@ test("deletion cancels the request before deleting and can create the fallback d
   const cancelIndex = h.calls.findIndex(c => c.url.endsWith("/cancel"));
   const deleteIndex = h.calls.findIndex(c => c.method === "DELETE");
   assert.ok(cancelIndex >= 0 && cancelIndex < deleteIndex);
-  assert.equal(h.window.testWorkspace.get().current.video, "demo_parcel");
+  assert.equal(h.window.testWorkspace.get().current.video, "demo_basketball");
   query.resolve(response(answer("late"))); await ask;
   assert.equal(h.answers.length, 0);
   assert.equal(h.busy, false);
@@ -809,7 +809,7 @@ test('removed question tombstone survives recovery and navigation without redisp
 test('player source dropdown restores each video chat and draft without model requests', async()=>{
   const h=await harness({state:{records:[{id:'task-1',query:answer('saved-A')}],ui:{draft:'draft A'}}});
   await tick();
-  assert.deepEqual(h.get('source-switcher').children.map(o=>o.value),['demo_parcel','video-A','video-B']);
+  assert.deepEqual(h.get('source-switcher').children.map(o=>o.value),['demo_basketball','video-A','video-B']);
   h.get('source-switcher').value='video-B';
   await h.get('source-switcher').onchange();
   assert.equal(h.window.testWorkspace.get().current.id,'desk-B');
@@ -898,7 +898,7 @@ test('custom picker receives busy and restored selection notifications around as
   assert.equal(select.disabled,true);
   gate.resolve(response({...h.desks.get('desk-B')}));await pending;
   assert.deepEqual(states.at(-1),{busy:false,id:'video-B'});
-  assert.equal(select.children[0].dataset.thumbnail,'/media/demo_parcel/frames/0.jpg');
+  assert.equal(select.children[0].dataset.thumbnail,'/media/demo_basketball/frames/0.jpg');
   assert.match(select.children[0].dataset.detail,/00:18/);
   assert.equal(h.calls.some(c=>c.url==='/api/chat'),false);
 });
@@ -1213,7 +1213,7 @@ test('visible text substring conditions are labelled as contains', async()=>{
   coverage:{catalog_frames:1,reviewed_frames:1,missing_frame_ids:[],uncertain_frame_ids:['f0'],exhaustive_under_index:false},
   occurrences:[]}) : undefined);
  await h.window.FrameSeekPersistence.searchIndex('找出文字“EXIT”');
- assert.match(h.get('visual-search-conditions').textContent,/text 包含 EXIT/);
+ assert.match(h.get('visual-search-conditions').textContent,/text contains EXIT/);
 });
 
 test('late OCR candidates cannot replace a newer attribute filter', async()=>{
@@ -1671,7 +1671,7 @@ test('a supplement budget wait preserves the draft and explains the cause',async
  h.setOverride(c=>c.url==='/api/auto-chat/prepare' ? response({kind:'supplement_required',engine:'index'})
   : c.url==='/api/knowledge-chat/supplement' ? response({state:'waiting_budget'}) : undefined);
  await h.window.FrameSeekPersistence.ask('find red hat');
- assert.match(h.get('notice').textContent,/等待预算或授权/);
+ assert.match(h.get('notice').textContent,/needs budget approval/);
  assert.equal(h.get('question').value,'find red hat');
  assert.equal(h.calls.filter(c=>c.url==='/api/knowledge-chat/supplement').length,1);
  assert.equal(h.calls.some(c=>c.url==='/api/index-chat'),false);
@@ -1685,7 +1685,7 @@ test('failed supplement returns already indexed evidence without retrying the mo
  await h.window.FrameSeekPersistence.ask('find red hat');
  assert.equal(h.calls.filter(c=>c.url==='/api/knowledge-chat/supplement').length,1);
  assert.equal(h.calls.filter(c=>c.url==='/api/index-chat').length,1);
- assert.equal(h.answers.length,1);assert.match(h.get('notice').textContent,/结果不明.*已有索引/);
+ assert.equal(h.answers.length,1);assert.match(h.get('notice').textContent,/unknown.*existing index/);
 });
 
 test('budget-blocked supplement can show existing indexed evidence',async()=>{
@@ -1694,5 +1694,5 @@ test('budget-blocked supplement can show existing indexed evidence',async()=>{
   : c.url==='/api/index-chat' ? response({...answer(c.body.request_id),engine:'index'}) : undefined);
  await h.window.FrameSeekPersistence.ask('find red hat');
  assert.equal(h.calls.filter(c=>c.url==='/api/knowledge-chat/supplement').length,0);
- assert.equal(h.answers.length,1);assert.match(h.get('notice').textContent,/预算检查.*已有索引/);
+ assert.equal(h.answers.length,1);assert.match(h.get('notice').textContent,/预算检查.*Existing index/);
 });

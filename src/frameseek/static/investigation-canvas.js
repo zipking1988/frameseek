@@ -1,6 +1,7 @@
 /* Spatial investigation model and DOM adapter; graph lines represent actual parent turns. */
 (function (root) {
   "use strict";
+  const display = (value, query) => root.FrameSeekWorkbenchModel?.displayText(value, query) ?? value;
   const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
   const densityFor = (scale, current = "detail") => {
     if (scale <= 0.38 || (scale < 0.44 && current === "map")) return "map";
@@ -24,7 +25,7 @@
       get canUndo() { return undoStack.length > 0; },
       get canRedo() { return redoStack.length > 0; },
       checkpoint: () => layout(),
-      commit(before, label = "画布操作") {
+      commit(before, label = "Canvas action") {
         if (JSON.stringify(before) === JSON.stringify(layout())) return false;
         undoStack.push({saved: before, label});
         if (undoStack.length > 60) undoStack.shift();
@@ -424,7 +425,7 @@
     function replay(redo = false) {
       const label = redo ? model.redo() : model.undo();
       if(!label)return;
-      draw();layoutChanged();callbacks.announce(`${redo ? "重做" : "撤销"}：${label}`);
+      draw();layoutChanged();callbacks.announce(`${redo ? "Redo" : "Undo"}：${label}`);
     }
     let gesture = null;
     let guides = [];
@@ -476,15 +477,15 @@
           item.branchName || `path ${id.split("-")[1]}`;
         record.branchFold.textContent = folded
           ? `Expand ${descendants.size}`
-          : `close ${descendants.size}`;
+          : `Collapse ${descendants.size}`;
         record.branchFold.setAttribute("aria-expanded", String(!folded));
         record.branchFold.setAttribute(
           "aria-label",
-          `${folded ? "展开" : "折叠"}Investigation path:${record.query.question}（${descendants.size} subsequent objects)`,
+          `${folded ? "Expand" : "Collapse"}Investigation path:${display(record.query.question, record.query)} (${descendants.size} subsequent objects)`,
         );
         record.overviewOpen.setAttribute(
           "aria-label",
-          `${folded ? "展开路径" : "展开对象"}：${record.query.question}`,
+          `${folded ? "Expand path" : "Expand objects"}：${display(record.query.question, record.query)}`,
         );
         record.overviewAction.textContent = folded ? "Expand path" : "check the details";
         record.overviewMeta.textContent = folded
@@ -540,7 +541,7 @@
             ? "Survey Canvas · Map"
             : density === "overview"
               ? "Survey Canvas · Summary"
-              : "survey canvas";
+              : "Investigation canvas";
       const group = $("finding-group-region");
       if (group) {
         const artifacts = visible.filter((item) => item.kind);
@@ -664,7 +665,7 @@
       $("focus-card")?.toggleAttribute("disabled", !selected);
       $("canvas-node-count")?.replaceChildren(
         document.createTextNode(
-          `${visible.length} / ${model.items.size} 个对象`,
+          `${visible.length} / ${model.items.size} objects`,
         ),
       );
       drawMinimap();
@@ -710,9 +711,9 @@
         button.setAttribute("aria-pressed", String(item.id === selected));
         button.setAttribute(
           "aria-label",
-          `Canvas navigation:${records.get(item.id).query.question}`,
+          `Canvas navigation:${display(records.get(item.id).query.question, records.get(item.id).query)}`,
         );
-        button.title = records.get(item.id).query.question;
+        button.title = display(records.get(item.id).query.question, records.get(item.id).query);
       }
       $("canvas-minimap").classList.toggle("empty", !model.items.size);
     }
@@ -721,19 +722,19 @@
     function toggleBranch(id) {
       const fold = !model.collapsed.has(id);
       const descendants = model.descendants(id);
-      perform("折叠调查路径",()=>model.fold(id, fold));
+      perform("Collapse investigation path",()=>model.fold(id, fold));
       if (fold && descendants.has(selected)) choose(id);
       fit();
       callbacks.announce(
-        `already${fold ? "收起" : "展开"}${descendants.size} A subsequent object, the issue remains associated with the reference.`,
+        `${fold ? "Collapsed" : "Expanded"} ${descendants.size} connected objects; evidence links remain.`,
       );
     }
     function openNaming(id) {
       namingId = id;
       $("branch-name-input").value =
-        model.items.get(id).branchName || `路径 ${id.split("-")[1]}`;
+        model.items.get(id).branchName || `Path ${id.split("-")[1]}`;
       $("branch-name-source").textContent =
-        `from"${records.get(id).query.question}"Investigation launched`;
+        `from"${display(records.get(id).query.question, records.get(id).query)}"Investigation launched`;
       $("branch-name-dialog").showModal();
       $("branch-name-input").focus();
       $("branch-name-input").select();
@@ -741,11 +742,11 @@
     $("branch-name-form")?.addEventListener("submit", (e) => {
       e.preventDefault();
       const name = $("branch-name-input").value.trim();
-      $("branch-name-input").setCustomValidity(name ? "" : "请输入路径名称");
+      $("branch-name-input").setCustomValidity(name ? "" : "Enter a path name");
       if (!$("branch-name-input").reportValidity()) return;
       if (!name || !namingId || !model.items.has(namingId)) return;
       const record = records.get(namingId);
-      perform("命名路径",()=>model.renameBranch(namingId, name));
+      perform("Name path",()=>model.renameBranch(namingId, name));
       draw();
       $("branch-name-dialog").close();
       record.branchName.focus({ preventScroll: true });
@@ -761,7 +762,7 @@
       namingId = null;
     });
     $("expand-paths")?.addEventListener("click", () => {
-      perform("展开全部路径",()=>model.expandAll());
+      perform("Expand all paths",()=>model.expandAll());
       fit();
       $("fit-canvas").focus({ preventScroll: true });
       callbacks.announce("All investigation paths have been opened.");
@@ -838,10 +839,10 @@
           ? "Evidence frame"
           : query.kind === "conclusion"
             ? "Conclusion"
-            : `Question ${turn.id.split("-")[1]}${parent ? " · 追问" : ""}`;
+            : `Question ${turn.id.split("-")[1]}${parent ? " · Follow-up" : ""}`;
       drag.setAttribute(
         "aria-label",
-        `Mobile card:${query.question}, arrow keys to move`,
+        `Mobile card:${display(query.question, query)}, arrow keys to move`,
       );
       const select = document.createElement("button");
       select.type = "button";
@@ -849,7 +850,7 @@
       select.textContent = "selected";
       select.setAttribute(
         "aria-label",
-        `selected${query.kind === "evidence" ? "证据" : query.kind === "conclusion" ? "结论" : "问题"}：${query.question}`,
+        `selected${query.kind === "evidence" ? "Evidence" : query.kind === "conclusion" ? "Conclusion" : "Question"}：${display(query.question, query)}`,
       );
       select.addEventListener("click", e => choose(turn.id,false,e.shiftKey));
       header.append(drag, select);
@@ -857,7 +858,7 @@
         const remove = document.createElement("button");
         remove.type = "button"; remove.className = "card-delete";
         remove.textContent = "Delete"; remove.title = "Delete issues (can be restored on the left)";
-        remove.setAttribute("aria-label", `Delete question:${query.question}`);
+        remove.setAttribute("aria-label", `Delete question:${display(query.question, query)}`);
         remove.addEventListener("click", e => {e.stopPropagation();root.FrameSeekUI?.hideTurn(turn.id);});
         header.append(remove);
       }
@@ -869,7 +870,7 @@
       const branchName = document.createElement("button");
       branchName.type = "button";
       branchName.className = "branch-name";
-      branchName.setAttribute("aria-label", `Name the investigation path:${query.question}`);
+      branchName.setAttribute("aria-label", `Name the investigation path:${display(query.question, query)}`);
       branchName.addEventListener("click", () => openNaming(turn.id));
       const branchFold = document.createElement("button");
       branchFold.type = "button";
@@ -882,7 +883,7 @@
       const overviewOpen = document.createElement("button");
       overviewOpen.type = "button";
       overviewOpen.className = "overview-title";
-      overviewOpen.textContent = query.question;
+      overviewOpen.textContent = display(query.question, query);
       const openObject = () => {
         model.fold(turn.id, false);
         choose(turn.id);
@@ -894,7 +895,7 @@
       overviewAnswer.textContent =
         query.kind === "evidence"
           ? turn.querySelector(".artifact-caption").textContent
-          : query.response.answer;
+          : display(query.response.answer, query);
       const overviewMeta = document.createElement("p");
       overviewMeta.className = "overview-meta";
       const frames = new Set(
@@ -904,18 +905,18 @@
       );
       const overviewDescription =
         query.kind === "evidence"
-          ? "独立证据 · 保留来源"
+          ? "Standalone evidence · Source retained"
           : query.kind === "conclusion"
             ? query.response.unresolved.length
-              ? "结论 · 仍需核实"
-              : "结论 · 保留来源"
-            : query.engine === "index" ? `${query.index_search?.total || 0} ${query.response.events.length ? "个已有观察区间" : "张文字候选 · 覆盖待补齐"}` : `${frames.size} 张证据 · ${query.response.status === "partial" ? "仍需核实" : query.response.status === "no_result" ? "未找到" : query.response.status === "error" ? "查找失败" : query.mode === "real" ? "已回看" : "预设结果"}`;
+              ? "Conclusion · Review needed"
+              : "Conclusion · Source retained"
+            : query.engine === "index" ? `${query.index_search?.total || 0} ${query.response.events.length ? "saved observation intervals" : "text candidates · coverage incomplete"}` : `${frames.size} evidence frames · ${query.response.status === "partial" ? "Review needed" : query.response.status === "no_result" ? "No result" : query.response.status === "error" ? "Search failed" : query.mode === "real" ? "Reviewed" : "Preset result"}`;
       const overviewAction = document.createElement("button");
       overviewAction.type = "button";
       overviewAction.className = "overview-action";
       overviewAction.setAttribute(
         "aria-label",
-        `View object details:${query.question}`,
+        `View object details:${display(query.question, query)}`,
       );
       overviewAction.addEventListener("click", openObject);
       overview.append(
@@ -936,16 +937,16 @@
       const replies =
         query.suggested_replies ||
         (query.id === "center"
-          ? ["那后来呢？"]
+          ? ["What happens next?"]
           : query.id === "right"
-            ? ["谁搬的？"]
+            ? ["Who moved it?"]
             : []);
       (query.kind ? [] : replies).slice(0, 2).forEach((reply) => {
         const suggested = document.createElement("button");
         suggested.type = "button";
         suggested.className = "text-button";
-        suggested.textContent = reply;
-        suggested.addEventListener("click", () => callbacks.ask(reply, turn.id));
+        suggested.textContent = display(reply, query);
+        suggested.addEventListener("click", () => callbacks.ask(display(reply, query), turn.id));
         actions.append(suggested);
       });
       if (!query.kind) actions.append(follow);
@@ -1019,7 +1020,7 @@
       });
       const end = () => {
         if (gesture?.id !== turn.id) return;
-        if(model.commit(gesture.before,"移动对象"))layoutChanged();
+        if(model.commit(gesture.before,"Move objects"))layoutChanged();
         gesture = null;
         guides = [];
         turn.classList.remove("dragging");
@@ -1065,7 +1066,7 @@
         e.preventDefault();
         const step = e.shiftKey ? 50 : 10;
         choose(turn.id,false,false,true);
-        perform("键盘移动对象",()=>model.moveMany(selectedIds,steps[e.key][0]*step,steps[e.key][1]*step));
+        perform("Move objects with keyboard",()=>model.moveMany(selectedIds,steps[e.key][0]*step,steps[e.key][1]*step));
         draw();
         callbacks.announce("Card location updated.");
       });
@@ -1260,7 +1261,7 @@
     function arrange(mode) {
       callbacks.close();
       $("arrange-mode").value = mode;
-      perform("自动整理",()=>model.arrange(mode));
+      perform("Arrange automatically",()=>model.arrange(mode));
       fit();
       callbacks.announce("Survey cards have been automatically sorted.");
     }
@@ -1277,8 +1278,8 @@
     });
     $("canvas-undo")?.addEventListener("click",()=>replay());
     $("canvas-redo")?.addEventListener("click",()=>replay(true));
-    $("canvas-align")?.addEventListener("click",()=>perform("对齐对象",()=>model.align(selectedIds,$("canvas-alignment").value)));
-    $("canvas-ungroup")?.addEventListener("click",()=>perform("取消对象分组",()=>model.ungroup(selectedIds)));
+    $("canvas-align")?.addEventListener("click",()=>perform("Align objects",()=>model.align(selectedIds,$("canvas-alignment").value)));
+    $("canvas-ungroup")?.addEventListener("click",()=>perform("Ungroup objects",()=>model.ungroup(selectedIds)));
     $("canvas-clear-selection")?.addEventListener("click",()=>{selectedIds.clear();if(selected)selectedIds.add(selected);draw();});
     let groupingIds = [];
     $("canvas-group")?.addEventListener("click",()=>{groupingIds=[...selectedIds];$("canvas-group-name").value="";$("canvas-group-dialog").showModal();$("canvas-group-name").focus();});
@@ -1286,10 +1287,10 @@
     $("canvas-group-cancel")?.addEventListener("click",()=>$("canvas-group-dialog").close());
     $("canvas-group-form")?.addEventListener("submit",e=>{
       e.preventDefault(); const name=$("canvas-group-name").value.trim();
-      $("canvas-group-name").setCustomValidity(name ? "" : "请输入分组名称");
+      $("canvas-group-name").setCustomValidity(name ? "" : "Enter a group name");
       if(!$("canvas-group-name").reportValidity())return;
       let created=false;
-      perform("建立对象分组",()=>{created=model.group(groupingIds,name,`group-${crypto.randomUUID()}`);});
+      perform("Create group",()=>{created=model.group(groupingIds,name,`group-${crypto.randomUUID()}`);});
       if(created){$("canvas-group-dialog").close();callbacks.announce(`Group created:${name}`);}
       else callbacks.announce("Unable to create a group: at least two valid objects are required, and a maximum of 20 groups are reserved.");
     });
@@ -1304,8 +1305,8 @@
       $("canvas-search-status").textContent=matches.length ? `${matches.length} objects · Enter locates the first item` : "No matches. Search questions, answers, frame descriptions, or group names.";
       for(const [id,r] of matches) {
         const button=document.createElement("button");button.type="button";
-        const title=document.createElement("strong");title.textContent=r.query.question;
-        const subtitle=document.createElement("span");subtitle.textContent=(r.query.response.answer||"").slice(0,100);
+        const title=document.createElement("strong");title.textContent=display(r.query.question,r.query);
+        const subtitle=document.createElement("span");subtitle.textContent=(display(r.query.response.answer,r.query)||"").slice(0,100);
         button.append(title,subtitle);button.addEventListener("click",()=>{$("canvas-search-dialog").close();choose(id);reveal(id,true);records.get(id).select.focus({preventScroll:true});});results.append(button);
       }
     }

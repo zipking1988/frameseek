@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client";
 const store = window.FrameSeekWorkbenchModel.createStore();
 window.FrameSeekWorkbench = store;
 const clock = window.FrameSeekWorkbenchModel.clock;
+const displayText = window.FrameSeekWorkbenchModel.displayText;
 const useDesk = () => useSyncExternalStore(store.subscribe, store.getSnapshot);
 const ui = () => window.FrameSeekUI;
 const icon = (name) => (
@@ -144,8 +145,8 @@ const ConversationTurn = memo(function ConversationTurn({record, selected, ocrAv
   const presentation = window.FrameSeekWorkbenchModel.conversationAnswer(query);
   const frames = expanded ? presentation.frames : presentation.frames.slice(0,2);
   const replay = frame => { ui()?.seek(frame.t, query); };
-  return <article id={`conversation-${record.id}`} className={`conversation-turn${selected ? " is-selected" : ""}`} aria-label={`Question and answer: ${query.question}`}>
-    <div className="reading-question">{icon("chats-circle")}<p>{query.question}</p></div>
+  return <article id={`conversation-${record.id}`} className={`conversation-turn${selected ? " is-selected" : ""}`} aria-label={`Question and answer: ${displayText(query.question, query)}`}>
+    <div className="reading-question">{icon("chats-circle")}<p>{displayText(query.question, query)}</p></div>
     <div className="reading-answer">
       <span className="reading-mark">{icon("chats-circle")}</span>
       <span className="reading-speaker">FrameSeek <span>{presentation.label}</span></span>
@@ -157,15 +158,19 @@ const ConversationTurn = memo(function ConversationTurn({record, selected, ocrAv
         <span>{icon("play")}<time>{clock(frame.t)}</time><strong>Replay</strong></span>
       </button>)}</div>}
       {!!presentation.frames.length && <p className="reading-evidence-note">{presentation.frames.length} {presentation.frames.length === 1 ? "cited frame" : "cited frames"} · {presentation.evidenceNote}</p>}
+      {query.mode !== "real" && query.video_id === "demo_basketball" && !!response.followups?.length && <div className="reading-demo-examples">
+        <small>Next: choose a follow-up, then send it.</small>
+        <div className="suggestion-buttons">{response.followups.map(question => <button key={question} type="button" onClick={() => ui()?.fillSuggestedQuestion(question, record.id)}>{question}</button>)}</div>
+      </div>}
       {presentation.frames.length > 2 && <button type="button" className="text-button reading-show-all" onClick={() => setExpanded(!expanded)}>{expanded ? "Show fewer frames" : `Show all ${presentation.frames.length} frames`}</button>}
       {!!presentation.checkedFrames.length && <>
         <p className="reading-evidence-note">Sampled frames from this search · not confirmed matches. Click to review the source video.</p>
         <div className="reading-evidence-grid">{(checkedExpanded ? presentation.checkedFrames : presentation.checkedFrames.slice(0,2)).map(frame =>
-          <button className="reading-evidence" type="button" key={frame.frame_id} aria-label={`Review the checked screen ${clock(frame.t)} · Non-matching evidence`} onClick={() => replay(frame)}>
+          <button className="reading-evidence" type="button" key={frame.frame_id} aria-label={`Review sampled frame ${clock(frame.t)} · Non-matching evidence`} onClick={() => replay(frame)}>
             <img src={frame.uri} alt="Reviewed sample frame; not a confirmed match" loading="lazy" decoding="async"/>
             <span>{icon("play")}<time>{clock(frame.t)}</time><strong>Replay</strong></span>
           </button>)}</div>
-        {presentation.checkedFrames.length > 2 && <button type="button" className="text-button reading-show-all" onClick={() => setCheckedExpanded(!checkedExpanded)}>{checkedExpanded ? "Close the checked screen" : `View all ${presentation.checkedFrames.length} Checked screen`}</button>}
+        {presentation.checkedFrames.length > 2 && <button type="button" className="text-button reading-show-all" onClick={() => setCheckedExpanded(!checkedExpanded)}>{checkedExpanded ? "Show fewer sampled frames" : `View all ${presentation.checkedFrames.length} sampled frames`}</button>}
       </>}
       <div className="reading-response-actions">
         <button type="button" className="text-button" onClick={() => ui()?.continueFrom(record.id)}>{query.mode === "real" && !response.events.length ? "Edit question" : "Ask a follow-up"}</button>
@@ -173,7 +178,7 @@ const ConversationTurn = memo(function ConversationTurn({record, selected, ocrAv
         {window.FrameSeekWorkbenchModel.shouldOfferTextCandidates(query, ocrAvailable, window.FrameSeekPersistence?.canSearchOcr) && <button type="button" className="text-button" onClick={() => window.FrameSeekPersistence?.searchIndex({question: query.index_search?.resolved_question || query.question, answerRequestId: query.id, autoOcr: true})}>Find more text candidates · No model calls</button>}
         <details className="reading-basis"><summary>Evidence and actions</summary>
           <p>{response.events.length} frame sets · {presentation.frames.length} references</p>
-          {(response.unresolved || []).map((text,index) => <p key={index}>{text}</p>)}
+          {(response.unresolved || []).map((text,index) => <p key={index}>{displayText(text, query)}</p>)}
           {response.status === "error" && <p>{window.FrameSeekWorkbenchModel.queryFailureReason(query)}</p>}
           <button type="button" className="text-button" onClick={() => ui()?.saveConclusion(record.id,query)}>Save conclusion</button>
           <button type="button" className="text-button danger" onClick={() => ui()?.hideTurn(record.id)}>Delete question</button>
@@ -205,12 +210,14 @@ function Conversation() {
       <p className="reading-empty-description">{state.local ? "You can play the video now. Ask questions and review frames when the source is ready." : "Ask a question, review the footage, and follow the evidence."}</p>
       {state.local && <div className="reading-empty-status"><span className="reading-status-dot" aria-hidden="true"></span><div><strong>Questions unavailable for now</strong><p>Check the source status below the player for details.</p></div></div>}
       {!state.local && <div className="reading-empty-steps" aria-label="Investigation steps"><span>01 Ask</span><span>02 Review</span><span>03 Follow up</span></div>}
-      {state.sourceInfo?.id === "demo_parcel" && !state.local && <div className="reading-demo-examples">
-        <p>Try the synthetic demo · preset answers, no model calls</p>
+      {["demo_parcel", "demo_basketball"].includes(state.sourceInfo?.id) && !state.local && <div className="reading-demo-examples">
+        <p>{state.sourceInfo?.id === "demo_basketball" ? "Synthetic basketball demo" : "Synthetic parcel demo"} · Preset answers · No model calls</p>
+        {state.sourceInfo?.id === "demo_basketball" && <button type="button" className="text-button" onClick={() => document.querySelector(".reading-demo-examples .suggestion-buttons button")?.focus()}>Start basketball demo</button>}
         <div className="suggestion-buttons">{window.FrameSeekWorkbenchModel.composerSuggestions(state).items.map(question =>
           <button key={question} type="button" onClick={() => ui()?.fillSuggestedQuestion(question)}>{question}</button>)}</div>
-        <small>Click to fill in, then send when ready.</small>
+        <small>Choose a question, then send it. Replay a frame and ask a follow-up.</small>
       </div>}
+      {state.sourceInfo?.id !== "demo_basketball" && <button type="button" className="text-button" onClick={() => window.FrameSeekPersistence?.openDemo()}>Start basketball demo</button>}
     </div>}
     {records.map(record => <ConversationTurn key={record.id} record={record} selected={record.id===state.selectedId} ocrAvailable={!!state.sourceInfo?.knowledge_status?.ocr_candidates_available}/>)}
   </div>;
@@ -323,7 +330,7 @@ function ComposerSuggestions() {
   const suggestions = window.FrameSeekWorkbenchModel.composerSuggestions(state);
   const shortLabels = suggestions.titles || (suggestions.label.startsWith("Example questions")
     ? ["Summarize the scene", "Find a clear moment", "What is unclear?"]
-    : suggestions.label === "Demo questions" ? ["When is the parcel centered?", "When is it on the right?", "Is there a forklift?"] : null);
+    : suggestions.label === "Demo questions" && state.sourceInfo?.id === "demo_parcel" ? ["When is the parcel centered?", "When is it on the right?", "Is there a forklift?"] : null);
   return <details className="composer-suggestions composer-popup" name="composer-popover" aria-label="Suggested questions">
     <summary title="View the suggested questions, click to fill in only and will not send it.">Suggestions</summary>
     <div className="composer-suggestion-panel">
@@ -375,7 +382,7 @@ function Outline() {
                 <span className="outline-number">
                   {String(state.records.indexOf(record) + 1).padStart(2, "0")}
                 </span>
-                <span>{record.query.question}</span>
+                <span>{displayText(record.query.question, record.query)}</span>
                 <span
                   className={`outline-state ${record.query.response.status}`}
                 />
@@ -391,7 +398,7 @@ function Outline() {
       {!!hidden.length && <details className="deleted-turns">
         <summary>Deleted questions ({hidden.length})</summary>
         {hidden.map(record => <div key={record.id}>
-          <span>{record.query.question}</span>
+          <span>{displayText(record.query.question, record.query)}</span>
           <button className="text-button" onClick={() => ui()?.restoreTurn(record.id)}>Restore question {record.id.split("-")[1]}</button>
         </div>)}
       </details>}
@@ -479,7 +486,7 @@ function Inspector() {
       try {
         if (includeImages) for (const frame of reportData.evidence.slice(0, 24)) {
           if (!window.FrameSeekReport.safeFrameUri(reportData.source.id, frame.uri)) continue;
-          setReportStatus(`Evidence gathering screen ${Object.keys(images).length} / ${reportData.evidence.length}…`);
+          setReportStatus(`Collecting evidence ${Object.keys(images).length} / ${reportData.evidence.length}…`);
           try {
             const response = await fetch(frame.uri, {credentials: "same-origin", signal: controller.signal});
             if (!response.ok) continue;
@@ -522,7 +529,7 @@ function Inspector() {
         </span>
         <button
           className="icon-button"
-          aria-label="Collapse survey inspector"
+          aria-label="Collapse investigation inspector"
           onClick={() => ui()?.toggleInspector()}
         >
           {icon("x")}
@@ -589,7 +596,7 @@ function Inspector() {
                   {selected.query.engine === "index" ? "Index Q&A · Model not called" : labels[selected.query.response.status]}
                 </span>
               </div>
-              <h2 className="inspector-question">{selected.query.question}</h2>
+              <h2 className="inspector-question">{displayText(selected.query.question, selected.query)}</h2>
               <div className="inspector-primary-actions">
                 <button
                   className="outline-button"
@@ -625,7 +632,7 @@ function Inspector() {
                     </button>
                   )}
                 </div>
-                <p>{selected.query.response.answer}</p>
+                <p>{displayText(selected.query.response.answer, selected.query)}</p>
                 {selected.query.engine === "index" && <button className="outline-button" onClick={()=>window.FrameSeekPersistence?.searchIndex({question:selected.query.index_search?.resolved_question || selected.query.question, answerRequestId:selected.query.id})}>View index timeline · No model calls</button>}
                 {window.FrameSeekWorkbenchModel.queryFailureReason(selected.query) &&
                   <div className="answer-review-note" role="note">
@@ -644,7 +651,7 @@ function Inspector() {
                 <div className="open-questions">
                   <h3>Still need to verify</h3>
                   {selected.query.response.unresolved.map((text) => (
-                    <p key={text}>{text}</p>
+                    <p key={text}>{displayText(text, selected.query)}</p>
                   ))}
                 </div>
               )}
@@ -729,11 +736,11 @@ function Inspector() {
                         }}
                         aria-label={`Look back at the quote ${clock(frame.t)}`}
                       >
-                        <img src={frame.uri} alt={frame.caption} loading="lazy" decoding="async" />
+                        <img src={frame.uri} alt={displayText(frame.caption, selected.query)} loading="lazy" decoding="async" />
                         <span>{clock(frame.t)}</span>
                       </button>
                       <div>
-                        <p>{frame.caption}</p>
+                        <p>{displayText(frame.caption, selected.query)}</p>
                         <button
                           className="text-button"
                           onClick={() =>
@@ -862,7 +869,7 @@ function Inspector() {
                       onClick={() => ui()?.focusFinding(pin.id)}
                     >
                       {pin.kind === "evidence" ? (
-                        <img src={pin.frame.uri} alt={pin.frame.caption} />
+                        <img src={pin.frame.uri} alt={displayText(pin.frame.caption, pin.query)} />
                       ) : (
                         icon("chats-circle")
                       )}
@@ -875,8 +882,8 @@ function Inspector() {
                         </small>
                         <span className="finding-caption">
                           {pin.kind === "evidence"
-                            ? pin.frame.caption
-                            : pin.query.response.answer}
+                            ? displayText(pin.frame.caption, pin.query)
+                            : displayText(pin.query.response.answer, pin.query)}
                         </span>
                       </span>
                     </button>
@@ -897,7 +904,7 @@ function Inspector() {
                             .focus();
                         }}
                       >
-                        Source: {pin.query.question}
+                        Source: {displayText(pin.query.question, pin.query)}
                       </button>
                       {pin.kind === "evidence" && (
                         <button
@@ -985,10 +992,10 @@ function Inspector() {
         <div className="compare-frames">
           {pinnedFrames.slice(0, 2).map((pin) => (
             <figure key={pin.id}>
-              <img src={pin.frame.uri} alt={pin.frame.caption} />
+              <img src={pin.frame.uri} alt={displayText(pin.frame.caption, pin.query)} />
               <figcaption>
                 <strong>{clock(pin.frame.t)}</strong>
-                <span>{pin.frame.caption}</span>
+                <span>{displayText(pin.frame.caption, pin.query)}</span>
                 <button
                   className="text-button"
                   onClick={() => {

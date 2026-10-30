@@ -2,6 +2,16 @@
 const $ = (id) => document.getElementById(id);
 const player = $("player");
 let demo = null;
+const demoCatalogs = new Map();
+async function prepareDemo(videoId) {
+  if (demoCatalogs.has(videoId)) return demoCatalogs.get(videoId);
+  const response = await fetch(`/demo/catalog?video_id=${encodeURIComponent(videoId)}`);
+  if (!response.ok) throw new Error("Demo data could not load.");
+  const catalog = await response.json();
+  if (catalog.video?.id !== videoId) throw new Error("Demo source does not match.");
+  demoCatalogs.set(videoId, catalog);
+  return catalog;
+}
 let activeVideo = null;
 let realBusy = false;
 let localUrl = null;
@@ -46,7 +56,7 @@ function setupPanelResize() {
     handle.tabIndex = 0;
     handle.setAttribute("role", "separator");
     handle.setAttribute("aria-orientation", "vertical");
-    handle.setAttribute("aria-label", side === "source" ? "Adjust the width of the material panel" : "Adjust inspector width");
+    handle.setAttribute("aria-label", side === "source" ? "Adjust video panel width" : "Adjust inspector width");
     handle.title = "Drag to adjust width · Use arrow keys to fine-tune · Double-click to restore to default";
     const panel = $(side === "source" ? "source-dock" : "workbench-inspector");
     const width = () => panel.getBoundingClientRect().width;
@@ -375,6 +385,7 @@ function renderAnswer(query) {
     $("messages").firstElementChild?.remove();
   }
   const data = query.response;
+  const display = value => window.FrameSeekWorkbenchModel?.displayText(value, query) ?? value;
   $("suggestions").hidden = true;
   const more = node("details", "response-details");
   more.append(node("summary", "", "More evidence and citations"));
@@ -382,7 +393,7 @@ function renderAnswer(query) {
   turn.id = query.savedTurn || `task-${++taskSequence}`;
   taskSequence = Math.max(taskSequence, Number(turn.id.split("-")[1]) || 0);
   turn.dataset.kind = "question";
-  turn.append(node("p", "question-bubble", query.question));
+  turn.append(node("p", "question-bubble", display(query.question)));
   const label = node("div", "answer-label", "FrameSeek");
   label.append(
     node(
@@ -391,11 +402,11 @@ function renderAnswer(query) {
       query.engine === "index" ? "Index Q&A · No model calls" : query.mode === "real" ? (query.usedContext ? "Evidence follow-up · Prior context" : "Model analysis") : query.usedContext ? "Preset follow-up · Prior context" : "Preset demo · No model calls",
     ),
   );
-  turn.append(label, node("p", "answer-text", data.answer));
+  turn.append(label, node("p", "answer-text", display(data.answer)));
   turn.append(
     node("span", `answer-status ${data.status}`, query.engine === "index" ? (data.events.length ? "Matching observations" : "Index result · Coverage incomplete") : stateLabels[data.status]),
   );
-  if(query.engine==='index') turn.append(button('查看索引时间线 · 不调用模型','outline-button',()=>window.FrameSeekPersistence?.searchIndex({question:query.index_search?.resolved_question || query.question,answerRequestId:query.id})));
+  if(query.engine==='index') turn.append(button('View index timeline · No model calls','outline-button',()=>window.FrameSeekPersistence?.searchIndex({question:query.index_search?.resolved_question || query.question,answerRequestId:query.id})));
   const eventCluster =
     data.events.length > 1 ? node("div", "event-cluster") : turn;
   if (eventCluster !== turn) turn.append(eventCluster);
@@ -403,7 +414,7 @@ function renderAnswer(query) {
     ? data.events.slice(0, 1) : data.events;
   previewEvents.forEach((event) => {
     const row = node("section", "event");
-    row.append(node("h3", "event-heading", event.action));
+    row.append(node("h3", "event-heading", display(event.action)));
     const toolbar = node("div", "event-toolbar");
     toolbar.append(
       button(
@@ -432,10 +443,10 @@ function renderAnswer(query) {
       frameButton.setAttribute("aria-label", `Location evidence frame ${clock(frame.t)}`);
       const image = document.createElement("img");
       image.src = frame.uri;
-      image.alt = frame.caption;
+      image.alt = display(frame.caption);
       image.loading = "lazy";
       const caption = node("span", "evidence-caption", clock(frame.t));
-      caption.append(node("span", "", "查看此帧 ↗"));
+      caption.append(node("span", "", "View frame ↗"));
       frameButton.append(image, caption);
       if (
         index === 0 ||
@@ -446,16 +457,16 @@ function renderAnswer(query) {
     });
     row.append(evidence, node("p", "event-summary", event.summary));
     more.append(
-      button("复制时间引用", "text-button", async (eventClick) => {
+      button("Copy time reference", "text-button", async (eventClick) => {
         const trigger = eventClick.currentTarget;
         try {
           await navigator.clipboard.writeText(
-            `${query.mode === "real" ? activeVideo?.name || query.video_id : "合成演示："+demo.video.title} ${clock(event.start)}–${clock(event.end)} — ${event.action}`,
+            `${query.mode === "real" ? activeVideo?.name || query.video_id : "Synthetic demo: "+demo.video.title} ${clock(event.start)}–${clock(event.end)} — ${event.action}`,
           );
           trigger.textContent = "Copied";
           announce("The time reference of the current footage has been copied.");
         } catch {
-          notice("浏览器不允许复制。可在结构化结果中选择并复制时间。 ");
+          notice("Copying is unavailable in this browser. Select the time in the structured result.");
         }
       }),
     );
@@ -463,7 +474,7 @@ function renderAnswer(query) {
   });
   if (previewEvents.length < data.events.length) {
     const count = data.events.reduce((total, event) => total + event.evidence.length, 0);
-    turn.append(button(`查看全部 ${count} 张引用`, "outline-button", () => {
+    turn.append(button(`View all ${count} references`, "outline-button", () => {
       selectTask(data, historyButton, query);
       investigation?.choose(turn.id);
       openInspector("context");
@@ -472,17 +483,17 @@ function renderAnswer(query) {
   if (data.unresolved.length) {
     const unresolved = node("div", "unresolved");
     unresolved.append(node("strong", "", "Unconfirmed"));
-    data.unresolved.forEach((text) => unresolved.append(node("p", "", text)));
+    data.unresolved.forEach((text) => unresolved.append(node("p", "", display(text))));
     (investigation ? more : turn).append(unresolved);
   }
   if (data.errors.length) {
     turn.append(
       node("p", "trace-note", data.errors[0].message),
-      button(query.mode === "real" ? "编辑问题重新提问" : "选择其他示例问题", "text-button", () => {
+      button(query.mode === "real" ? "Edit question" : "Choose another example", "text-button", () => {
         if (query.mode === "real") window.FrameSeekUI.continueFrom(turn.id);
         else {
           $("question").focus();
-          notice("可以尝试：包裹什么时候出现在中央？");
+          notice("Choose a suggested demo question.");
         }
       }),
     );
@@ -491,7 +502,7 @@ function renderAnswer(query) {
       node(
         "p",
         "trace-note",
-        query.engine==='index' ? "已检索已有记录 · 未新增视觉复核" : query.mode === "real" ? `检索与回看 · ${data.trace.visible.segments_reviewed} 个片段` : "演示检查范围：00:00–00:18 · 无音轨 · 非真实模型评测",
+        query.engine==='index' ? "Existing records searched · No new visual review" : query.mode === "real" ? `Search and review · ${data.trace.visible.segments_reviewed} segments` : "Synthetic demo · 00:00–00:18 · No audio or model evaluation",
       ),
     );
   }
@@ -504,8 +515,8 @@ function renderAnswer(query) {
   const actions = node("div", "response-actions");
   data.followups.forEach((question) =>
     actions.append(
-      button(question, "text-button", () => {
-        fillSuggestedQuestion(question, turn.id);
+      button(display(question), "text-button", () => {
+        fillSuggestedQuestion(display(question), turn.id);
       }),
     ),
   );
@@ -513,7 +524,7 @@ function renderAnswer(query) {
   turn.append(more);
   $("empty-state").hidden = true;
   $("messages").append(turn);
-  const historyButton = button(query.question, "history-task", () => {
+  const historyButton = button(display(query.question), "history-task", () => {
     if (!investigation)
       turn.scrollIntoView({
         block: "start",
@@ -524,7 +535,7 @@ function renderAnswer(query) {
     selectTask(data, historyButton, query);
   });
   historyButton.dataset.turn = turn.id;
-  historyButton.title = query.question;
+  historyButton.title = display(query.question);
   $("task-list").prepend(historyButton);
   $("history-empty").hidden = true;
   $("task-count").textContent = $("messages").children.length;
@@ -542,12 +553,13 @@ function renderAnswer(query) {
     $("task-count").textContent = $("messages").children.length;
   }
   investigation?.register(turn, query, historyButton);
-  announce(`${query.mode === "real" ? "Answer" : "Demo answer"}：${query.engine==='index' ? "Index search complete" : stateLabels[data.status]}。${data.answer}`);
+  const spoken = window.FrameSeekWorkbenchModel?.conversationAnswer(query).text || data.answer;
+  announce(`${query.mode === "real" ? "Answer" : "Demo answer"}: ${query.engine==='index' ? "Index search complete" : stateLabels[data.status]}. ${spoken}`);
 }
 function fillSuggestedQuestion(question, turnId = null) {
   const input = $("question");
   if (input.value.trim()) {
-    notice("已有草稿，未覆盖。可先编辑或清空输入，再选择建议问题。");
+    notice("Your draft was kept. Edit or clear it before selecting a suggested question.");
     input.focus(); return false;
   }
   if (input.disabled || realBusy) return false;
@@ -576,17 +588,11 @@ function ask(question) {
         usedContext: false,
       };
   if (!resolved.query) {
-    const parcelContext = ["center", "right", "person"].includes(contextId);
-    const supported = scoped?.query.suggested_replies || [];
-    notice(
-      supported.length
-        ? `当前话题支持${supported.map((label) => `「${label}」`).join("、")}。输入已保留。`
-        : parcelContext
-          ? "这个追问暂未接入。演示支持「那后来呢？」「谁搬的？」或完整示例问题；输入已保留。"
-          : contextId
-            ? "当前话题不支持这个追问。请改问完整示例问题，例如「包裹什么时候出现在中央？」。输入已保留。"
-            : "先从完整示例问题开始，例如「包裹什么时候出现在中央？」。回答后可继续追问。输入已保留。",
-    );
+    const display = value => demo?.video?.id === "demo_parcel" ? window.FrameSeekLegacyEnglish?.text(value) || value : value;
+    const supported = (scoped?.query.suggested_replies || []).map(display);
+    notice(supported.length
+      ? `Try a supported follow-up: ${supported.join(" · ")}. Your draft was kept.`
+      : `Try a demo question: ${display(demo?.queries?.[0]?.question) || "Choose a suggested question."} Your draft was kept.`);
     announce("This question is not a demo sample and the model is not called.");
     return;
   }
@@ -595,6 +601,7 @@ function ask(question) {
   renderAnswer({
     ...resolved.query,
     question,
+    video_id: demo.video.id,
     usedContext: resolved.usedContext,
     parentTurn: scoped?.turn.id || null,
   });
@@ -651,15 +658,18 @@ async function startScenario(id) {
   for (const seed of seeds) {
     renderAnswer({
       ...seed,
+      question: demo.video.id === "demo_parcel" ? window.FrameSeekLegacyEnglish?.text(seed.question) || seed.question : seed.question,
+      video_id: demo.video.id,
       parentTurn: seed.parentIndex === null ? null : turnIds[seed.parentIndex],
     });
     turnIds.push(`task-${taskSequence}`);
     lastQueryId = seed.id;
   }
   investigation?.arrange(scenario.layout || "threads");
-  $("demo-current").textContent = `${scenario.title} · ${seeds.length} wheel preset`;
+  const scenarioTitle = demo.video.id === "demo_parcel" ? window.FrameSeekLegacyEnglish?.text(scenario.title) || scenario.title : scenario.title;
+  $("demo-current").textContent = `${scenarioTitle} · ${seeds.length} preset turns`;
   $("demo-current").hidden = false;
-  window.FrameSeekWorkbench?.rename(`${scenario.title}调查`);
+  window.FrameSeekWorkbench?.rename(`${scenarioTitle} investigation`);
   if (window.FrameSeekWorkbench && window.innerWidth < 1400) {
     $("zoom-reset").click();
     investigation.choose(turnIds[0]);
@@ -667,24 +677,25 @@ async function startScenario(id) {
   }
   $("question").focus();
   announce(
-    `Loaded${scenario.title}，${seeds.length}Wheel preset demo. You can choose a card to continue questioning.`,
+    `Loaded ${scenarioTitle}, with ${seeds.length} preset turns. Choose a card to continue.`,
   );
 }
 function renderScenarios() {
   if (!demo.scenarios?.length) return;
   const list = $("demo-scenarios");
+  const display = value => demo.video.id === "demo_parcel" ? window.FrameSeekLegacyEnglish?.text(value) || value : value;
   list.replaceChildren();
   demo.scenarios.forEach((scenario, index) => {
     const entry = button("", "demo-scenario", () => startScenario(scenario.id));
-    entry.setAttribute("aria-label", `Load the demo:${scenario.title}`);
+    entry.setAttribute("aria-label", `Load the demo: ${display(scenario.title)}`);
     entry.append(
       node("span", "demo-scenario-number", String(index + 1).padStart(2, "0")),
-      node("strong", "", scenario.title),
-      node("p", "", scenario.description),
+      node("strong", "", display(scenario.title)),
+      node("p", "", display(scenario.description)),
       node(
         "span",
         "demo-scenario-focus",
-        `${scenario.focus} · ${scenario.steps.length} 轮`,
+        `${display(scenario.focus)} · ${scenario.steps.length} turns`,
       ),
     );
     list.append(entry);
@@ -708,7 +719,7 @@ function setLocalMode(enabled) {
   $("suggestions").hidden = enabled;
   $("composer-mode-text").textContent = enabled
     ? "Local playback only · Not indexed"
-    : "Default demo · No model loaded";
+    : "Synthetic demo · Preset answers · No model calls";
   $("demo-timeline").hidden = enabled;
   $("segments").hidden = enabled;
   $("frame-heading").hidden = enabled;
@@ -725,7 +736,7 @@ function setLocalMode(enabled) {
   $("video-state").textContent = enabled ? "Local playback only" : "Demo source";
   document.querySelector(".source-item span").textContent = enabled
     ? "Local video · Not indexed"
-    : "Parcel moving demonstration";
+    : "Synthetic demo";
   $("attached-source-state").textContent = enabled
     ? "Local play only · Not indexed"
     : "Loaded · 18 seconds";
@@ -739,7 +750,7 @@ function setLocalMode(enabled) {
     ? "You can play the file in the video workspace, or return to the demo experience preset session."
     : investigation
       ? "The found footage will remain here. Keep asking and connect the dots."
-      : "Ask about the location of the package first, and then follow up.";
+      : "Choose a question, review its evidence, and follow up.";
   $("video-state").title = enabled ? "Not uploaded, not analyzed" : "Publicly available composite material";
   $("seek-status").textContent = enabled
     ? "Not uploaded · Not analyzed · File can only be played in the browser"
@@ -857,21 +868,21 @@ function placeFinding(pin) {
     );
     const image = document.createElement("img");
     image.src = pin.frame.uri;
-    image.alt = pin.frame.caption;
+    image.alt = window.FrameSeekWorkbenchModel.displayText(pin.frame.caption, pin.query);
     frameButton.append(
       image,
       node("span", "evidence-caption", clock(pin.frame.t)),
     );
-    card.append(frameButton, node("p", "artifact-caption", pin.frame.caption));
+    card.append(frameButton, node("p", "artifact-caption", window.FrameSeekWorkbenchModel.displayText(pin.frame.caption, pin.query)));
   } else {
-    card.append(node("p", "answer-text", pin.query.response.answer));
+    card.append(node("p", "answer-text", window.FrameSeekWorkbenchModel.displayText(pin.query.response.answer, pin.query)));
     pin.query.response.unresolved.forEach((text) =>
-      card.append(node("p", "artifact-unresolved", text)),
+      card.append(node("p", "artifact-unresolved", window.FrameSeekWorkbenchModel.displayText(text, pin.query))),
     );
   }
-  card.append(node("p", "artifact-source", `来源：${pin.query.question}`));
+  card.append(node("p", "artifact-source", `Source: ${window.FrameSeekWorkbenchModel.displayText(pin.query.question, pin.query)}`));
   card.append(
-    button("从发现集合移除", "text-button", () => removeFinding(pin.id)),
+    button("Remove from findings", "text-button", () => removeFinding(pin.id)),
   );
   $("board-artifacts").append(card);
   const history = node("button", "");
@@ -891,7 +902,7 @@ function placeFinding(pin) {
     history,
   );
   announce(
-    `saved${pin.kind === "evidence" ? "证据帧" : "结论"}, can be moved on the canvas.`,
+    `saved${pin.kind === "evidence" ? "evidence frame" : "conclusion"}, can be moved on the canvas.`,
   );
   return pin;
 }
@@ -942,7 +953,7 @@ window.FrameSeekUI = {
         $("question").value = query.question;
         $("question").dispatchEvent(new Event("input", {bubbles:true}));
       }
-      notice(`${window.FrameSeekWorkbenchModel.queryFailureReason(query)} 原问题已保留，可编辑后自行发送；不会自动重试，发送仍需预算检查。`);
+      notice(`${window.FrameSeekWorkbenchModel.queryFailureReason(query)} Your question was kept for editing. Nothing will be retried automatically; sending requires a budget check.`);
       updateSend();
     }
     $("question").focus();
@@ -953,7 +964,7 @@ function requestTurnDeletion(id) {
   const record = window.FrameSeekWorkbench?.getSnapshot().records.find(item => item.id === id && !item.hidden);
   if (!record) return;
   pendingTurnDeletion = {id, queryId: record.query.id, trigger: document.activeElement};
-  $("delete-turn-question").textContent = record.query.question;
+  $("delete-turn-question").textContent = window.FrameSeekWorkbenchModel.displayText(record.query.question, record.query);
   $("delete-turn-dialog").showModal();
   $("delete-turn-cancel").focus();
 }
@@ -978,7 +989,7 @@ function changeTurnVisibility(id, hidden) {
   const next = window.FrameSeekWorkbenchModel.toggleTurn(saved, id, hidden);
   if (!next) return;
   window.FrameSeekSessionUI.restore(next, activeVideo || {id: "demo_parcel"});
-  notice(hidden ? "问题已从画布删除。可在左侧「已删除的问题」中恢复；已保存证据保留。" : "问题已恢复。输入和画布位置已保留。");
+  notice(hidden ? "Question removed from the canvas. Restore it from deleted questions; saved evidence remains." : "Question restored. Your draft and canvas position were kept.");
   $("question").focus();
 }
 
@@ -1150,11 +1161,7 @@ if (window.FrameSeekCanvas)
     announce,
     close: () => showEvidence(false),
   });
-fetch("/demo/catalog")
-  .then((response) => {
-    if (!response.ok) throw new Error("catalog");
-    return response.json();
-  })
+prepareDemo("demo_basketball")
   .then((data) => {
     demo = data;
     renderScenarios();
@@ -1171,6 +1178,7 @@ fetch("/demo/catalog")
   });
 
 window.FrameSeekSessionUI = {
+  prepareDemo,
   updateKnowledge,
   seek: (seconds, trigger) => seek(seconds, trigger),
   snapshot: () => ({ ...window.FrameSeekWorkbench.getSnapshot(), canvas: investigation?.snapshot(),
@@ -1211,7 +1219,8 @@ window.FrameSeekSessionUI = {
     if ($("delete-turn-dialog").open) $("delete-turn-dialog").close();
     locatingSeek = null;
     $("resume-query").hidden = true;
-    activeVideo = video?.id === "demo_parcel" ? null : video;
+    const isDemo = ["demo_parcel", "demo_basketball"].includes(video?.id);
+    activeVideo = isDemo ? null : video;
     player.pause(); mediaReady = false; mediaFailed = false; pendingSeek = null;
     if (activeVideo) {
       setLocalMode(true);
@@ -1232,7 +1241,7 @@ window.FrameSeekSessionUI = {
       updateKnowledge(video);
       $("video-state").title = "Private source · stored on this server";
       $("empty-eyebrow").textContent = "Uploaded video";
-      $("canvas-hint").textContent = localMode ? "The material has been saved · You can ask questions after the analysis is completed" : "Drag blank space to pan · Ctrl / ⌘ + scroll wheel to zoom";
+      $("canvas-hint").textContent = localMode ? "Video saved · Questions available after analysis" : "Drag blank space to pan · Ctrl / ⌘ + scroll wheel to zoom";
       $("composer-mode-text").textContent = !localMode ? "Evidence Q&A" : "Video available · awaiting index";
       $("source-thumbnail").hidden = !video.metadata?.preview?.length;
       if (video.metadata?.preview?.[0]) $("source-thumbnail").src = video.metadata.preview[0].uri;
@@ -1240,18 +1249,34 @@ window.FrameSeekSessionUI = {
       $("local-note").textContent = "Video uploaded to this server. Each source has its own investigations and evidence.";
       $("restore-demo").hidden = false;
       $("suggestions").hidden = true;
-      $("empty-state").querySelector("h1").textContent = localMode ? "The material has been saved and awaits analysis." : "Start your investigation with this video.";
-      $("empty-state").querySelector(".task-intro > p").textContent = localMode ? "Check the progress in the material library; analysis can start after the configuration is completed." : "Ask questions, review the evidence, and continue from any question.";
+      $("empty-state").querySelector("h1").textContent = localMode ? "The video is saved and awaits analysis." : "Start your investigation with this video.";
+      $("empty-state").querySelector(".task-intro > p").textContent = localMode ? "Check progress in Manage videos. Analysis requires a configured route." : "Ask questions, review the evidence, and continue from any question.";
       notice("");
     } else {
+      demo = demoCatalogs.get(video.id);
+      if (!demo) throw new Error("Demo catalog is unavailable.");
+      renderScenarios();
       $("knowledge-control").hidden = true;
-      setLocalMode(false); player.src = "/demo/video"; player.poster = "/media/demo_parcel/frames/0.jpg";
-      $("video-heading").textContent = "Parcel movement · synthetic demo";
-      $("attached-source-name").textContent = "Parcel moving demonstration.mp4";
+      setLocalMode(false); player.src = demo.video.uri; player.poster = `/media/${video.id}/frames/0.jpg`;
+      $("video-heading").textContent = video.name;
+      $("attached-source-name").textContent = video.name;
       $("video-meta").textContent = "18 seconds · 1600 × 900 · No audio track";
-      $("source-thumbnail").src = "/media/demo_parcel/frames/0.jpg";
+      $("source-thumbnail").src = `/media/${video.id}/frames/0.jpg`;
       $("source-thumbnail").hidden = false;
-      window.FrameSeekWorkbench.describe({id:"demo_parcel",name:"Parcel movement · synthetic demo",metadata:{duration:18,audio:false}});
+      $("demo-notice-text").textContent = video.id === "demo_basketball"
+        ? "Generated stills and preset answers. No model calls. The stills do not establish continuous play, player identity, or whether the shot scores. Earlier Nemotron tests produced separate saved partial results."
+        : "Synthetic parcel demo with preset answers. No model calls.";
+      document.querySelectorAll(".source-filmstrip .segment").forEach((segment, index) => {
+        const seconds = [0, 6, 13][index];
+        segment.querySelector("img").src = `/media/${video.id}/frames/${seconds}.jpg`;
+        segment.querySelector("img").alt = video.id === "demo_basketball" ? ["Synthetic court scene", "Synthetic pass scene", "Synthetic shot scene"][index] : ["Parcel on the left", "Parcel in the center", "Parcel on the right"][index];
+        segment.setAttribute("aria-label", `Replay ${video.id === "demo_basketball" ? ["court", "pass", "shot"][index] : ["left", "center", "right"][index]} scene at ${clock(seconds)}`);
+      });
+      document.querySelectorAll("#demo-timeline .chapter").forEach((chapter, index) => {
+        const title = video.id === "demo_basketball" ? ["Court", "Pass", "Shot"][index] : ["Left", "Center", "Right"][index];
+        chapter.textContent = title; chapter.setAttribute("aria-label", `${title} scene at ${clock(Number(chapter.dataset.time))}`);
+      });
+      window.FrameSeekWorkbench.describe(video);
     }
     player.load(); updateSend();
   },

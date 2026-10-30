@@ -412,7 +412,7 @@ test('card reply shortcut passes its originating turn to the fill-only composer 
  const start=source.indexOf('      (query.kind ? [] : replies).slice(0, 2).forEach');
  const end=source.indexOf('      if (!query.kind) actions.append(follow);',start);
  const buttons=[],calls=[];
- const ctx=vm.createContext({query:{},replies:['那后来呢？'],turn:{id:'task-A'},
+ const ctx=vm.createContext({query:{},display:value=>value,replies:['那后来呢？'],turn:{id:'task-A'},
   document:{createElement:()=>({addEventListener:(name,callback)=>buttons.push(callback)})},
   callbacks:{ask:(...args)=>calls.push(args)},actions:{append(){}}});
  vm.runInContext(source.slice(start,end),ctx);

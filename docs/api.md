@@ -1,5 +1,13 @@
 # API与输出契约
 
+## Public synthetic demos
+
+`GET /demo/catalog` and `GET /demo/video` accept `video_id=demo_basketball`
+or `video_id=demo_parcel`. Omitting the parameter retains the parcel fixture for
+older clients; unknown IDs return 404. Basketball citations use
+`/media/demo_basketball/frames/`. Preset answers never dispatch model requests.
+Private uploaded sources continue to use their owned media and query endpoints.
+
 ## Public pages — local change, 2026-10-29
 
 `GET /` serves the sports landing page; `GET /workspace` serves the existing

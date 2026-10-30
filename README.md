@@ -1,5 +1,11 @@
 # FrameSeek
 
+The workspace starts with an English synthetic basketball demo for new sessions.
+Generated stills form an 18-second sequence; the answers are preset and make no
+model calls. They do not establish continuous play, player identity or shot outcome.
+Existing investigations and the earlier parcel fixture remain available to their
+owners. The real Nemotron test described below is separate from the public demo.
+
 2026-10-29: the home page (`/`) now introduces the sports video workflow, with
 basketball-first illustrative imagery. **Explore the preview** opens the in-page basketball example; **Open workspace** leads to `/workspace`,
 which retains the existing desktop investigation, saved sources and ownership
@@ -7,7 +13,11 @@ checks. The marketing preview is explicitly illustrative and makes no model
 requests; the workspace still starts with the labeled synthetic demo. The
 landing page and reviewed workspace release are deployed to framefix.net.
 
-2026-10-24: 用户授权新增 `provider=tokenfactory` 与 `allow_tokenfactory_media`，仅向固定 Token Factory API 发送本机抽帧 JPEG。使用 Nemotron 3.5 Super VL 公共 API 和 Qwen3 Embedding 8B 文本检索；不租 GPU、不自动启用付费请求。配置、预算待确认项与篮球测试见 [Token Factory 本地准备](docs/TOKEN_FACTORY_LOCAL.md)。原自托管及 Gemini 路线保持独立。
+The optional Token Factory route uses Nemotron 3.5 Super VL and Qwen3 Embedding
+8B. JPEG frames go only to the fixed official endpoint when explicitly enabled;
+model calls require configured, approved budgets. See [Token Factory setup and
+the limited basketball test](docs/TOKEN_FACTORY_LOCAL.md). Self-hosted and Gemini
+routes remain separate.
 
 2026-10-24 live smoke: Token Factory indexed the basketball source and produced two visually checked evidence answers, including a contextual follow-up. The USD1/30-call test stopped after 21 attempts; following the user’s reconciliation request, the same caps resumed with nine attempts remaining. Sparse sampling and one rejected planner response limit this result; see [test record](docs/TOKEN_FACTORY_LOCAL.md#final-smoke-result-2026-10-24).
 
@@ -50,14 +60,14 @@ The old12-turn eviction was removed; original chats were restored and history
 now uses owned query references within the existing bounded storage contract.
 See [actual results and incident recovery](docs/qa/LOCAL_VISION_20261025.md).
 
-2026-10-25 local runtime: an opt-in **本机视觉 · 免费** route can compile
+2026-10-25 local runtime: an opt-in **Local vision · free** route can compile
 sampled visual observations with independently installed on-device MLX weights,
 then answer with original-time frame references. It has no paid API fallback and
 does not modify Token Factory approvals. Setup and accuracy limits are documented
 in [local vision](docs/LOCAL_VISION.md). This is a local Mac capability, not a
 deployment or exhaustive-recognition acceptance claim.
 
-2026-10-25 local page: **索引问答 · 不调用模型** now appends durable index
+2026-10-25 local page: **Index Q&A · no model calls** now appends durable index
 answers and opens an interactive occurrence timeline with conditions, coverage,
 evidence and complete output pagination. It reads structured source indexes when
 available; legacy caption results remain unverified. Bilingual concept alignment
@@ -65,7 +75,7 @@ and source-defined arbitrary aliases require no model dispatch. Actual basketbal
 still lacks full-source object observations; zero-model retrieval cannot fill that
 gap. See [page acceptance and limits](docs/qa/FULL_VIDEO_INDEX_OFFLINE_20261025.md#page-integration-supersedes-the-offline-only-boundary--2026-10-25).
 
-2026-10-25 core search: **查找已有画面 · 不调用模型** searches the owned
+2026-10-25 core search: **Search saved frames · no model calls** searches the owned
 frame-level caption index and opens candidate images/timestamps without spending
 model allowance. Optional trusted Token Factory visual search verifies up to8
 saved candidates with one vision request, retaining the original budget ledger.
@@ -119,12 +129,11 @@ Useful local endpoints:
 
 ## Try the workspace
 
-1. Open **演示库** (demo library) and choose an investigation path. The demo uses an 18-second synthetic video made from three static scenes, not a real continuous parcel movement.
-2. Select a question card and follow a suggested question, or start another supported demo question. Each card retains its own context and evidence.
-3. Click a time range or evidence frame to seek the original video. Pin evidence or a conclusion, compare two frames, and add notes.
-4. Rename, arrange, fold or move investigation paths. Shift-click selects multiple cards for batch movement, named groups and alignment. Undo/redo restores layout operations; search locates questions, evidence and groups. Use the minimap, **聚焦选中** (focus selected), and **适应视图** (fit canvas).
-5. Export a captured investigation report from **发现 → 导出调查记录** as Markdown, JSON or HTML with optional offline evidence images. See [canvas and report controls](docs/CANVAS_AND_REPORTS.md).
-6. Use **调查库** (investigations) to create or restore work. Use **素材库** (sources) to upload, rename, inspect or delete videos.
+1. Open **Start basketball demo** on the landing page. The generated still sequence and answers are explicitly labeled synthetic and preset.
+2. Select **What is visible in the pass scene?**, then send it. Replay the cited frame at 00:06.
+3. Select **Where is the defender in the shot scene?**, send the follow-up and replay 00:13. Ask **Does the shot score?** to see the stated uncertainty.
+4. Switch to **Canvas** to inspect and arrange connected questions. Evidence and conclusions can be saved, compared and exported as Markdown, JSON or HTML.
+5. Use the investigation menu and video picker to restore work or manage uploaded videos. Each private video keeps its own investigation and evidence.
 
 Each investigation stores up to100 questions without silent eviction, up to 8 findings, notes, layout, path metadata, viewport, draft and player position in local SQLite. Default retention is 24 hours. Ownership follows the browser's session cookie; clearing it does not transfer access to an old investigation. There is no account-based cross-device sync.
 
@@ -206,7 +215,7 @@ For the Gemini route, choose `provider: "gemini"` in a private runtime based on 
 FRAMESEEK_MODE=real make preflight
 ```
 
-The `preflight` CLI currently always exits with code 2 in real mode and reports outstanding deployment acceptance blockers; it is not a dynamic readiness gate for a configured deployment. The app refuses unconfigured real mode rather than falling back to demo answers. FrameSeek does not provision or release GPU instances. Use **模型与预算**, owned `GET /api/runtime/status`, or `make agent-check` for dynamic local prerequisites. The readiness command accepts `--owner EXISTING_OWNER_ID` to inspect existing owner/deployment approvals; it creates no records or model requests. Passing it does not verify live quality, billing cutoff or deployment. Follow the [runtime guide](docs/WORKSPACE_RUNTIME.md) before any paid execution or deployment.
+The `preflight` CLI currently always exits with code 2 in real mode and reports outstanding deployment acceptance blockers; it is not a dynamic readiness gate for a configured deployment. The app refuses unconfigured real mode rather than falling back to demo answers. FrameSeek does not provision or release GPU instances. Use **Models and budget**, owned `GET /api/runtime/status`, or `make agent-check` for dynamic local prerequisites. The readiness command accepts `--owner EXISTING_OWNER_ID` to inspect existing owner/deployment approvals; it creates no records or model requests. Passing it does not verify live quality, billing cutoff or deployment. Follow the [runtime guide](docs/WORKSPACE_RUNTIME.md) before any paid execution or deployment.
 
 ## Project documentation
 

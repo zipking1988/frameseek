@@ -145,7 +145,7 @@ async function harness(readyState = 1, width = 1440) {
       dispatchEvent(event) { emitted.push(event.type); },
     },
     navigator: { clipboard: { writeText: async () => {} } },
-    fetch: async () => ({ ok: true, json: async () => ({ queries: [] }) }),
+    fetch: async url => ({ ok: true, json: async () => ({ queries: [], scenarios: [], video: {id: url.includes("demo_parcel") ? "demo_parcel" : "demo_basketball", uri: url.includes("demo_parcel") ? "/demo/video" : "/demo/video?video_id=demo_basketball", title:"Synthetic demo"} }) }),
     URL: {},
     console,
   });
@@ -349,7 +349,7 @@ test('suggestion clicks fill the composer without submitting or replacing an exi
   assert.equal(h.get('question').value,'Describe the visible scene');
   assert.equal(h.run('fillSuggestedQuestion("Replace draft")'),false);
   assert.equal(h.get('question').value,'Describe the visible scene');
-  assert.match(h.get('form-notice').textContent,/已有草稿/);
+  assert.match(h.get('form-notice').textContent,/draft was kept/);
   assert.equal(h.get('question').focused,true);
 });
 
@@ -395,7 +395,7 @@ test('inspector visibility restores independently across narrow and wide desktop
   const turn = h.get("messages").children[0];
   const cluster = turn.children.find(child => child.className === "event-cluster");
   assert.equal(cluster.children.length, 1);
-  assert.ok(turn.children.some(child => child.textContent.startsWith("查看全部 ")));
+  assert.ok(turn.children.some(child => child.textContent.startsWith("View all ")));
   assert.equal(JSON.stringify(query.response), original);
   const details = turn.children.find(child => child.className === "response-details");
   const structured = details.children.find(child => child.tagName === "details");

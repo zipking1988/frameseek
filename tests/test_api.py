@@ -48,8 +48,12 @@ async def test_sports_landing_is_public_without_initializing_a_private_session()
             asset = await client.get(f"/static/landing/{file}")
             assert asset.status_code == 200
             assert asset.headers["content-type"] == "image/jpeg"
-        assert (await client.get("/static/landing/filmroom-hero.png")).headers["content-type"] == "image/png"
-        assert (await client.get("/static/landing/hoop-banner.png")).headers["content-type"] == "image/png"
+        assert (await client.get("/static/landing/filmroom-hero.png")).headers[
+            "content-type"
+        ] == "image/png"
+        assert (await client.get("/static/landing/hoop-banner.png")).headers[
+            "content-type"
+        ] == "image/png"
         assert (await client.get("/api/investigations")).status_code == 401
         assert (await client.get("/health")).json()["model_requests_sent"] == 0
 

@@ -71,8 +71,8 @@ test('portable reports retain the numeric-review caution without changing the mo
  const original=JSON.stringify(r.query.response);
  const output=report.create({...state(r),pins:[]});
  assert.equal(output.questions[0].review_notes.length,1);
- assert.match(report.markdown(output),/文本复核/);
- assert.match(report.html(output),/文本复核/);
+ assert.match(report.markdown(output),/Text review/);
+ assert.match(report.html(output),/Text review/);
  assert.equal(JSON.stringify(r.query.response),original);
  assert.equal(output.questions[0].response.answer,'右侧数字从14递减至23。');
 });

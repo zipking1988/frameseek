@@ -1,10 +1,12 @@
 /* Evidence collection state shared by React panels and the existing spatial engine. */
 (function (root) {
   "use strict";
+  const legacy = root.FrameSeekLegacyEnglish || (typeof module !== "undefined" && module.exports ? require("./legacy-demo-english.js") : null);
+  const displayText = (value, query) => legacy?.display(value, query) ?? value;
   const initial = () => ({
     epoch: 0,
-    title: "未命名调查",
-    groupTitle: "关键发现",
+    title: "Untitled investigation",
+    groupTitle: "Key findings",
     note: "",
     records: [],
     selectedId: null,
@@ -92,7 +94,7 @@
         const pin = {
           id: `finding-${++sequence}`,
           kind: "evidence",
-          title: `证据 ${clock(frame.t)}`,
+          title: `Evidence ${clock(frame.t)}`,
           frame: { ...frame },
           turnId,
           query,
@@ -111,7 +113,7 @@
         const pin = {
           id: `finding-${++sequence}`,
           kind: "conclusion",
-          title: `结论 · ${query.question}`,
+          title: `Conclusion · ${query.question}`,
           turnId,
           query,
         };
@@ -124,40 +126,40 @@
       markdown() {
         if (root.FrameSeekReport) return root.FrameSeekReport.markdown(root.FrameSeekReport.create(state));
         const lines = [
-          `# ${state.title.trim() || "未命名调查"}`,
+          `# ${state.title.trim() || "Untitled investigation"}`,
           "",
           state.sourceInfo?.id && state.sourceInfo.id !== "demo_parcel"
-            ? `${state.sourceInfo.name} · 真实素材 · ${clock(state.sourceInfo.metadata?.duration || 0)}`
+            ? `${state.sourceInfo.name} · Uploaded video · ${clock(state.sourceInfo.metadata?.duration || 0)}`
             : state.local
-            ? "本地文件 · 未上传 · 未建立索引 · 未调用模型"
-            : "合成演示 · 18 秒 · 预设结果 · 未调用模型",
+            ? "Local video · Not uploaded or indexed · No model calls"
+            : "Synthetic demo · 18 seconds · Preset results · No model calls",
           "",
-          `## ${state.groupTitle.trim() || "关键发现"}`,
+          `## ${state.groupTitle.trim() || "Key findings"}`,
           "",
         ];
         for (const pin of state.pins) {
           if (pin.kind === "evidence")
             lines.push(
               `- ${clock(pin.frame.t)} — ${pin.frame.caption}`,
-              `  来源问题：${pin.query.question}`,
+              `  Source question: ${pin.query.question}`,
             );
           else {
             lines.push(
               `- ${pin.query.response.answer}`,
-              `  来源问题：${pin.query.question}`,
+              `  Source question: ${pin.query.question}`,
             );
             for (const text of pin.query.response.unresolved)
-              lines.push(`  未确认：${text}`);
+              lines.push(`  Unconfirmed: ${text}`);
           }
         }
-        if (!state.pins.length) lines.push("尚未保存发现。");
+        if (!state.pins.length) lines.push("No saved findings.");
         lines.push(
           "",
-          "## 调查笔记",
+          "## Investigation notes",
           "",
-          state.note || "尚未添加笔记。",
+          state.note || "No notes yet.",
           "",
-          `本次调查：${state.records.length} 轮${state.sourceInfo?.id && state.sourceInfo.id !== "demo_parcel" ? "" : "预设"}问答。`,
+          `This investigation contains ${state.records.length} question turns.`,
         );
         return lines.join("\n");
       },
@@ -191,7 +193,7 @@
   }
   function composerSuggestions(state) {
     const videoId = state.sourceInfo?.id || "demo_parcel";
-    const real = videoId !== "demo_parcel";
+    const real = !["demo_parcel", "demo_basketball"].includes(videoId);
     const duration = state.sourceInfo?.metadata?.duration;
     const candidates = (state.records || []).filter(record => {
       const q = record.query, r = q?.response;
@@ -211,7 +213,7 @@
       const start = clock(Math.max(0, Math.floor(anchor.t - 6)));
       const end = clock(Math.ceil(Math.min(Number.isFinite(duration) ? duration : anchor.t + 6, anchor.t + 6)));
       const window = `Review the video from ${start} to ${end}: `;
-      const cached = [...new Set((record.query.response.followups || []).filter(text => typeof text === "string" && text.trim() && text.length <= 900))].slice(0, 3);
+      const cached = [...new Set((record.query.response.followups || []).filter(text => typeof text === "string" && text.trim() && text.length <= 900).map(text => displayText(text, record.query)))].slice(0, 3);
       if (cached.length) return {label:real ? "Suggested follow-ups" : "Demo follow-ups", basis,
         items:cached.map(text => real && record !== selected ? `${window}${text}` : text)};
       if (real) {
@@ -238,6 +240,10 @@
       "Summarize the visible scene and main objects, citing video frames.",
       "Find a clear moment, describe the visible action, and give its timestamp.",
       "What cannot be confirmed from this footage? Explain the limits of the evidence.",
+    ]} : videoId === "demo_basketball" ? {label:"Demo questions",items:[
+      "Where is the ball handler in the court scene?",
+      "What is visible in the pass scene?",
+      "Where is the defender in the shot scene?",
     ]} : {label:"Demo questions",items:["When is the parcel in the center?","When is the parcel on the right?","Is there a forklift?"]};
   }
   function queryFailureReason(query) {
@@ -259,7 +265,13 @@
       if (!Number.isFinite(before) || !Number.isFinite(after)) continue;
       const decreases = ["递减", "下降", "减少"].includes(match[2]);
       if ((decreases && after > before) || (!decreases && after < before))
-        notes.push(`文本一致性待核对：${match[1]} → ${match[3]} 与“${match[2]}”不一致。可能涉及计时重置或描述错误，请回看证据；原回答保留。`);
+        notes.push(`Review the numerical trend ${match[1]} → ${match[3]}; it conflicts with the stated direction. The original answer is retained; review the evidence.`);
+      if (notes.length >= 2) break;
+    }
+    for (const match of String(answer || "").matchAll(/\b(decreases?|decreased|increases?|increased)\s+from\s+(\d+(?:\.\d+)?)\s+to\s+(\d+(?:\.\d+)?)/gi)) {
+      const before = Number(match[2]), after = Number(match[3]);
+      if ((/^decreas/i.test(match[1]) && after > before) || (/^increas/i.test(match[1]) && after < before))
+        notes.push(`Review the numerical trend ${match[2]} → ${match[3]}; it conflicts with the stated direction. The original answer is retained; review the evidence.`);
       if (notes.length >= 2) break;
     }
     return notes;
@@ -278,7 +290,7 @@
     const presentation = conversationAnswer(record.query);
     return {
       heading: `Replying to answer ${record.id.replace(/^task-/, "")}`,
-      question: record.query.question,
+      question: displayText(record.query.question, record.query),
       answer: presentation.text,
       ...(presentation.englishDemo ? {englishDemo: true} : {}),
     };
@@ -334,19 +346,19 @@
       && (response.status === "ok" && fixtureEvents.length === 1 && fixtureEvents[0].video_id === "demo_parcel"
         || response.status === "no_result" && fixtureEvents.length === 0 && query.id === "forklift");
     return {
-      text: englishDemo ? englishPreset : response.answer,
+      text: englishDemo ? englishPreset : displayText(response.answer, query),
       label: englishDemo ? "Synthetic demo · preset answer" : query.synthetic_fixture ? "Synthetic test index" : query.mode !== "real" ? "Synthetic demo · preset answer" : query.engine === "index" ? "Saved index" : "Model answer",
       englishDemo,
       prefix: model && aggregation && numeric ? "Model estimate: " : "",
       caution: model && aggregation && ["ok", "partial"].includes(response.status)
         ? "This model answer has not verified totals or rankings across the entire video."
-        : (response.unresolved || [])[0] || "",
-      frames: [...frames.values()].sort((a,b)=>a.t-b.t),
+        : displayText((response.unresolved || [])[0] || "", query),
+      frames: [...frames.values()].map(frame => ({...frame, caption: displayText(frame.caption, query)})).sort((a,b)=>a.t-b.t),
       checkedFrames: [...checkedFrames.values()].sort((a,b)=>a.t-b.t),
       evidenceNote: englishDemo ? "Select a frame to replay its video time." : aggregation ? "The number of cited frames is not the number of events." : "Select a frame to replay the source video.",
     };
   }
-  const api = { replyQuote, conversationAnswer, shouldOfferTextCandidates, createStore, clock, visiblePins, toggleTurn, panelWidth, composerSuggestions, answerReviewNotes, queryFailureReason };
+  const api = { displayText, replyQuote, conversationAnswer, shouldOfferTextCandidates, createStore, clock, visiblePins, toggleTurn, panelWidth, composerSuggestions, answerReviewNotes, queryFailureReason };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.FrameSeekWorkbenchModel = api;
 })(typeof window !== "undefined" ? window : globalThis);

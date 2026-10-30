@@ -14,14 +14,15 @@
       crossorigin
     />
     <link rel="stylesheet" href="/static/styles.css?v=136d47b61d96" />
-    <link rel="stylesheet" href="/static/workbench.css?v=fc4fac210be4" />
-    <script src="/static/demo-conversation.js?v=22db594c2273" defer></script>
-    <script src="/static/investigation-canvas.js?v=37c03b3e5b15" defer></script>
-    <script src="/static/workbench-model.js?v=f6e2a2c3e934" defer></script>
-    <script src="/static/investigation-report.js?v=8411abe357f8" defer></script>
-    <script src="/static/workbench.js?v=5ce38fe80718" defer></script>
-    <script src="/static/workspace.js?v=a984ddf6cae8" defer></script>
-    <script src="/static/app.js?v=626fb8fb6db9" defer></script>
+    <link rel="stylesheet" href="/static/workbench.css?v=0f574ea4a9e8" />
+    <script src="/static/legacy-demo-english.js?v=f87cdb8c6f69" defer></script>
+    <script src="/static/demo-conversation.js?v=28ad0f1c7b4f" defer></script>
+    <script src="/static/investigation-canvas.js?v=fc7cefb41fac" defer></script>
+    <script src="/static/workbench-model.js?v=c1a9a6fbb1be" defer></script>
+    <script src="/static/investigation-report.js?v=e1f15f8b101a" defer></script>
+    <script src="/static/workbench.js?v=b5ec15d59940" defer></script>
+    <script src="/static/workspace.js?v=2ae350dc71fc" defer></script>
+    <script src="/static/app.js?v=5137f9fc6db2" defer></script>
   </head>
   <body data-workspace-startup="loading">
     <a href="#question" class="skip-link">Skip to question input</a>
@@ -127,18 +128,18 @@
             <h1>Start with a question.</h1>
             <p>Review the footage and follow your questions.</p>
             <div id="suggestions" class="suggestions" aria-label="Demo questions">
-              <button data-query="center">
-                When is the package in the center?<img
+              <button data-query="court">
+                Where is the ball handler in the court scene?<img
                   class="icon"
                   src="/static/icons/arrow-right.svg"
                   alt=""
                 />
               </button>
-              <button data-query="person">Can you identify who moved it?</button>
-              <button data-query="forklift">Is there a forklift?</button>
+              <button data-query="pass">What is visible in the pass scene?</button>
+              <button data-query="shot">Where is the defender in the shot scene?</button>
             </div>
             <button id="demo-library-empty" class="text-button" disabled>
-              Browse 6 demo paths →
+              Explore the basketball demo →
             </button>
           </div>
         </div>
@@ -149,12 +150,12 @@
         <button id="rail-video" class="source-tile" aria-label="Show video player" aria-controls="source-dock" title="Show video player">
           <img
             id="source-thumbnail"
-            src="/media/demo_parcel/frames/0.jpg"
-            alt="Synthetic warehouse video"
+            src="/media/demo_basketball/frames/0.jpg"
+            alt="Synthetic basketball court"
           />
           <span class="source-reveal-label">Current video</span>
           <span class="source-item"
-            ><strong id="attached-source-name">Parcel movement · synthetic demo</strong
+            ><strong id="attached-source-name">Basketball scenes · synthetic demo</strong
             ><span id="attached-source-state">Loading</span></span
           >
           <img class="icon" src="/static/icons/play.svg" alt="" />
@@ -217,10 +218,10 @@
           <div id="source-picker-root"></div>
           <button id="open-sources" type="button" hidden>Manage videos</button>
           <select id="source-switcher" class="source-switcher" aria-label="Switch video" hidden disabled>
-            <option value="demo_parcel">Parcel movement (synthetic demo)</option>
+            <option value="demo_basketball">Basketball scenes (synthetic demo)</option>
           </select>
           <div class="viewer-source">
-            <span id="video-heading" hidden>Parcel movement · synthetic demo</span
+            <span id="video-heading" hidden>Basketball scenes · synthetic demo</span
             ><span id="video-state">Demo source</span>
             <span id="composer-mode-text" class="video-analysis-mode">Preset demo · no model calls</span>
             <button id="knowledge-control" class="text-button" type="button" hidden>Build index</button>
@@ -231,10 +232,10 @@
               controls
               playsinline
               preload="auto"
-              poster="/media/demo_parcel/frames/0.jpg"
+              poster="/media/demo_basketball/frames/0.jpg"
               aria-label="Video player"
             >
-              <source src="/demo/video" type="video/mp4" /></video
+              <source src="/demo/video?video_id=demo_basketball" type="video/mp4" /></video
             ><span id="video-watermark">Synthetic demo</span>
           </div>
           <div class="player-footer">
@@ -251,21 +252,21 @@
               <button
                 class="chapter"
                 data-time="0"
-                aria-label="Position left fragment 00:00"
+                aria-label="Court scene at 00:00"
               >
-                left side</button
+                Court</button
               ><button
                 class="chapter"
                 data-time="5"
-                aria-label="Positioning the central clip 00:05"
+                aria-label="Pass scene at 00:05"
               >
-                central</button
+                Pass</button
               ><button
                 class="chapter"
                 data-time="11"
-                aria-label="Position the right fragment 00:11"
+                aria-label="Shot scene at 00:11"
               >
-                right side
+                Shot
               </button>
             </div>
           </div>
@@ -278,41 +279,38 @@
           <details class="demo-details">
             <summary>Demonstration description and source of results</summary>
             <p id="demo-notice-text">
-              Synthesized materials and canned answers. Supports fixed context questioning, does not upload files, and does not call models.
+              Synthetic basketball demo · Preset answers · No model calls. Generated stills do not establish continuous play, player identity, or whether the shot scores.
             </p>
-            <button data-query="failure" class="text-button">
-              View failure examples
-            </button>
           </details>
           <div class="source-filmstrip" aria-label="Source frames">
             <button
               class="segment"
               data-time="0"
-              aria-label="Review the left side of the material 00:00"
+              aria-label="Replay court scene at 00:00"
             >
               <img
-                src="/media/demo_parcel/frames/0.jpg"
-                alt="The package is on the left"
+                src="/media/demo_basketball/frames/0.jpg"
+                alt="Synthetic court scene"
               /><span>00:00</span>
             </button>
             <button
               class="segment"
               data-time="6"
-              aria-label="Review material center 00:06"
+              aria-label="Replay pass scene at 00:06"
             >
               <img
-                src="/media/demo_parcel/frames/6.jpg"
-                alt="Package is in the center"
+                src="/media/demo_basketball/frames/6.jpg"
+                alt="Synthetic pass scene"
               /><span>00:06</span>
             </button>
             <button
               class="segment"
               data-time="13"
-              aria-label="Look back at the right side of the material 00:13"
+              aria-label="Replay shot scene at 00:13"
             >
               <img
-                src="/media/demo_parcel/frames/13.jpg"
-                alt="The package is on the right"
+                src="/media/demo_basketball/frames/13.jpg"
+                alt="Synthetic shot scene"
               /><span>00:13</span>
             </button>
           </div>
@@ -421,7 +419,7 @@
         <div class="view-controls">
           <button id="canvas-undo" disabled title="Undo canvas operation (⌘/Ctrl + Z)">Undo</button>
           <button id="canvas-redo" disabled title="Redo canvas operations (⌘/Ctrl+Shift+Z)">Redo</button>
-          <button id="canvas-shortcuts" title="Canvas shortcut keys">shortcut key</button>
+          <button id="canvas-shortcuts" title="Canvas keyboard shortcuts">Shortcuts</button>
           <button
             id="toggle-minimap"
             aria-label="Switch canvas minimap"
@@ -465,7 +463,7 @@
         <p id="canvas-search-status" role="status"></p><div id="canvas-search-results" class="canvas-search-results"></div>
       </dialog>
       <dialog id="canvas-shortcuts-dialog" class="canvas-search-dialog compare-dialog" aria-labelledby="canvas-shortcuts-title">
-        <header><h2 id="canvas-shortcuts-title">Canvas shortcut keys</h2><button id="canvas-shortcuts-close" class="icon-button" aria-label="Close keyboard shortcuts">×</button></header>
+        <header><h2 id="canvas-shortcuts-title">Canvas keyboard shortcuts</h2><button id="canvas-shortcuts-close" class="icon-button" aria-label="Close keyboard shortcuts">×</button></header>
         <dl class="shortcut-list"><dt>Search this investigation</dt><dd>⌘ / Ctrl + K</dd><dt>Select multiple objects</dt><dd>Shift + click the card’s check button</dd><dt>Batch move</dt><dd>Drag the title of any selected card</dd><dt>Undo / redo</dt><dd>⌘ / Ctrl + Z / Shift + Z</dd><dt>Select all / clear selection</dt><dd>Within canvas ⌘ / Ctrl + A / Esc</dd><dt>move card</dt><dd>Arrow keys · Shift acceleration when title is focused</dd><dt>Focus/Global view</dt><dd>Within canvas F/Home</dd><dt>Pan/Zoom</dt><dd>Drag blank / ⌘ + scroll wheel</dd></dl>
         <p class="muted-text">Undo only affects canvas positioning, grouping, and routing for this session. The layout is retained after refreshing and the undo history starts over.</p>
       </dialog>
@@ -486,7 +484,7 @@
             autocomplete="off"
           />
           <p class="branch-name-note">
-            Names are used to organize the canvas, and the original questions and evidence remain unchanged. Saved locally with the current survey.
+            Names are used to organize the canvas, and the original questions and evidence remain unchanged. Saved locally with the current investigation.
           </p>
           <div class="branch-name-actions">
             <button

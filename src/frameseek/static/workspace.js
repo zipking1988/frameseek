@@ -4,7 +4,10 @@
   const $ = id => document.getElementById(id);
   const ui = () => window.FrameSeekSessionUI;
   const store = () => window.FrameSeekWorkbench;
-  const demo = {id:"demo_parcel",name:"包裹移动 · 合成演示",metadata:{duration:18,audio:false},job:{state:"ready"}};
+  const demo = {id:"demo_basketball",name:"Basketball scenes · synthetic demo",metadata:{duration:18,audio:false},job:{state:"ready"}};
+  const legacyDemo = {id:"demo_parcel",name:"Parcel movement · synthetic demo",metadata:{duration:18,audio:false},job:{state:"ready"}};
+  const demos = new Map([[demo.id,demo],[legacyDemo.id,legacyDemo]]);
+  const isDemo = id => demos.has(id);
   const labels = { queued:"Waiting for preflight", probing:"Checking video", captioning:"Analyzing frames", transcribing:"Transcribing audio", indexing:"Building index", ready:"Ready for questions", failed:"Processing failed", cancelled:"Cancelled", awaiting_configuration:"Waiting for model configuration" };
   const sourceReady = video => video.knowledge_status?.required_for_chat ? video.knowledge_status.state === 'ready' : video.job?.state === 'ready';
   function shortOcrRange(question, duration) {
@@ -54,9 +57,9 @@
     $('local-engine-option').disabled=!localReady;
 
     $('auto-engine-indicator').textContent=$('chat-engine').value==='auto' ? 'Auto' : 'Manual';
-    $('chat-engine').parentElement && ($('chat-engine').parentElement.hidden=currentVideo.id===demo.id);
-    $('search-index').hidden = currentVideo.id === demo.id || !sourceReady(currentVideo);
-    if(currentVideo.id!==demo.id && sourceReady(currentVideo)) $('composer-mode-text').textContent=currentVideo.knowledge_status?.required_for_chat ? (currentVideo.knowledge_status.processor_available===false ? "There are already indexes available for query · Local supplementary query is temporarily unavailable" : currentVideo.knowledge_status.processor==='synthetic_fixture' ? "Synthetic test index · Simulated supplementary check" : currentVideo.knowledge_status.processor==='tokenfactory' ? "Basic index · Cloud supplementary check requires budget access" : "Native index · On-demand re-checking") : $('chat-engine').value==='auto' ? 'Agent chooses a route · cloud processing requires budget approval' : $('chat-engine').value==='local' ? 'Local vision · free' : $('chat-engine').value==='index' ? 'Saved index · no model calls' : $('chat-engine').value==='cloud' ? "Cloud Vision · Budget access required" : "Model analysis · Budget approval required";
+    $('chat-engine').parentElement && ($('chat-engine').parentElement.hidden=isDemo(currentVideo.id));
+    $('search-index').hidden = isDemo(currentVideo.id) || !sourceReady(currentVideo);
+    if(!isDemo(currentVideo.id) && sourceReady(currentVideo)) $('composer-mode-text').textContent=currentVideo.knowledge_status?.required_for_chat ? (currentVideo.knowledge_status.processor_available===false ? "There are already indexes available for query · Local supplementary query is temporarily unavailable" : currentVideo.knowledge_status.processor==='synthetic_fixture' ? "Synthetic test index · Simulated supplementary check" : currentVideo.knowledge_status.processor==='tokenfactory' ? "Basic index · Cloud supplementary check requires budget access" : "Native index · On-demand re-checking") : $('chat-engine').value==='auto' ? 'Agent chooses a route · cloud processing requires budget approval' : $('chat-engine').value==='local' ? 'Local vision · free' : $('chat-engine').value==='index' ? 'Saved index · no model calls' : $('chat-engine').value==='cloud' ? "Cloud Vision · Budget access required" : "Model analysis · Budget approval required";
     if(searchDesk && (searchDesk !== current?.id || searchGeneration !== currentVideo.generation)) {
       searchEpoch++; searchDesk=null; $('visual-search-dialog').close(); $('visual-search-results').replaceChildren();
     }
@@ -66,10 +69,10 @@
     select.replaceChildren();
     for (const video of sourceChoices.values()) {
       const option = document.createElement("option");
-      option.value = video.id; option.textContent = video.id === demo.id ? "Parcel movement (synthetic demo)" : video.name;
-      option.dataset.thumbnail = video.id === demo.id ? "/media/demo_parcel/frames/0.jpg" : video.metadata?.preview?.[0]?.uri || "";
+      option.value = video.id; option.textContent = video.name;
+      option.dataset.thumbnail = isDemo(video.id) ? `/media/${video.id}/frames/0.jpg` : video.metadata?.preview?.[0]?.uri || "";
       const duration = Math.round(video.metadata?.duration || 0);
-      option.dataset.detail = `${Math.floor(duration / 60).toString().padStart(2,"0")}:${(duration % 60).toString().padStart(2,"0")} · ${video.id === demo.id ? "合成演示" : sourceStatus(video)}`;
+      option.dataset.detail = `${Math.floor(duration / 60).toString().padStart(2,"0")}:${(duration % 60).toString().padStart(2,"0")} · ${isDemo(video.id) ? "Synthetic demo" : sourceStatus(video)}`;
       select.append(option);
     }
     select.value = currentVideo.id;
@@ -86,7 +89,7 @@
     if (!video || video.id === currentVideo.id || sourceSwitching) { syncSourceSwitcher(); return; }
     sourceSwitching = true; syncSourceSwitcher();
     try { await openSource(video); }
-    catch (error) { ui().notify(`Failed to switch video:${error.message}. Current surveys and inputs have been retained.`); }
+    catch (error) { ui().notify(`Failed to switch video:${error.message}. Your current investigation and draft were kept.`); }
     finally { sourceSwitching = false; syncSourceSwitcher(); }
   }
 
@@ -101,7 +104,7 @@
   }
   const snapshot = () => ui().snapshot();
   const wireSnapshot = state => {
-    if(!session?.query_reference_snapshots || currentVideo.id===demo.id)return state;
+    if(!session?.query_reference_snapshots || isDemo(currentVideo.id))return state;
     const reference = record => ({...record,query:{id:record.query.id,
       ...(record.query.parentTurn===undefined ? {} : {parentTurn:record.query.parentTurn})}});
     return {...state,records:(state.records || []).map(reference),pins:(state.pins || []).map(reference)};
@@ -183,7 +186,9 @@
       await stopRequest(); if (!owns(previousId,epoch)) return false;
       const desk=await api(`/api/investigations/${id}`);
       if (!owns(previousId,epoch)) return false;
-      const video=desk.video === "demo_parcel" ? demo : await api(`/api/videos/${desk.video}`);
+      const video=demos.get(desk.video) || await api(`/api/videos/${desk.video}`);
+      if (!owns(previousId,epoch)) return false;
+      if (isDemo(video.id)) await ui().prepareDemo?.(video.id);
       if (!owns(previousId,epoch)) return false;
       await flush(); if (!owns(previousId,epoch)) return false;
       if (desk.id===previousId && !conflict && current.revision>desk.revision) {desk.state=snapshot();desk.revision=current.revision;}
@@ -208,7 +213,9 @@
     try {
       await flush(); if (!owns(previousId,epoch)) return false;
       await stopRequest(); if (!owns(previousId,epoch)) return false;
-      const desk=await api("/api/investigations","POST",{video_id:video.id,title:video.id === "demo_parcel" ? "未命名调查" : video.name.replace(/\.[^.]+$/, "")});
+      if (isDemo(video.id)) await ui().prepareDemo?.(video.id);
+      if (!owns(previousId,epoch)) return false;
+      const desk=await api("/api/investigations","POST",{video_id:video.id,title:video.id === demo.id ? "Basketball demo" : video.name.replace(/\.[^.]+$/, "")});
       if (!owns(previousId,epoch)) return false;
       await flush(); if (!owns(previousId,epoch)) return false;
       suspended=true;
@@ -224,7 +231,7 @@
       return true;
     } finally { if (epoch===requestEpoch) {suspended=false;ui().busy(false);} }
   }
-  function item(title, detail, action, actionLabel="打开") {
+  function item(title, detail, action, actionLabel="Open") {
     const row=document.createElement("article"); row.className="library-row";
     const copy=document.createElement("div"); const name=document.createElement("strong"); name.textContent=title;
     const meta=document.createElement("small");meta.textContent=detail;copy.append(name,meta);row.append(copy);
@@ -239,7 +246,7 @@
     const desk=current?.id,epoch=requestEpoch,check=++budgetEpoch;
     $('chat-engine').disabled=!!currentVideo.knowledge_status?.required_for_chat;
     if(currentVideo.knowledge_status?.required_for_chat) {line.hidden=false;line.textContent=currentVideo.knowledge_status.processor_available===false?"There is an existing index that can be queried; local retrieval is temporarily unavailable.":"Automatically read the basic index; only check relevant screens when needed.";return;}
-    if(currentVideo.id==='demo_parcel') {line.hidden=true;return;}
+    if(isDemo(currentVideo.id)) {line.hidden=true;return;}
     if($('chat-engine').value==='auto') {line.hidden=false;line.textContent="Check existing evidence first, and select available visual analysis if necessary; cloud processing is still limited by the original budget, and failure will not automatically switch to retry.";return;}
     if($('chat-engine').value==='local') {
       line.hidden=false;line.textContent="Native visual recognition, without using Token Factory quota. Scan the entire film for the first time, and the completed fragments will be cached; the paid API will not be automatically called.";return;
@@ -249,7 +256,7 @@
       if(check!==budgetEpoch || !owns(desk,epoch))return;
       const b=data.budget;
       line.hidden=false;
-      const prefix=$('chat-engine').value==='index' ? '当前索引问答不调用模型，可继续检索已有数据。' : '';
+      const prefix=$('chat-engine').value==='index' ? 'Index questions use existing data without model calls.' : '';
       line.textContent=prefix+(b && b.remaining_calls===0
         ? `Model requests exhausted ${b.call_cap} / ${b.call_cap} times; the model will not be called again, and existing answers and evidence can still be reviewed.`
         : !data.dispatch_prerequisites_met
@@ -268,7 +275,7 @@
       const provider=data.provider==="gemini" ? "Gemini · AI Builder Cup" : data.provider==="tokenfactory" ? "NVIDIA Nemotron · Token Factory" : "NVIDIA / Nebius";
       $("agent-setup-summary").textContent=data.dispatch_prerequisites_met
         ? `${provider}: Chat access conditions are complete, and videos that have been indexed can be asked directly without re-analysis. The check only reads the configuration and ledger and cannot prove that every answer is accurate.`
-        : `${provider}: Real analysis is not yet ready. Presentation, upload preflight, playback, and survey saving are still available.`;
+        : `${provider}: Real analysis is not yet ready. The demo, upload preflight, playback, and saved investigations are still available.`;
       const list=$("agent-readiness-checks");list.replaceChildren();
       for(const check of data.checks) {
         const row=document.createElement("article");row.className="agent-check";
@@ -279,7 +286,7 @@
       }
       const models=$("agent-model-roles");models.replaceChildren();
       for(const model of data.models) {
-        const row=document.createElement("p");row.textContent=`${model.label}${model.optional ? "（可选）" : ""} · ${model.configured ? `${model.model} / ${model.revision} · ${model.key_present ? "凭据已配置" : "缺少凭据"}` : "未配置"}`;
+        const row=document.createElement("p");row.textContent=`${model.label}${model.optional ? " (optional)" : ""} · ${model.configured ? `${model.model} / ${model.revision} · ${model.key_present ? "Credentials configured" : "Credentials missing"}` : "Not configured"}`;
         models.append(row);
       }
     }catch(error){$("agent-setup-summary").textContent=`Read failed:${error.message}. Can be rechecked.`;}
@@ -291,7 +298,7 @@
     let autoOcr=!!savedQuestion?.autoOcr;
     if(!question) {ui().notify("First describe what you are looking for in the input box, and then search for existing images; it will not be sent to the model.");return;}
     const desk=current?.id, epoch=requestEpoch, source=currentVideo, generation=source.generation, check=++searchEpoch;
-    if(!desk || source.id===demo.id || !sourceReady(source))return;
+    if(!desk || isDemo(source.id) || !sourceReady(source))return;
     const dialog=$('visual-search-dialog'), list=$('visual-search-results');
     searchDesk=desk; searchGeneration=generation; list.replaceChildren();
     $('visual-search-summary').textContent="Retrieving existing index, not calling model...";
@@ -334,7 +341,7 @@
         if(button)button.remove();
         const structured=data.kind==='indexed_occurrences', rows=structured ? data.occurrences : data.frames;
         displayed+=rows.length;
-        $('visual-search-conditions').textContent=data.conditions?.length ? `${data.explicit_conditions ? "已选属性（替代原问题）" : "全部条件"}：${data.conditions.map(c=>`${c.field} ${c.operator==='is_not' ? '不是' : c.operator==='contains' || c.operator==='color_item' ? '包含' : '是'} ${c.value}`).join('；')}(same object)` : `Search concepts:${(data.terms || []).join(' + ')}`;
+        $('visual-search-conditions').textContent=data.conditions?.length ? `${data.explicit_conditions ? "Selected conditions (replace the original question)" : "All conditions"}：${data.conditions.map(c=>`${c.field} ${c.operator==='is_not' ? 'is not' : c.operator==='contains' || c.operator==='color_item' ? 'contains' : 'is'} ${c.value}`).join('；')}(same object)` : `Search concepts:${(data.terms || []).join(' + ')}`;
         const coverage=data.coverage || {};
         $('visual-search-summary').textContent=structured
           ? `Existing observations match ${displayed} / ${data.total_occurrences} ${coverage.catalog_complete === false ? "sampled frame times (not a count of people or events)" : "intervals or times"}. No model calls.`
@@ -392,7 +399,7 @@
           image.src=frame.uri; image.alt=structured ? "Original video evidence of structured observation is available" : "Saved candidate frames of the original video";image.loading='lazy';
           caption.textContent=structured ? `The subject of the same picture meets all conditions · ${entry.evidence_count} Frame support; does not represent the same person across shots.` : frame.caption;
           const clock=t=>`${Math.floor(t/60).toString().padStart(2,'0')}:${(t%60).toFixed(3).padStart(6,'0')}`;
-          seek.textContent=structured ? `Replay ${clock(entry.start)}${entry.end==null ? ' · 抽样时点' : `—${clock(entry.end)}`} · Observed` : `Replay ${clock(frame.t)} · Index candidates`;
+          seek.textContent=structured ? `Replay ${clock(entry.start)}${entry.end==null ? ' · Sampled time' : `—${clock(entry.end)}`} · Observed` : `Replay ${clock(frame.t)} · Index candidates`;
           seek.type='button';seek.onclick=()=>{if(!currentResult())return;dialog.close();ui().seek(frame.t,seek);};
           if(structured && data.duration>0) {
             const marker=document.createElement('button');marker.type='button';
@@ -488,8 +495,8 @@
     const active=()=>owns(deskId,epoch) && token===libraryEpoch;
     await flush(); if (!active()) return; libraryNotice("");
     $("library-title").textContent=kind === "videos" ? "Material library" : "Investigations";
-    $("library-intro").textContent=kind === "videos" ? "Each piece of material saves questions and evidence independently. After uploading, pre-check and then analyze according to the approved budget." : `Surveys are saved in Services on this computer and are retained by default ${session.ttl_hours} Hour. Continue on the same path as last time, or start a new investigation.`;
-    $("library-add").textContent=kind === "videos" ? "Upload video" : "New survey";
+    $("library-intro").textContent=kind === "videos" ? "Each video keeps its own questions and evidence. Uploads are checked before analysis under the approved budget." : `Investigations are saved on this server for ${session.ttl_hours} hours by default. Reopen an investigation or create a new one.`;
+    $("library-add").textContent=kind === "videos" ? "Upload video" : "New investigation";
     $("library-add").onclick=()=>{
       if(kind === "videos") {$("workspace-library").close();$("file-input").click();}
       else create(currentVideo).catch(e=>libraryNotice(e.message));
@@ -497,23 +504,23 @@
     const body=$("library-items");body.replaceChildren();
     $("workspace-library").showModal();
     if (kind === "videos") {
-      body.append(item(demo.name,"18 秒 · 公开合成演示 · 预设回答",()=>openSource(demo)));
+      body.append(item(demo.name,"18 seconds · Synthetic demo · Preset answers",()=>openSource(demo)));
       const data=await api("/api/videos");
       if (!active()) return;
-      if (data.items.some(video=>video.knowledge_status?.required_for_chat)) $("library-intro").textContent="Each piece of material saves questions and evidence independently. After uploading, pre-check and establish a basic index. You can ask questions after completion.";
+      if (data.items.some(video=>video.knowledge_status?.required_for_chat)) $("library-intro").textContent="Each video keeps its own questions and evidence. After upload, preflight and indexing must finish before questions are available.";
       syncSourceSwitcher(data.items);
       for (const video of data.items) {
         const job=video.job;
-        const row=item(video.name,`${Math.round(video.bytes/1024/1024)} MB · ${sourceStatus(video)}${!video.knowledge_status?.required_for_chat && job?.total ? ` · ${job.completed}/${job.total} 窗口` : ""}`,()=>openSource(video));
+        const row=item(video.name,`${Math.round(video.bytes/1024/1024)} MB · ${sourceStatus(video)}${!video.knowledge_status?.required_for_chat && job?.total ? ` · ${job.completed}/${job.total} windows` : ""}`,()=>openSource(video));
         if (["failed","cancelled"].includes(job?.state) && !video.metadata?.windows) {
           const retry=document.createElement("button");retry.className="outline-button";retry.textContent="Retry preflight";
-          retry.onclick=async()=>{try {await api(`/api/videos/${video.id}/retry`,"POST");libraryNotice("已重新开始预检。");if(currentVideo.id===video.id) watch(video.id,requestEpoch);}catch(e){libraryNotice(e.message);}};
+          retry.onclick=async()=>{try {await api(`/api/videos/${video.id}/retry`,"POST");libraryNotice("Preflight restarted.");if(currentVideo.id===video.id) watch(video.id,requestEpoch);}catch(e){libraryNotice(e.message);}};
           row.append(retry);
         } else if (["awaiting_configuration","failed","cancelled"].includes(job?.state)) {
           const analyze=document.createElement("button");analyze.className="outline-button";analyze.textContent="Start analysis";
           analyze.disabled=!session.real_ready || !video.metadata?.windows;
           analyze.title=analyze.disabled ? "Requires model services, valid calibration records, and approved budget" : "Analyze full footage using approved budget";
-          analyze.onclick=async()=>{try {await api(`/api/videos/${video.id}/analyze`,"POST"); libraryNotice("已受理分析。点击刷新查看真实阶段。"); if (currentVideo.id===video.id) watch(video.id,requestEpoch);}catch(e){libraryNotice(e.message);}};
+          analyze.onclick=async()=>{try {await api(`/api/videos/${video.id}/analyze`,"POST"); libraryNotice("Analysis started. Refresh to check progress."); if (currentVideo.id===video.id) watch(video.id,requestEpoch);}catch(e){libraryNotice(e.message);}};
           row.append(analyze);
         }
         if (["queued","probing","captioning","transcribing","indexing"].includes(job?.state)) {
@@ -523,15 +530,15 @@
         const rename=document.createElement("button");rename.className="text-button";rename.textContent="Rename";
         rename.onclick=()=>renameSource(video);row.append(rename);
         const remove=document.createElement("button");remove.className="text-button danger";remove.textContent="Delete";
-        remove.setAttribute("aria-label",`Delete material:${video.name}`);
+        remove.setAttribute("aria-label",`Delete video: ${video.name}`);
         remove.onclick=()=>confirmDelete(video,"videos");row.append(remove);body.append(row);
       }
-      if (!session.real_ready && !data.items.some(video=>video.knowledge_status?.required_for_chat)) libraryNotice("真实分析等待模型地址与预算配置。上传、预检、播放和调查保存已可使用。");
+      if (!session.real_ready && !data.items.some(video=>video.knowledge_status?.required_for_chat)) libraryNotice("Analysis requires model configuration and budget approval. Upload, preflight, playback and saved investigations are available.");
     } else {
       const data=await api("/api/investigations");
       if (!active()) return;
       for (const desk of data.items) {
-        const row=item(desk.title,`${desk.video === "demo_parcel" ? "演示素材" : "真实素材"} · ${new Date(desk.updated*1000).toLocaleString()}${desk.id===current?.id ? " · 当前" : ""}`,()=>openDesk(desk.id));
+        const row=item(desk.title,`${isDemo(desk.video) ? "Synthetic demo" : "Uploaded video"} · ${new Date(desk.updated*1000).toLocaleString()}${desk.id===current?.id ? " · Current" : ""}`,()=>openDesk(desk.id));
         const remove=document.createElement("button");remove.className="text-button danger";remove.textContent="Delete";
         remove.onclick=()=>confirmDelete(desk,"investigations");row.append(remove);body.append(row);
       }
@@ -553,7 +560,7 @@
     $("rename-source-dialog").showModal();$("rename-source-input").focus();
   }
   function confirmDelete(entity,table) {
-    $("delete-description").textContent=table === "videos" ? `delete"${entity.name}” and all investigations, evidence and original documents?` : `Delete survey "${entity.title}」？`;
+    $("delete-description").textContent=table === "videos" ? `Delete "${entity.name}" and all its investigations, evidence, and original video?` : `Delete investigation "${entity.title}"?`;
     $("delete-confirm").onclick=async()=>{
       const deskId=current?.id;
       const deletingCurrent=(table === "videos" && current?.video===entity.id) || deskId===entity.id;
@@ -600,13 +607,13 @@
         xhr.setRequestHeader("Content-Type",file.type);xhr.setRequestHeader("X-FS-CSRF",session.csrf);
         xhr.setRequestHeader("X-File-Name",encodeURIComponent(file.name));xhr.timeout=180000;
         xhr.upload.onprogress=e=>{if(owns(deskId,epoch) && e.lengthComputable)ui().notify(`Uploading ${file.name} · ${Math.round(e.loaded/e.total*100)}%`);};
-        xhr.onload=()=>{let data;try {data=JSON.parse(xhr.responseText);}catch{reject(new Error("上传响应无效"));return;}xhr.status===201 ? resolve(data) : reject(new Error(data.detail || "上传失败"));};
-        xhr.onerror=()=>reject(new Error("上传连接中断，原调查已保留。"));xhr.ontimeout=xhr.onerror;xhr.send(file);
+        xhr.onload=()=>{let data;try {data=JSON.parse(xhr.responseText);}catch{reject(new Error("Invalid upload response"));return;}xhr.status===201 ? resolve(data) : reject(new Error(data.detail || "Upload failed"));};
+        xhr.onerror=()=>reject(new Error("Upload interrupted. The original investigation was kept."));xhr.ontimeout=xhr.onerror;xhr.send(file);
       });
       if (!owns(deskId,epoch)) return;
       const video=await api(`/api/videos/${result.id}`);if (!owns(deskId,epoch)) return;
       if (!await create(video)) return;
-      ui().notify("The upload is completed and the server is pre-checking the material. You can check the progress in the material library.");
+      ui().notify("Upload complete. The server is checking the video; view progress in Manage videos.");
       ui().showSource();
     }catch(error){ui().notify(error.message);}
   }
@@ -636,10 +643,10 @@
         const knowledge=video.knowledge_status;
         currentVideo=video;ui().updateKnowledge?.(video);
         if (knowledge?.required_for_chat && ["queued","indexing"].includes(knowledge.state)) {
-          const label=`建立基础索引 · ${knowledge.completed_segments}/${knowledge.total_segments} segments`;
+          const label=`Building index · ${knowledge.completed_segments}/${knowledge.total_segments} segments`;
           $("video-state").textContent=label;ui().notify(label);continue;
         }
-        ui().notify(`${labels[video.job?.state] || "处理素材"}${video.job?.total ? ` · ${video.job.completed}/${video.job.total} 窗口` : ""}`);
+        ui().notify(`${labels[video.job?.state] || "Processing video"}${video.job?.total ? ` · ${video.job.completed}/${video.job.total} windows` : ""}`);
         if (["ready","failed","awaiting_configuration","cancelled"].includes(video.job?.state) && !needsWatch(video)) {
           await flush(); if (!active()) return;
           currentVideo=video; const saved=snapshot();suspended=true;
@@ -650,7 +657,7 @@
           if (knowledge?.required_for_chat && knowledge.state === "ready") ui().notify("The basic index is complete and you can start asking questions.");
           else if (knowledge?.required_for_chat && knowledge.state === "waiting_budget") ui().notify("Basic indexing awaits budget or authorization; videos and existing answers will still be viewable, and completed clips will be retained.");
           else if (knowledge?.required_for_chat && ["failed","unknown","cancelled","waiting_processor"].includes(knowledge.state)) ui().notify("Basic indexing is not yet complete; videos and existing answers are still viewable.");
-          else if (video.job?.state === "failed") ui().notify(`Preflight or analysis failed:${video.job.error}. The material is retained and can be reprocessed or deleted.`);
+          else if (video.job?.state === "failed") ui().notify(`Preflight or analysis failed:${video.job.error}. The video is retained and can be reprocessed or deleted.`);
           else if (video.job?.state === "awaiting_configuration") ui().notify("Preflight complete. Waiting for model service and budget configuration. No model request will be sent.");
           return;
         }
@@ -658,7 +665,7 @@
     }
   }
   async function recover({resumeMissing=false}={}) {
-    if (!current || currentVideo.id === "demo_parcel") return;
+    if (!current || isDemo(currentVideo.id)) return;
     const deskId=current.id, epoch=requestEpoch, deskEpoch=store().getSnapshot().epoch,
       submission=submissionEpoch, initialDraft=$("question").value;
     const valid=()=>owns(deskId,epoch) && store().getSnapshot().epoch===deskEpoch && submission===submissionEpoch;
@@ -778,8 +785,8 @@
       if (outcome?.id!==pending.id || outcome.mode!=='real' || outcome.video_id!==pending.sourceId
           || outcome.response?.schema_version!=='0.1'
           || (outcome.source_generation!==undefined && outcome.source_generation!==pending.sourceGeneration))
-        throw new Error('请求恢复响应无效');
-      if (!isEmptyCancellation(outcome) && !isQueryResult(outcome,pending)) throw new Error('请求恢复响应无效');
+        throw new Error('Invalid recovery response');
+      if (!isEmptyCancellation(outcome) && !isQueryResult(outcome,pending)) throw new Error('Invalid recovery response');
       activeRequest=null;
       $('resume-query').hidden=true;$('cancel-question').hidden=true;
       if (!isEmptyCancellation(outcome) && !store().getSnapshot().records.some(r=>r.query.id===outcome.id)) {
@@ -819,12 +826,12 @@
       if(engine==='auto') {
         prepared=await api('/api/auto-chat/prepare',"POST",body);
         if(!owns(desk.id,epoch)) return;
-        if(!['index','local','cloud','model'].includes(prepared.engine)) throw new Error('自动处理方案无效，未发送问题');
+        if(!['index','local','cloud','model'].includes(prepared.engine)) throw new Error('Invalid processing route; the question was not sent');
         engine=prepared.engine;
         ui().notify(prepared.route_message || "Processing method selected, checking...");
       }
       if (prepared?.has_index_matches && ['budget_blocked','supplement_unknown'].includes(prepared.kind)) {
-        partialNotice=prepared.message+' 将显示已有索引结果。';
+        partialNotice=prepared.message+' Existing index results will be shown.';
         prepared={...prepared,kind:'ready'};
       }
       if(prepared?.kind==='supplement_required') {
@@ -845,19 +852,19 @@
         if(supplement.state!=='done') {
           activeRequest=null;pending=null;
           const message=supplement.state==='waiting_budget'
-            ? '补查等待预算或授权；原问题已保留，不会自动重发。'
-            : '补查未完成或结果不明；原问题已保留，不会自动重发。';
+            ? 'The supplementary check needs budget approval. Your question was kept and will not be resent automatically.'
+            : 'The supplementary check did not finish or its result is unknown. Your question was kept and will not be resent automatically.';
           if (!prepared.has_index_matches || !['waiting_budget','failed','unknown'].includes(supplement.state)) {
             ui().notify(message);status("Supplementary inspection is not completed",'error');return;
           }
-          partialNotice='补查未完成或结果不明，不会自动重发；以下为已有索引结果。';
+          partialNotice='The supplementary check did not finish or is unknown. It will not be retried automatically; existing index results follow.';
           prepared={...prepared,kind:'ready'};
         } else {
           activeRequest=null;pending=null;
           prepared=await api('/api/auto-chat/prepare','POST',body);
           if(!owns(desk.id,epoch))return;
           if(prepared.kind==='supplement_required') {
-            prepared={...prepared,kind:'clarification_required',message:'已补查相关画面，但仍无法确认完整条件。原问题已保留，不会自动重复补查。'};
+            prepared={...prepared,kind:'clarification_required',message:'Relevant frames were checked, but the full conditions remain unconfirmed. Your question was kept and the check will not be repeated automatically.'};
           }
           engine=prepared.engine;
         }
@@ -972,6 +979,10 @@
       suspended=false;
       if(id && desks.some(d=>d.id===id))await openDesk(id);
       else if(desks.length)await openDesk(desks[0].id);else await create(demo);
+      if(/(?:^|[?&])demo=basketball(?:&|$)/.test(window.location?.search || '')) {
+        if(currentVideo.id!==demo.id) await openSource(demo);
+        window.requestAnimationFrame?.(() => document.querySelector?.('.reading-demo-examples button')?.focus());
+      }
       store().subscribe(changed);
       window.addEventListener("frameseek-canvas-changed",changed);
       window.addEventListener("frameseek-explicit-seek",changed);
@@ -1011,7 +1022,10 @@
       document.body?.removeAttribute("data-workspace-startup");
     }catch(error){suspended=true;status("Investigation service unavailable","error");ui().notify(error.message);document.body?.setAttribute("data-workspace-startup","error");}
   }
-  window.FrameSeekPersistence={flush,upload,ask,library,searchIndex:searchSavedFrames,canSearchOcr,openDemo:()=>openSource(demo).catch(e=>ui().notify(e.message)),
+  window.FrameSeekPersistence={flush,upload,ask,library,searchIndex:searchSavedFrames,canSearchOcr,openDemo:()=>openSource(demo).then(opened=>{
+    if(opened) window.requestAnimationFrame?.(() => (document.querySelector?.('.reading-demo-examples button') || $('question')).focus());
+    return opened;
+  }).catch(e=>ui().notify(e.message)),
     newInvestigation:()=>create(currentVideo).catch(e=>ui().notify(e.message))};
   const startupRetry=$("startup-retry");
   if(startupRetry)startupRetry.onclick=()=>window.location.reload();
