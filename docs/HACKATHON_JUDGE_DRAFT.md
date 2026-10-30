@@ -1,5 +1,13 @@
 # FrameSeek — submission draft
 
+## Public source update — 2026-10-30
+
+The independently reviewed [public source repository](https://github.com/zipking1988/frameseek-hackathon)
+now contains the application code deployed on October 30; its `main` commit is
+`6c61f27`. It excludes the original repository's private operational history.
+The publication did not submit the Devpost draft or authorize new model spend.
+The earlier preparation notes below remain a historical record.
+
 ## Preparation update — 2026-10-29
 
 The existing Devpost draft was renamed **FrameSeek — Basketball Film Room**.
