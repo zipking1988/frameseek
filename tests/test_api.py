@@ -28,7 +28,7 @@ async def test_local_health_and_schema_do_not_claim_real_readiness():
         ]
         assert "QueryControl" in schemas
         assert "Find the play." in (await client.get("/")).text
-        assert "调查画布" in (await client.get("/workspace")).text
+        assert "Investigation workspace" in (await client.get("/workspace")).text
         assert (await client.get("/docs/errors")).status_code == 200
         assert (await client.post("/api/chat", json={"question": "anything"})).status_code == 401
 

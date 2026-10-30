@@ -185,3 +185,6 @@ and the1MiB snapshot bound remain enforced. Session capability
 `query_reference_snapshots` gates compact client writes. Recovery covers the
 existing100-query history bound; reaching capacity preserves old records rather
 than evicting them. The paid $20/40 ledger is unrelated and unchanged.
+
+
+Workspace language: interface controls and newly requested model observations and synthesized answers use English. Existing investigations retain their original questions, answers, and evidence descriptions; indexed and deterministic responses may still contain their original language. Model output language is prompt-guided and has not been verified with live calls.

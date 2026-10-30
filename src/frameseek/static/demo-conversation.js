@@ -13,6 +13,7 @@
       包裹何时出现在中央: "center",
       whenistheparcelinthecenter: "center",
       whenistheparcelontheright: "right",
+      isthereaforklift: "forklift",
       包裹什么时候移到右侧: "right",
       视频中有没有叉车: "forklift",
     };

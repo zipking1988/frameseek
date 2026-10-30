@@ -263,7 +263,7 @@ test("uploaded source uses its own preview poster before analysis and replaces i
   assert.equal(h.player.src, "/media/vid_a/video");
   assert.equal(h.get("question").disabled, true);
   h.run('window.FrameSeekSessionUI.applySource({id:"vid_b", name:"B", job:{state:"ready"}, metadata:{preview:[{uri:"/media/vid_b/frames/preview_001.jpg"}]}})');
-  assert.equal(h.get('evidence-question').textContent,'素材预览');
+  assert.equal(h.get('evidence-question').textContent,'Video preview');
   assert.equal(h.player.poster, "/media/vid_b/frames/preview_001.jpg");
   assert.equal(h.get("question").disabled, false);
 });
@@ -276,10 +276,10 @@ test("switching from an uploaded video resets synthetic metadata before and afte
   h.player.dispatch("loadedmetadata");
   assert.match(h.get("video-meta").textContent, /06:24/);
   h.run('window.FrameSeekSessionUI.applySource({id:"demo_parcel",metadata:{duration:18,audio:false}})');
-  assert.equal(h.get("video-meta").textContent, "18 秒 · 1600 × 900 · 无音轨");
+  assert.equal(h.get("video-meta").textContent, "18 seconds · 1600 × 900 · No audio track");
   Object.assign(h.player, {duration:18, videoWidth:1600, videoHeight:900});
   h.player.dispatch("loadedmetadata");
-  assert.equal(h.get("video-meta").textContent, "18 秒 · 1600 × 900 · 无音轨");
+  assert.equal(h.get("video-meta").textContent, "18 seconds · 1600 × 900 · No audio track");
 });
 
 test("retrying a failed real turn preserves the draft and explains a fresh question without dispatch", async () => {

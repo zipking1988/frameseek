@@ -358,7 +358,7 @@ test('Shift removing a nonprimary selection keeps follow-up anchored to the rema
  const records=new Map(['A','B'].map(id=>[id,{query:{id,question:id,response:{id}},select:{setAttribute(){}}}]));
  const ctx=vm.createContext({records,selectedIds,$,model:{expandPath(){}},detailFocus:null,selected:null,callbacks:{select(){}},draw(){},clearScope(){}});
  vm.runInContext(chooser,ctx);vm.runInContext("choose('A');choose('B',false,true);choose('A',false,true)",ctx);
- assert.equal(ctx.selected,'B');assert.equal(elements.get('composer-label').textContent,'继续追问：B');assert.deepEqual([...selectedIds],['B']);
+ assert.equal(ctx.selected,'B');assert.equal(elements.get('composer-label').textContent,'Continue to ask:B');assert.deepEqual([...selectedIds],['B']);
 });
 
 
@@ -399,11 +399,11 @@ test('failed real turns remain selectable but cannot anchor new queries; verifie
    vm.runInContext(`choose('${id}')`,ctx);
    assert.equal(ctx.selected,id);
    assert.equal(vm.runInContext('currentContext()',ctx),null);
-   assert.match(elements.get('composer-label').textContent,/重新提问/);
+   assert.match(elements.get('composer-label').textContent,/Re-question/);
  }
  vm.runInContext("choose('partial')",ctx);
  assert.equal(vm.runInContext('currentContext().query.id',ctx),'partial');
- assert.equal(elements.get('composer-label').textContent,'继续追问：partial');
+ assert.equal(elements.get('composer-label').textContent,'Continue to ask:partial');
 });
 
 test('card reply shortcut passes its originating turn to the fill-only composer callback',()=>{

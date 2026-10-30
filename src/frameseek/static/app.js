@@ -46,8 +46,8 @@ function setupPanelResize() {
     handle.tabIndex = 0;
     handle.setAttribute("role", "separator");
     handle.setAttribute("aria-orientation", "vertical");
-    handle.setAttribute("aria-label", side === "source" ? "调整素材面板宽度" : "调整检查器宽度");
-    handle.title = "拖动调整宽度 · 方向键微调 · 双击恢复默认";
+    handle.setAttribute("aria-label", side === "source" ? "Adjust the width of the material panel" : "Adjust inspector width");
+    handle.title = "Drag to adjust width · Use arrow keys to fine-tune · Double-click to restore to default";
     const panel = $(side === "source" ? "source-dock" : "workbench-inspector");
     const width = () => panel.getBoundingClientRect().width;
     handle.setAttribute("aria-valuemin", side === "source" ? "280" : "260");
@@ -60,7 +60,7 @@ function setupPanelResize() {
       panelWidths[side] = next;
       shell.style.setProperty(`--${side}-user-width`, `${next}px`);
       handle.setAttribute("aria-valuenow", String(next));
-      handle.setAttribute("aria-valuetext", `${next} 像素`);
+      handle.setAttribute("aria-valuetext", `${next} pixels`);
     };
     let drag = null;
     handle.addEventListener("pointerdown", e => {
@@ -104,8 +104,8 @@ function setSourceOpen(open) {
     .querySelector(".agent-shell")
     .classList.toggle("source-collapsed", !open);
   $("rail-source").setAttribute("aria-expanded", String(open));
-  $("rail-source").setAttribute("aria-label", open ? "收起视频面板" : "打开视频面板");
-  $("rail-source").title = open ? "收起视频面板" : "展开视频面板";
+  $("rail-source").setAttribute("aria-label", open ? "Collapse video panel" : "Open video panel");
+  $("rail-source").title = open ? "Collapse video panel" : "Open video panel";
   $("rail-video").setAttribute("aria-expanded", String(open));
   if (wasOpen !== open) window.dispatchEvent(new Event("frameseek-canvas-changed"));
 }
@@ -137,8 +137,8 @@ function showEvidence(open, trigger = document.activeElement) {
   shell.classList.toggle("evidence-open", open);
   $("toggle-evidence").setAttribute("aria-expanded", String(open));
   $("toggle-evidence").firstChild.textContent = open
-    ? "返回对话 "
-    : "查看视频 ";
+    ? "Back to conversation "
+    : "View video ";
   if (mobile && open && !wasOpen) {
     $("toggle-evidence").focus({ preventScroll: true });
   } else if (mobile && !open && wasOpen) {
@@ -154,16 +154,16 @@ function showEvidence(open, trigger = document.activeElement) {
   }
 }
 function resetContext() {
-  $("run-state").textContent = localMode ? "未建立索引" : "等待任务";
+  $("run-state").textContent = localMode ? "Not indexed" : "Waiting for tasks";
   updateMediaContext();
   $("result-step").textContent = localMode
-    ? "尚未接入视频检索"
-    : "从固定样例中匹配";
-  $("result-step-state").textContent = localMode ? "不可用" : "待匹配";
+    ? "Not yet connected to video search"
+    : "Match from fixed examples";
+  $("result-step-state").textContent = localMode ? "Not available" : "To be matched";
   $("evidence-step").textContent = localMode
-    ? "此文件没有检索证据"
-    : "时间与画面关联";
-  $("evidence-step-state").textContent = localMode ? "不可用" : "待选择";
+    ? "There is no search evidence for this file"
+    : "Time and screen connection";
+  $("evidence-step-state").textContent = localMode ? "Not available" : "To be selected";
   document.querySelectorAll(".run-steps li").forEach((item, index) => {
     if (index > 0) item.classList.remove("complete");
   });
@@ -171,13 +171,13 @@ function resetContext() {
 
 function knowledgeLabel(video) {
   const status = video?.knowledge_status;
-  if (status?.state === "ready" && status.version) return "基础索引已就绪";
-  if (status?.state === "indexing") return `正在建立基础索引 ${status.completed_segments}/${status.total_segments}`;
-  if (status?.state === "waiting_probe") return "等待视频预检";
-  if (status?.state === "waiting_processor") return "等待索引配置";
-  if (status?.state === "waiting_budget") return "等待预算或授权";
-  if (status?.state === "failed" || status?.state === "unknown") return "基础索引未完成";
-  return "基础索引尚未建立";
+  if (status?.state === "ready" && status.version) return "Index ready";
+  if (status?.state === "indexing") return `Building index ${status.completed_segments}/${status.total_segments}`;
+  if (status?.state === "waiting_probe") return "Waiting for video preflight";
+  if (status?.state === "waiting_processor") return "Waiting for index configuration";
+  if (status?.state === "waiting_budget") return "Waiting for budget or approval";
+  if (status?.state === "failed" || status?.state === "unknown") return "Index incomplete";
+  return "Index not yet built";
 }
 
 function updateKnowledge(video) {
@@ -186,47 +186,47 @@ function updateKnowledge(video) {
   $("video-state").textContent = knowledgeLabel(video);
   control.hidden = !status?.required_for_chat || status.state === "ready";
   control.disabled = status?.state === "waiting_probe" || status?.state === "unknown";
-  control.textContent = ["queued", "indexing"].includes(status?.state) ? "停止索引" : "建立基础索引";
+  control.textContent = ["queued", "indexing"].includes(status?.state) ? "Stop indexing" : "Build index";
 }
 
 function updateMediaContext() {
   if (activeVideo) {
     const ready = activeVideo.job?.state === "ready" || Number(activeVideo.metadata?.duration) > 0;
-    $("attached-source-state").textContent = mediaFailed ? "播放失败" : ready ? "视频已就绪" : "已上传 · 等待预检";
+    $("attached-source-state").textContent = mediaFailed ? "Playback failed" : ready ? "Video ready" : "Uploaded · awaiting preflight";
     $("source-step").textContent = activeVideo.name;
-    $("source-step-state").textContent = ready ? "已就绪" : "未就绪";
+    $("source-step-state").textContent = ready ? "Ready" : "Not ready";
     return;
   }
   $("source-step").textContent = mediaFailed
-    ? "视频加载失败"
+    ? "Video failed to load"
     : !mediaReady
-      ? "正在加载视频"
+      ? "Loading video"
       : localMode
-        ? "仅浏览器内播放"
-        : "合成视频已加载";
+        ? "Play in browser only"
+        : "Synthetic video loaded";
   $("source-step-state").textContent = mediaFailed
-    ? "需重试"
+    ? "Need to retry"
     : !mediaReady
-      ? "加载中"
+      ? "Loading"
       : localMode
-        ? "未索引"
-        : "已就绪";
+        ? "Not indexed"
+        : "Ready";
   $("attached-source-state").textContent = mediaFailed
-    ? "加载失败"
+    ? "Loading failed"
     : !mediaReady
-      ? "正在加载"
+      ? "Loading"
       : localMode
-        ? "仅本地播放 · 未索引"
-        : "已加载 · 18 秒";
+        ? "Local play only · Not indexed"
+        : "Loaded · 18 seconds";
   document
     .querySelector(".run-steps li:first-child")
     .classList.toggle("complete", mediaReady && !mediaFailed && !localMode);
 }
 const stateLabels = {
-  ok: "已提供证据",
-  partial: "部分确认",
-  no_result: "未找到相关画面",
-  error: "查找未完成",
+  ok: "Evidence available",
+  partial: "Partially confirmed",
+  no_result: "No matching frames",
+  error: "Search incomplete",
 };
 function selectTask(data, historyButton, query=null) {
   window.FrameSeekWorkbench?.select(
@@ -240,18 +240,18 @@ function selectTask(data, historyButton, query=null) {
   document.querySelectorAll(".turn").forEach((item) => {
     item.classList.toggle("selected", item.id === historyButton.dataset.turn);
   });
-  $("run-state").textContent = query?.engine==='index' ? "索引检索已完成" : stateLabels[data.status];
-  $("result-step").textContent = query?.engine==='index' ? "读取已有索引 · 未调用模型" : activeVideo ? "真实模型检索与回看" : "已匹配固定演示样例";
-  $("result-step-state").textContent = "已匹配";
+  $("run-state").textContent = query?.engine==='index' ? "Index search completed" : stateLabels[data.status];
+  $("result-step").textContent = query?.engine==='index' ? "Reading existing index · No model called" : activeVideo ? "Real model retrieval and review" : "Fixed demo sample matched";
+  $("result-step-state").textContent = "Matched";
   document
     .querySelector(".run-steps li:nth-child(2)")
     .classList.add("complete");
   $("evidence-step").textContent = data.events.length
-    ? `${data.events.length} 个事件可回看`
-    : query?.engine==='index' ? "可在索引时间线回看描述候选" : "该样例没有可定位的事件";
+    ? `${data.events.length} events can be reviewed`
+    : query?.engine==='index' ? "Description candidates can be reviewed on the index timeline" : "This sample has no targetable events";
   $("evidence-step-state").textContent = data.events.length
-    ? "待选择"
-    : "无证据";
+    ? "To be selected"
+    : "no evidence";
   document
     .querySelector(".run-steps li:last-child")
     .classList.remove("complete");
@@ -293,19 +293,19 @@ function updateSend() {
 function seek(seconds, trigger = document.activeElement) {
   if (!Number.isFinite(seconds) || seconds < 0 || (mediaReady && seconds > player.duration)) return;
   if (mediaFailed) {
-    announce("视频无法定位，请先重新加载视频。");
-    $("seek-status").textContent = "视频无法定位，请先重新加载视频。";
+    announce("The video cannot be located, please reload the video first.");
+    $("seek-status").textContent = "The video cannot be located, please reload the video first.";
     return;
   }
   if (!mediaReady) {
     pendingSeek = seconds;
     pendingSeekTrigger = trigger;
-    announce("视频仍在加载，加载后将定位到对应画面。");
+    announce("The video is still loading and will be positioned to the corresponding screen after loading.");
     return;
   }
   const wasPaused = player.paused;
   locatingSeek = seconds;
-  $("seek-status").textContent = `正在定位 ${clock(seconds)} · 等待画面加载…`;
+  $("seek-status").textContent = `Locating ${clock(seconds)} · Waiting for the screen to load…`;
   announce($("seek-status").textContent);
   player.currentTime = seconds;
   window.dispatchEvent(new Event("frameseek-explicit-seek"));
@@ -323,8 +323,8 @@ function seek(seconds, trigger = document.activeElement) {
         : "smooth",
     });
   }
-  $("evidence-step").textContent = `正在定位 ${clock(seconds)}`;
-  $("evidence-step-state").textContent = "加载中";
+  $("evidence-step").textContent = `Locating ${clock(seconds)}`;
+  $("evidence-step-state").textContent = "Loading";
   document.querySelector(".run-steps li:last-child").classList.remove("complete");
   completeSeek();
 }
@@ -332,16 +332,16 @@ function completeSeek() {
   if (locatingSeek === null || player.seeking || player.readyState < 2 || Math.abs(player.currentTime - locatingSeek) > 0.25) return;
   const seconds = locatingSeek;
   locatingSeek = null;
-  $("seek-status").textContent = `已定位 ${clock(seconds)} · ${player.paused ? "保持暂停" : "继续播放"}`;
-  $("evidence-step").textContent = `已定位到 ${clock(seconds)}`;
-  $("evidence-step-state").textContent = "已定位";
+  $("seek-status").textContent = `Located ${clock(seconds)} · ${player.paused ? "Paused" : "Playing"}`;
+  $("evidence-step").textContent = `Targeted ${clock(seconds)}`;
+  $("evidence-step-state").textContent = "Targeted";
   document.querySelector(".run-steps li:last-child").classList.add("complete");
   announce($("seek-status").textContent);
 }
 function updateTime() {
   if (investigation && mediaReady && locatingSeek === null)
     $("seek-status").textContent =
-      `当前 ${clock(player.currentTime)} · ${player.paused ? "已暂停" : "播放中"}`;
+      `Current ${clock(player.currentTime)} · ${player.paused ? "Paused" : "Playing"}`;
   $("playback-time").textContent =
     `${clock(player.currentTime)} / ${clock(player.duration)}`;
   const percent = player.duration
@@ -366,7 +366,7 @@ function renderAnswer(query) {
   if ((activeVideo && (query.mode !== "real" || query.video_id !== activeVideo.id)) || (!activeVideo && query.mode === "real")) return;
   if (localMode || !demo) return;
   if (!query.savedTurn && window.FrameSeekWorkbench?.getSnapshot().records.length >= 100) {
-    announce("当前调查的保存空间已满，原聊天没有删除；请建立另一份调查。");
+    announce("This investigation is full. Your existing chats have been preserved; create another investigation to continue.");
     return;
   }
   if (++turns > 12 && !window.FrameSeekWorkbench) {
@@ -377,7 +377,7 @@ function renderAnswer(query) {
   const data = query.response;
   $("suggestions").hidden = true;
   const more = node("details", "response-details");
-  more.append(node("summary", "", "更多证据与引用"));
+  more.append(node("summary", "", "More evidence and citations"));
   const turn = node("article", "turn question-node");
   turn.id = query.savedTurn || `task-${++taskSequence}`;
   taskSequence = Math.max(taskSequence, Number(turn.id.split("-")[1]) || 0);
@@ -388,12 +388,12 @@ function renderAnswer(query) {
     node(
       "span",
       "fixture-tag",
-      query.engine === "index" ? "索引问答 · 未调用模型" : query.mode === "real" ? (query.usedContext ? "证据追问 · 承接前文" : "真实分析") : query.usedContext ? "预设追问 · 承接前文" : "预设演示 · 未调用模型",
+      query.engine === "index" ? "Index Q&A · No model calls" : query.mode === "real" ? (query.usedContext ? "Evidence follow-up · Prior context" : "Model analysis") : query.usedContext ? "Preset follow-up · Prior context" : "Preset demo · No model calls",
     ),
   );
   turn.append(label, node("p", "answer-text", data.answer));
   turn.append(
-    node("span", `answer-status ${data.status}`, query.engine === "index" ? (data.events.length ? "已有观察匹配" : "索引结果 · 覆盖待补齐") : stateLabels[data.status]),
+    node("span", `answer-status ${data.status}`, query.engine === "index" ? (data.events.length ? "Matching observations" : "Index result · Coverage incomplete") : stateLabels[data.status]),
   );
   if(query.engine==='index') turn.append(button('查看索引时间线 · 不调用模型','outline-button',()=>window.FrameSeekPersistence?.searchIndex({question:query.index_search?.resolved_question || query.question,answerRequestId:query.id})));
   const eventCluster =
@@ -414,7 +414,7 @@ function renderAnswer(query) {
           seek(event.start, clickEvent.currentTarget);
         },
       ),
-      node("span", "support-label", query.mode === "real" ? "画面证据 · 需核实边界" : "固定样例 · 画面直接支持"),
+      node("span", "support-label", query.mode === "real" ? "Frame evidence · Verify its limits" : "Preset example · Supported by frames"),
     );
     row.append(toolbar);
     const evidence = node("div", "evidence-grid");
@@ -429,7 +429,7 @@ function renderAnswer(query) {
         seek(frame.t, frameButton);
       });
       frameButton.setAttribute("aria-pressed", "false");
-      frameButton.setAttribute("aria-label", `定位证据帧 ${clock(frame.t)}`);
+      frameButton.setAttribute("aria-label", `Location evidence frame ${clock(frame.t)}`);
       const image = document.createElement("img");
       image.src = frame.uri;
       image.alt = frame.caption;
@@ -452,8 +452,8 @@ function renderAnswer(query) {
           await navigator.clipboard.writeText(
             `${query.mode === "real" ? activeVideo?.name || query.video_id : "合成演示："+demo.video.title} ${clock(event.start)}–${clock(event.end)} — ${event.action}`,
           );
-          trigger.textContent = "已复制";
-          announce("已复制当前素材的时间引用。");
+          trigger.textContent = "Copied";
+          announce("The time reference of the current footage has been copied.");
         } catch {
           notice("浏览器不允许复制。可在结构化结果中选择并复制时间。 ");
         }
@@ -471,7 +471,7 @@ function renderAnswer(query) {
   }
   if (data.unresolved.length) {
     const unresolved = node("div", "unresolved");
-    unresolved.append(node("strong", "", "仍未确认"));
+    unresolved.append(node("strong", "", "Unconfirmed"));
     data.unresolved.forEach((text) => unresolved.append(node("p", "", text)));
     (investigation ? more : turn).append(unresolved);
   }
@@ -497,7 +497,7 @@ function renderAnswer(query) {
   }
   const details = node("details", "response-details");
   details.append(
-    node("summary", "", "查看结构化结果"),
+    node("summary", "", "View structured result"),
     node("pre", "", JSON.stringify(data, null, 2)),
   );
   more.append(details);
@@ -542,7 +542,7 @@ function renderAnswer(query) {
     $("task-count").textContent = $("messages").children.length;
   }
   investigation?.register(turn, query, historyButton);
-  announce(`${query.mode === "real" ? "回答" : "演示回答"}：${query.engine==='index' ? "索引检索完成" : stateLabels[data.status]}。${data.answer}`);
+  announce(`${query.mode === "real" ? "Answer" : "Demo answer"}：${query.engine==='index' ? "Index search complete" : stateLabels[data.status]}。${data.answer}`);
 }
 function fillSuggestedQuestion(question, turnId = null) {
   const input = $("question");
@@ -587,7 +587,7 @@ function ask(question) {
             ? "当前话题不支持这个追问。请改问完整示例问题，例如「包裹什么时候出现在中央？」。输入已保留。"
             : "先从完整示例问题开始，例如「包裹什么时候出现在中央？」。回答后可继续追问。输入已保留。",
     );
-    announce("此问题不属于演示样例，未调用模型。");
+    announce("This question is not a demo sample and the model is not called.");
     return;
   }
   notice("");
@@ -635,7 +635,7 @@ async function startScenario(id) {
       demo.queries,
     );
   } catch {
-    announce("这条演示无法载入，请选择其他调查路径。");
+    announce("This demo cannot be loaded, please choose another investigation path.");
     return;
   }
   if (localMode) $("restore-demo").click();
@@ -657,7 +657,7 @@ async function startScenario(id) {
     lastQueryId = seed.id;
   }
   investigation?.arrange(scenario.layout || "threads");
-  $("demo-current").textContent = `${scenario.title} · ${seeds.length} 轮预设`;
+  $("demo-current").textContent = `${scenario.title} · ${seeds.length} wheel preset`;
   $("demo-current").hidden = false;
   window.FrameSeekWorkbench?.rename(`${scenario.title}调查`);
   if (window.FrameSeekWorkbench && window.innerWidth < 1400) {
@@ -667,7 +667,7 @@ async function startScenario(id) {
   }
   $("question").focus();
   announce(
-    `已载入${scenario.title}，${seeds.length}轮预设演示。可选择卡片继续追问。`,
+    `Loaded${scenario.title}，${seeds.length}Wheel preset demo. You can choose a card to continue questioning.`,
   );
 }
 function renderScenarios() {
@@ -676,7 +676,7 @@ function renderScenarios() {
   list.replaceChildren();
   demo.scenarios.forEach((scenario, index) => {
     const entry = button("", "demo-scenario", () => startScenario(scenario.id));
-    entry.setAttribute("aria-label", `载入演示：${scenario.title}`);
+    entry.setAttribute("aria-label", `Load the demo:${scenario.title}`);
     entry.append(
       node("span", "demo-scenario-number", String(index + 1).padStart(2, "0")),
       node("strong", "", scenario.title),
@@ -700,53 +700,53 @@ function setLocalMode(enabled) {
   window.FrameSeekWorkbench?.source(enabled);
   $("source-dock").classList.toggle("local-source", enabled);
   investigation?.source(enabled);
-  $("mode-label").textContent = enabled ? "本地播放" : "演示模式";
+  $("mode-label").textContent = enabled ? "Play locally" : "Demo mode";
   $("demo-notice-text").textContent = enabled
-    ? "本地播放模式。文件只在此浏览器中打开，未上传、未建立索引，也未发送给模型。"
-    : "正在体验固定演示。视频为合成素材，回答与上下文追问为预设样例；不会上传文件或调用模型。";
+    ? "Local playback mode. The file is only opened in this browser and is not uploaded, indexed, or sent to the model."
+    : "This is a synthetic demo with preset answers and follow-ups. No file is uploaded and no model is called.";
   $("restore-demo").hidden = !enabled;
   $("suggestions").hidden = enabled;
   $("composer-mode-text").textContent = enabled
-    ? "仅本地播放 · 未建立索引"
-    : "预设演示 · 未调用模型";
+    ? "Local playback only · Not indexed"
+    : "Default demo · No model loaded";
   $("demo-timeline").hidden = enabled;
   $("segments").hidden = enabled;
   $("frame-heading").hidden = enabled;
-  $("empty-eyebrow").textContent = enabled ? "仅本地播放" : "已加载演示视频";
+  $("empty-eyebrow").textContent = enabled ? "Local playback only" : "Demo video loaded";
   $("local-note").hidden = !enabled;
   $("video-watermark").hidden = enabled;
   $("question").disabled = enabled;
   $("question").placeholder = enabled
-    ? "当前视频未建立索引，暂时不能提问。"
-    : "继续追问，或提出新的问题…";
+    ? "The current video is not indexed, so questions cannot be asked at the moment."
+    : "Keep asking, or ask new questions…";
   document.querySelectorAll("[data-query]").forEach((element) => {
     element.disabled = enabled || !demo;
   });
-  $("video-state").textContent = enabled ? "仅本地播放" : "演示素材";
+  $("video-state").textContent = enabled ? "Local playback only" : "Demo source";
   document.querySelector(".source-item span").textContent = enabled
-    ? "本地视频 · 未索引"
-    : "包裹移动演示";
+    ? "Local video · Not indexed"
+    : "Parcel moving demonstration";
   $("attached-source-state").textContent = enabled
-    ? "仅本地播放 · 未索引"
-    : "已加载 · 18 秒";
+    ? "Local play only · Not indexed"
+    : "Loaded · 18 seconds";
   $("empty-state").querySelector(investigation ? "h1" : "h2").textContent =
     enabled
-      ? "素材已打开，尚未建立索引。"
+      ? "The footage is open and not indexed yet."
       : investigation
-        ? "从一个问题，展开调查。"
-        : "想找哪个画面？";
+        ? "Start with a question and start an investigation."
+        : "Which picture are you looking for?";
   $("empty-state").querySelector(".task-intro > p").textContent = enabled
-    ? "你可以在视频工作区中播放文件，或返回演示体验预设对话。"
+    ? "You can play the file in the video workspace, or return to the demo experience preset session."
     : investigation
-      ? "找到的画面会留在这里。继续追问，把发现连起来。"
-      : "先问包裹的位置，再继续追问。";
-  $("video-state").title = enabled ? "未上传、未分析" : "公开合成素材";
+      ? "The found footage will remain here. Keep asking and connect the dots."
+      : "Ask about the location of the package first, and then follow up.";
+  $("video-state").title = enabled ? "Not uploaded, not analyzed" : "Publicly available composite material";
   $("seek-status").textContent = enabled
-    ? "未上传 · 未分析 · 文件只在浏览器内播放"
-    : "点击时间或证据帧，定位到对应画面";
+    ? "Not uploaded · Not analyzed · File can only be played in the browser"
+    : "Click on the time or evidence frame to navigate to the corresponding screen";
   clearChat();
   if (enabled) {
-    notice("已打开本地视频。真实索引和问答尚未接入，可返回演示体验证据跳转。");
+    notice("Local video opened. Return to the demo to try evidence navigation.");
   }
 }
 function inspectorIsOpen() {
@@ -832,7 +832,7 @@ $("chat-content").addEventListener("drop", (event) => {
         window.FrameSeekWorkbench.pinFrame(record.id, record.query, frame),
       );
   } catch {
-    announce("无法保存这个画面，请使用引用画面上的保存按钮。");
+    announce("This screen cannot be saved. Please use the Save button on the referenced screen.");
   }
 });
 function placeFinding(pin) {
@@ -853,7 +853,7 @@ function placeFinding(pin) {
     });
     frameButton.setAttribute(
       "aria-label",
-      `回看画布证据 ${clock(pin.frame.t)}`,
+      `Looking back at canvas evidence ${clock(pin.frame.t)}`,
     );
     const image = document.createElement("img");
     image.src = pin.frame.uri;
@@ -891,7 +891,7 @@ function placeFinding(pin) {
     history,
   );
   announce(
-    `已保存${pin.kind === "evidence" ? "证据帧" : "结论"}，可在画布移动。`,
+    `saved${pin.kind === "evidence" ? "证据帧" : "结论"}, can be moved on the canvas.`,
   );
   return pin;
 }
@@ -903,7 +903,7 @@ function removeFinding(id) {
   investigation?.remove(id);
   window.FrameSeekWorkbench?.remove(id);
   if (source) investigation?.choose(source);
-  announce("已从发现集合移除，可再次保存。");
+  announce("Removed from discovery collection and can be saved again.");
 }
 window.FrameSeekUI = {
   select: (id) => {
@@ -1038,11 +1038,11 @@ function newTask() {
   if (window.FrameSeekPersistence) { window.FrameSeekPersistence.newInvestigation(); return; }
   clearChat();
   if (localMode) {
-    notice("当前视频仅供本地播放，返回演示后可提问。");
+    notice("This video is available for local playback. Return to the demo to ask questions.");
   }
   showEvidence(false);
   if (!localMode) $("question").focus();
-  announce("演示对话已重置。");
+  announce("Presentation dialog has been reset.");
 }
 $("reset-chat").addEventListener("click", newTask);
 $("mobile-reset").addEventListener("click", newTask);
@@ -1078,12 +1078,12 @@ $("restore-demo").addEventListener("click", () => {
   player.poster = "/media/demo_parcel/frames/0.jpg";
   player.load();
   setLocalMode(false);
-  $("video-heading").textContent = "包裹移动 · 合成演示";
-  $("attached-source-name").textContent = "包裹移动演示.mp4";
-  $("video-meta").textContent = "18 秒 · 1600 × 900 · 无音轨";
+  $("video-heading").textContent = "Parcel movement · synthetic demo";
+  $("attached-source-name").textContent = "Parcel moving demonstration.mp4";
+  $("video-meta").textContent = "18 seconds · 1600 × 900 · No audio track";
   $("file-input").value = "";
   showEvidence(false);
-  announce("已返回固定演示，原本地文件没有上传。");
+  announce("The fixed demo has been returned and the original local file was not uploaded.");
 });
 function mediaLoaded() {
   mediaReady = true;
@@ -1092,7 +1092,7 @@ function mediaLoaded() {
   updateMediaContext();
   if (localMode || activeVideo)
     $("video-meta").textContent =
-      `${clock(player.duration)} · ${player.videoWidth} × ${player.videoHeight} · ${activeVideo?.job?.state === "ready" || Number(activeVideo?.metadata?.duration) > 0 ? "视频预检完成" : "视频预检未完成"}`;
+      `${clock(player.duration)} · ${player.videoWidth} × ${player.videoHeight} · ${activeVideo?.job?.state === "ready" || Number(activeVideo?.metadata?.duration) > 0 ? "Video preflight complete" : "Video preflight incomplete"}`;
   if (pendingSeek !== null) {
     const seconds = pendingSeek;
     const trigger = pendingSeekTrigger;
@@ -1113,7 +1113,7 @@ player.addEventListener("error", () => {
   updateMediaContext();
   pendingSeek = null;
   $("seek-status").textContent =
-    "视频无法播放，请重新加载或选择浏览器支持的格式。";
+    "The video cannot be played, please reload or select a format supported by your browser.";
   $("reload-video").hidden = false;
   announce($("seek-status").textContent);
 });
@@ -1123,14 +1123,14 @@ $("reload-video").addEventListener("click", () => {
   mediaReady = false;
   updateMediaContext();
   player.load();
-  $("seek-status").textContent = "正在重新加载视频…";
+  $("seek-status").textContent = "Reloading video…";
 });
 player.addEventListener("timeupdate", updateTime);
 player.addEventListener("seeking", () => {
   if (locatingSeek !== null && Math.abs(player.currentTime - locatingSeek) > 0.25) {
     locatingSeek = player.currentTime;
-    $("seek-status").textContent = `正在定位 ${clock(locatingSeek)} · 等待画面加载…`;
-    $("evidence-step").textContent = `正在定位 ${clock(locatingSeek)}`;
+    $("seek-status").textContent = `Locating ${clock(locatingSeek)} · Waiting for the screen to load…`;
+    $("evidence-step").textContent = `Locating ${clock(locatingSeek)}`;
   }
 });
 player.addEventListener("seeked", completeSeek);
@@ -1165,8 +1165,8 @@ fetch("/demo/catalog")
     window.dispatchEvent(new Event("frameseek-catalog-ready"));
   })
   .catch(() => {
-    notice("演示数据暂时无法加载，请刷新页面重试。");
-    announce("演示数据加载失败。");
+    notice("Demo data could not load. Refresh the page to try again.");
+    announce("Demo data failed to load.");
     window.dispatchEvent(new Event("frameseek-catalog-error"));
   });
 
@@ -1192,7 +1192,7 @@ window.FrameSeekSessionUI = {
   busy(value) {
     realBusy = value;
     $("question-form").setAttribute("aria-busy", String(value));
-    $("send-question").setAttribute("aria-label", value ? "正在处理问题" : "发送消息");
+    $("send-question").setAttribute("aria-label", value ? "Processing question" : "Send message");
     updateSend();
   },
   clear: clearChat,
@@ -1205,7 +1205,7 @@ window.FrameSeekSessionUI = {
     updateSend();
   },
   applySource(video) {
-    $("evidence-question").textContent = "素材预览";
+    $("evidence-question").textContent = "Video preview";
     notice("");
     pendingTurnDeletion = null;
     if ($("delete-turn-dialog").open) $("delete-turn-dialog").close();
@@ -1225,33 +1225,33 @@ window.FrameSeekSessionUI = {
       window.FrameSeekWorkbench.source(localMode);
       window.FrameSeekWorkbench.describe(video);
       $("question").disabled = localMode;
-      $("question").placeholder = localMode ? "素材尚未完成分析。" : "继续问这个视频…";
+      $("question").placeholder = localMode ? "Video analysis is not ready." : "Ask a question about this video…";
       $("video-heading").textContent = video.name;
       $("attached-source-name").textContent = video.name;
-      $("mode-label").textContent = "真实素材";
+      $("mode-label").textContent = "Uploaded video";
       updateKnowledge(video);
-      $("video-state").title = "私有素材 · 保存在本机服务";
-      $("empty-eyebrow").textContent = "真实素材";
-      $("canvas-hint").textContent = localMode ? "素材已保存 · 分析完成后即可提问" : "拖动空白平移 · Ctrl / ⌘ + 滚轮缩放";
-      $("composer-mode-text").textContent = !localMode ? "证据问答" : "视频可播放 · 等待索引";
+      $("video-state").title = "Private source · stored on this server";
+      $("empty-eyebrow").textContent = "Uploaded video";
+      $("canvas-hint").textContent = localMode ? "The material has been saved · You can ask questions after the analysis is completed" : "Drag blank space to pan · Ctrl / ⌘ + scroll wheel to zoom";
+      $("composer-mode-text").textContent = !localMode ? "Evidence Q&A" : "Video available · awaiting index";
       $("source-thumbnail").hidden = !video.metadata?.preview?.length;
       if (video.metadata?.preview?.[0]) $("source-thumbnail").src = video.metadata.preview[0].uri;
-      $("demo-notice-text").textContent = "素材保存在本机服务中。模型分析仅在已配置服务和已批准预算内执行。";
-      $("local-note").textContent = "素材已上传至本机。每段素材拥有独立调查和证据。";
+      $("demo-notice-text").textContent = "The video is stored on this server. Model analysis requires a configured service and an approved budget.";
+      $("local-note").textContent = "Video uploaded to this server. Each source has its own investigations and evidence.";
       $("restore-demo").hidden = false;
       $("suggestions").hidden = true;
-      $("empty-state").querySelector("h1").textContent = localMode ? "素材已保存，等待分析。" : "从这段视频开始调查。";
-      $("empty-state").querySelector(".task-intro > p").textContent = localMode ? "在素材库查看进度；配置完成后即可开始分析。" : "提问、回看证据，再从任意问题继续追问。";
+      $("empty-state").querySelector("h1").textContent = localMode ? "The material has been saved and awaits analysis." : "Start your investigation with this video.";
+      $("empty-state").querySelector(".task-intro > p").textContent = localMode ? "Check the progress in the material library; analysis can start after the configuration is completed." : "Ask questions, review the evidence, and continue from any question.";
       notice("");
     } else {
       $("knowledge-control").hidden = true;
       setLocalMode(false); player.src = "/demo/video"; player.poster = "/media/demo_parcel/frames/0.jpg";
-      $("video-heading").textContent = "包裹移动 · 合成演示";
-      $("attached-source-name").textContent = "包裹移动演示.mp4";
-      $("video-meta").textContent = "18 秒 · 1600 × 900 · 无音轨";
+      $("video-heading").textContent = "Parcel movement · synthetic demo";
+      $("attached-source-name").textContent = "Parcel moving demonstration.mp4";
+      $("video-meta").textContent = "18 seconds · 1600 × 900 · No audio track";
       $("source-thumbnail").src = "/media/demo_parcel/frames/0.jpg";
       $("source-thumbnail").hidden = false;
-      window.FrameSeekWorkbench.describe({id:"demo_parcel",name:"包裹移动 · 合成演示",metadata:{duration:18,audio:false}});
+      window.FrameSeekWorkbench.describe({id:"demo_parcel",name:"Parcel movement · synthetic demo",metadata:{duration:18,audio:false}});
     }
     player.load(); updateSend();
   },

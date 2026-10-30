@@ -1326,7 +1326,7 @@ class Agent:
                                     'Return {"observations":[{"frame_ids":["..."],'
                                     '"statement":"..."}],"unresolved":["..."]}. '
                                     "Only directly visible evidence, no inferred identity. "
-                                    "Write statements in Chinese. Answer only requested "
+                                    "Write statements in English. Answer only requested "
                                     "attributes; omit unrelated numbers and commentary. "
                                     "Give each independently observed timestamp/value its own "
                                     "observation referencing only the corresponding frame_ids. "
@@ -1441,7 +1441,7 @@ class Agent:
                             "observations": observations,
                             "unresolved": warnings,
                             "instruction": (
-                                'Return {"answer":"Chinese answer based only on observations",'
+                                'Return {"answer":"English answer based only on observations",'
                                 '"followups":["..."],"unresolved":["..."]}. '
                                 "Never treat a limited search as full-video absence."
                             ),

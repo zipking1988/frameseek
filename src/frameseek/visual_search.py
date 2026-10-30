@@ -172,7 +172,7 @@ def verification_prompt(question, context=None):
                 "Conditions on DIFFERENT subjects do not form a combined match. "
                 "Do not infer biological identity or continuity across cuts. Use "
                 "frame-local subject IDs. "
-                "List EACH matching supplied timestamp separately, with Chinese statements. "
+                "List EACH matching supplied timestamp separately, with English statements. "
                 "For general scene/action questions use a frame-local scene subject. "
                 "Do not infer continuous presence, unseen actions or whole-video absence. "
                 "Do not answer event totals or rankings from sampled images. "

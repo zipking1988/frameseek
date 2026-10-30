@@ -210,47 +210,47 @@
       const basis = {t:anchor.t, uri:anchor.uri, queryId:record.query.id, turnId:record.id, videoId};
       const start = clock(Math.max(0, Math.floor(anchor.t - 6)));
       const end = clock(Math.ceil(Math.min(Number.isFinite(duration) ? duration : anchor.t + 6, anchor.t + 6)));
-      const window = `请查看视频${start}至${end}，`;
+      const window = `Review the video from ${start} to ${end}: `;
       const cached = [...new Set((record.query.response.followups || []).filter(text => typeof text === "string" && text.trim() && text.length <= 900))].slice(0, 3);
-      if (cached.length) return {label:real ? "已有回答建议" : "演示追问", basis,
+      if (cached.length) return {label:real ? "Suggested follow-ups" : "Demo follow-ups", basis,
         items:cached.map(text => real && record !== selected ? `${window}${text}` : text)};
       if (real) {
         const text = [record.query.response.answer, ...frames.map(frame => frame.caption)].join(" ");
         const items = [], titles = [];
         const add = (title, question) => {titles.push(title); items.push(`${window}${question}`);};
         if (/记分牌|比分|scoreboard|\bscore\b/i.test(text))
-          add("核对记分牌", "核对记分牌上可见的球队缩写和比分，引用清晰画面；看不清就说明。");
+          add("Check the scoreboard", "Check the visible team abbreviations and score, citing clear frames. Say if they are unreadable.");
         if (/比赛时间|计时|第[一二三四]节|game clock|quarter|remaining/i.test(text))
-          add("读取比赛计时", "读取比赛计时和节次，只报告清楚可见的数字，并引用画面证据。");
+          add("Read the game clock", "Read the game clock and quarter. Report only clearly visible numbers and cite the frames.");
         if (/球衣|球场|篮球|basketball|jersey|court/i.test(text))
-          add("描述球衣与站位", "描述球衣颜色和球员站位，不推测身份，并引用画面证据。");
+          add("Describe jerseys and positions", "Describe jersey colors and player positions without guessing identities, and cite the frames.");
         if (/纸箱|包裹|箱子|carton|parcel|cardboard|\bpackage\b/i.test(text)) {
-          add("箱子有没有移动？", "核对箱子的位置是否发生变化；若有变化给出时间与画面证据，不清楚就说明。");
-          add("箱子周围有什么？", "描述箱子与附近物体的可见位置关系，并引用画面证据。");
+          add("Did the box move?", "Check whether the box changes position. Cite the times and frames, and say if it is unclear.");
+          add("What is near the box?", "Describe the visible positions of the box and nearby objects, citing frames.");
         }
-        add("回看前后变化", "描述这张已保存画面前后有哪些可见变化，并引用对应时间的画面；不要补全未看见的动作。");
-        add("哪些细节看不清？", "指出这张画面中不能可靠确认的细节，说明证据局限。");
-        add("核对当前场景", "只描述该时段可见的场景与对象，并给出画面证据。");
-        return {label:"基于已有证据", basis, titles:titles.slice(0,3), items:items.slice(0,3)};
+        add("Review what changed", "Describe visible changes around this saved frame and cite the corresponding times. Do not infer unseen actions.");
+        add("What is unclear?", "Identify details that cannot be reliably confirmed and explain the limits of the evidence.");
+        add("Review the scene", "Describe only the visible scene and objects in this interval, citing frame evidence.");
+        return {label:"Based on saved evidence", basis, titles:titles.slice(0,3), items:items.slice(0,3)};
       }
     }
-    return real ? {label:"示例问题 · 尚无可用画面",items:[
-      "概括这段视频里可见的场景和主要对象，并引用画面证据。",
-      "找出一个画面清晰的片段，描述可见动作并给出视频时间。",
-      "这段视频有哪些内容无法从画面中确认？请说明证据局限。",
-    ]} : {label:"演示示例",items:["包裹什么时候出现在中央？","包裹什么时候移到右侧？","视频中有没有叉车？"]};
+    return real ? {label:"Example questions · no evidence yet",items:[
+      "Summarize the visible scene and main objects, citing video frames.",
+      "Find a clear moment, describe the visible action, and give its timestamp.",
+      "What cannot be confirmed from this footage? Explain the limits of the evidence.",
+    ]} : {label:"Demo questions",items:["When is the parcel in the center?","When is the parcel on the right?","Is there a forklift?"]};
   }
   function queryFailureReason(query) {
     if (query?.mode !== "real" || query.response?.status !== "error") return "";
     const codes = (query.response.errors || []).map(error => error.code);
-    if (codes.includes("budget_blocked")) return "预算准入未通过：该处理路径需要预留的请求次数或金额可能超过剩余额度，也可能是审批已暂停；不能据此判断模型没有找到画面。没有完成本轮视觉复核。";
-    if (codes.includes("real_blocked")) return "这次请求在模型调用前被拦截：当时的服务未启用真实模型，或模型配置未就绪。不是模型看过视频后没有找到答案；可在「更多 → 模型与预算」检查当前配置。";
-    if (codes.includes("audio_channel_unavailable")) return "尚无可靠音轨转写，无法回答解说内容；这不是问题写得不完整。";
-    if (codes.includes("query_cancelled")) return "这次查找已取消，没有完成分析；不代表视频中没有相关内容。";
-    if (codes.includes("invalid_tool_request")) return "分析工具请求未通过校验，未完成本轮查找；不是你的提问格式错误。";
-    if (codes.includes("invalid_visual_matches")) return "模型返回的匹配条件、主体或画面引用未通过验证，未接受为证据。不能据此判断目标不存在；不会自动重试。";
-    if (codes.includes("visual_index_invalid")) return "已有画面索引缺失、版本变化或引用无效，本次无法完成检索。原视频与聊天保留；不会自动重建索引或调用模型。";
-    return "本轮分析未完成，系统没有保留足够信息来确认具体原因；不能据此判断视频中没有相关内容。";
+    if (codes.includes("budget_blocked")) return "Budget admission failed: this route may require more requests or money than remain, or approval may be paused. Visual review did not complete; this does not mean the model found no frames.";
+    if (codes.includes("real_blocked")) return "This request was blocked before a model call because live analysis was disabled or not configured. The model did not review the video. Check More → Models & budget.";
+    if (codes.includes("audio_channel_unavailable")) return "A reliable audio transcript is unavailable, so commentary cannot be answered. This is not a problem with your question.";
+    if (codes.includes("query_cancelled")) return "This search was cancelled before analysis completed; it does not establish that relevant content is absent.";
+    if (codes.includes("invalid_tool_request")) return "The analysis tool request failed validation. The search did not complete; this is not a formatting error in your question.";
+    if (codes.includes("invalid_visual_matches")) return "The model returned invalid match conditions, subjects, or frame references, so they were not accepted as evidence. This does not establish absence; the request will not retry automatically.";
+    if (codes.includes("visual_index_invalid")) return "The frame index is missing, changed, or contains invalid references, so this search could not complete. The video and chat are preserved; the index will not be rebuilt and no model will be called automatically.";
+    return "Analysis did not complete and there is not enough information to identify why. This does not establish that relevant content is absent.";
   }
   function answerReviewNotes(answer) {
     const notes = [];
@@ -277,7 +277,7 @@
     if (!record) return null;
     const presentation = conversationAnswer(record.query);
     return {
-      heading: presentation.englishDemo ? `Replying to answer ${record.id.replace(/^task-/, "")}` : `引用问题 ${record.id.replace(/^task-/, "")} 的回答`,
+      heading: `Replying to answer ${record.id.replace(/^task-/, "")}`,
       question: record.query.question,
       answer: presentation.text,
       ...(presentation.englishDemo ? {englishDemo: true} : {}),
@@ -323,21 +323,27 @@
         && /^\s*(?:what happens next|when is the parcel on the right)\??\s*$/i.test(query.question)
         && response.answer === "从 00:11 开始，包裹出现在工作台右侧。"
         ? "From 00:11, the parcel appears on the right side of the workbench."
-        : null;
+        : query.id === "forklift"
+          && /^\s*is there a forklift\??\s*$/i.test(query.question)
+          && response.answer === "这段 18 秒演示画面中没有叉车。"
+          ? "There is no forklift in this 18-second synthetic demo."
+          : null;
+    const fixtureEvents = response.events || [];
     const englishDemo = Boolean(englishPreset) && !query.synthetic_fixture
-      && query.mode !== "real" && response.status === "ok" && video === "demo_parcel"
-      && (response.events || []).length === 1 && response.events[0].video_id === "demo_parcel";
+      && query.mode !== "real" && video === "demo_parcel"
+      && (response.status === "ok" && fixtureEvents.length === 1 && fixtureEvents[0].video_id === "demo_parcel"
+        || response.status === "no_result" && fixtureEvents.length === 0 && query.id === "forklift");
     return {
       text: englishDemo ? englishPreset : response.answer,
-      label: englishDemo ? "Synthetic demo · preset answer" : query.synthetic_fixture ? "合成测试索引" : query.mode !== "real" ? "合成演示 · 预设回答" : query.engine === "index" ? "已有索引" : "模型回答",
+      label: englishDemo ? "Synthetic demo · preset answer" : query.synthetic_fixture ? "Synthetic test index" : query.mode !== "real" ? "Synthetic demo · preset answer" : query.engine === "index" ? "Saved index" : "Model answer",
       englishDemo,
-      prefix: model && aggregation && numeric ? "模型给出的估计：" : "",
+      prefix: model && aggregation && numeric ? "Model estimate: " : "",
       caution: model && aggregation && ["ok", "partial"].includes(response.status)
-        ? "这是模型回答，尚未核实整段视频的总数或排名。"
+        ? "This model answer has not verified totals or rankings across the entire video."
         : (response.unresolved || [])[0] || "",
       frames: [...frames.values()].sort((a,b)=>a.t-b.t),
       checkedFrames: [...checkedFrames.values()].sort((a,b)=>a.t-b.t),
-      evidenceNote: englishDemo ? "Select a frame to replay its video time." : aggregation ? "引用画面的张数不代表事件发生次数。" : "点击画面，回看原视频对应时间。",
+      evidenceNote: englishDemo ? "Select a frame to replay its video time." : aggregation ? "The number of cited frames is not the number of events." : "Select a frame to replay the source video.",
     };
   }
   const api = { replyQuote, conversationAnswer, shouldOfferTextCandidates, createStore, clock, visiblePins, toggleTurn, panelWidth, composerSuggestions, answerReviewNotes, queryFailureReason };
