@@ -198,7 +198,13 @@ function Conversation() {
     return () => {window.removeEventListener("resize", resized);window.removeEventListener("frameseek-thread-focus",scrollSelected);window.removeEventListener("frameseek-reading-view",scrollSelected);};
   }, []);
   return <div className="conversation-stream" role="region" aria-label="问题、回答与视频证据">
-    {!records.length && <div className="reading-empty"><p className="reading-eyebrow">问视频，回看证据</p><h1>从一个问题开始。</h1><p>答案和对应画面会一起留在这里。</p>
+    {!records.length && <div className="reading-empty">
+      <div className="reading-empty-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+      <p className="reading-eyebrow">视频调查 / 对话</p>
+      <h1>{state.local ? "视频已载入。" : "从一个问题开始。"}</h1>
+      <p className="reading-empty-description">{state.local ? "你可以先播放视频。素材准备就绪后，再提问并回看对应画面。" : "提出问题，回看对应画面，再沿着线索继续追问。"}</p>
+      {state.local && <div className="reading-empty-status"><span className="reading-status-dot" aria-hidden="true"></span><div><strong>暂时无法提问</strong><p>请查看播放器下方的素材状态，了解准备进度。</p></div></div>}
+      {!state.local && <div className="reading-empty-steps" aria-label="调查流程"><span>01 提出问题</span><span>02 回看画面</span><span>03 继续追问</span></div>}
       {state.sourceInfo?.id === "demo_parcel" && !state.local && <div className="reading-demo-examples">
         <p>试试合成演示 · 预设回答，不调用模型</p>
         <div className="suggestion-buttons">{window.FrameSeekWorkbenchModel.composerSuggestions(state).items.map(question =>

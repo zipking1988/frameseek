@@ -1,7 +1,7 @@
 # FrameSeek
 
 2026-10-29: the home page (`/`) now introduces the sports video workflow, with
-basketball-first illustrative imagery. **Open workspace** leads to `/workspace`,
+basketball-first illustrative imagery. **Try sports preview** opens the in-page basketball example; **Open workspace** leads to `/workspace`,
 which retains the existing desktop investigation, saved sources and ownership
 checks. The marketing preview is explicitly illustrative and makes no model
 requests; the workspace still starts with the labeled synthetic demo. The

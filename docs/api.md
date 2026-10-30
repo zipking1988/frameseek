@@ -11,6 +11,8 @@ session, expiry, CSRF and Origin requirements. This page split is not yet deploy
 
 2026-10-11：Gemini 与 NVIDIA/Nebius 复用同一组私有上传/分析/查询/恢复接口及 schema0.1。`GET /api/session`、`GET /api/runtime/status`、`GET /health` 新增 `provider`（`gemini` / `nvidia_nebius`）。准备状态仍只读，不证明真实模型调用或云部署；provider只能由可信runtime配置选择，客户端请求不能覆盖。Google Cloud入口保持相同接口，`GET /gateway/health` 只报告入口存活、不探测后端；具体部署边界见 [deployment.md](deployment.md)。
 
+The landing preview accepts `?preview=questions` or `?preview=canvas` to restore its selected tab. Other query parameters and the page fragment are preserved when switching tabs.
+
 当前本地服务包含公开合成演示、拥有权保护的会话/调查/上传/任务/查询操作，以及私有媒体读取。具体端点和输入模型见运行服务的 `/docs` 与 `/openapi.json`；下文workspace接口与 [运行指南](WORKSPACE_RUNTIME.md) 描述当前实现。默认fixture不发送模型请求，上传素材未就绪时禁止问答，不使用演示答案。
 
 仅 `demo_parcel` 合成媒体公开。私有素材、帧、任务、查询和调查校验会话拥有权及到期时间；写入还校验CSRF/Origin。浏览器选择文件后以原始视频字节上传并预检，不是仅blob播放。
