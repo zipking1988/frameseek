@@ -97,14 +97,14 @@ The **AI Builder Cup edition** adds a selectable native Gemini adapter and a sta
 Requirements: Python 3.13, [uv](https://docs.astral.sh/uv/), and `make`. Uploaded-video preflight requires FFmpeg and ffprobe on `PATH`. The bundled synthetic demo does not require them. Local macOS execution is verified; Linux media isolation still needs deployment validation.
 
 ```sh
-git clone https://github.com/zipking1988/frameseek-hackathon.git
-cd frameseek-hackathon
+git clone https://github.com/zipking1988/frameseek.git
+cd frameseek
 make setup
 make preflight
 make run
 ```
 
-The [public source repository](https://github.com/zipking1988/frameseek-hackathon) contains the deployed application code without private operational history. Open [localhost:8765](http://127.0.0.1:8765/). `make demo` starts the same server as `make run`. Stop it with Ctrl+C. Use one API/worker process per storage directory.
+The [FrameSeek repository](https://github.com/zipking1988/frameseek) is public. A separate [hackathon source repository](https://github.com/zipking1988/frameseek-hackathon) contains the deployed application code without the operational history. Open [localhost:8765](http://127.0.0.1:8765/). `make demo` starts the same server as `make run`. Stop it with Ctrl+C. Use one API/worker process per storage directory.
 
 Useful local endpoints:
 

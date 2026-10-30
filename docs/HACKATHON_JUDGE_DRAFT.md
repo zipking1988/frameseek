@@ -4,7 +4,8 @@
 
 The independently reviewed [public source repository](https://github.com/zipking1988/frameseek-hackathon)
 now contains the application code deployed on October 30; its `main` commit is
-`6c61f27`. It excludes the original repository's private operational history.
+`6c61f27`. It excludes the original repository's operational history. The user
+also made the [original repository](https://github.com/zipking1988/frameseek) public.
 The publication did not submit the Devpost draft or authorize new model spend.
 The earlier preparation notes below remain a historical record.
 

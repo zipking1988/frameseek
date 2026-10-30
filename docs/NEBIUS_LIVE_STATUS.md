@@ -3,7 +3,7 @@
 ## Current release — 2026-10-30 JST, investigation recovery
 
 Code commit `67805ac` is deployed on the existing single-process Nebius server
-and pushed to the private development repository. The same application source
+and pushed to the development repository. The same application source
 is available publicly in [frameseek-hackathon](https://github.com/zipking1988/frameseek-hackathon)
 at commit `6c61f27`. The release protects verified evidence across
 query cancellation and recovery, binds new query artifacts to their source and
