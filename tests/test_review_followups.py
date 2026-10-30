@@ -103,6 +103,58 @@ async def test_unified_followup_prepare_execute_and_supplement_share_context(
         assert supplement.status_code == 202, supplement.text
         assert captured == [body["question"]]
 
+        if historical_engine == "model":
+            legacy = dict(saved)
+            legacy.pop("source_generation")
+            with ws.db() as c:
+                c.execute(
+                    "UPDATE queries SET result=? WHERE id=?",
+                    (json.dumps(legacy), body["request_id"]),
+                )
+            initial = await client.post(
+                "/api/index-chat/prepare",
+                json=follow | {"request_id": "legacy-first-generation", "engine": "index"},
+            )
+            assert initial.status_code == 200 and initial.json()["kind"] == "ready", initial.text
+            with ws.db() as c:
+                c.execute("UPDATE videos SET generation=generation+1 WHERE id=?", (video,))
+            app.state.knowledge_fixture_refactor = False
+            ignored = await client.post(
+                "/api/index-chat/prepare",
+                json=follow
+                | {
+                    "request_id": "legacy-disabled-context",
+                    "engine": "index",
+                    "question": "白衣服的人在哪里？",
+                },
+            )
+            assert (
+                ignored.status_code == 409
+                and ignored.json()["detail"] == "stale_context_generation"
+            )
+            app.state.knowledge_fixture_refactor = True
+            for endpoint, extra in [
+                ("/api/auto-chat/prepare", {}),
+                ("/api/index-chat/prepare", {"engine": "index"}),
+                ("/api/knowledge-chat/supplement", {}),
+            ]:
+                blocked = await client.post(
+                    endpoint,
+                    json=follow | {"request_id": "legacy-stale-" + endpoint.split("/")[-1]} | extra,
+                )
+                assert (
+                    blocked.status_code == 409
+                    and blocked.json()["detail"] == "stale_context_generation"
+                )
+            with ws.db() as c:
+                c.execute(
+                    "UPDATE videos SET generation=? WHERE id=?", (source["generation"], video)
+                )
+                c.execute(
+                    "UPDATE queries SET result=? WHERE id=?",
+                    (json.dumps(saved), body["request_id"]),
+                )
+
         # Source and desk generation checks still guard the shared resolver.
         with ws.db() as c:
             stale = saved | {"source_generation": source["generation"] + 1}

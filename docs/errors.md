@@ -1,4 +1,4 @@
-# 错误与恢复（D1）
+# 错误与恢复
 
 ## Gemini 与 Google Cloud 入口（2026-10-11）
 
@@ -20,10 +20,13 @@
 | real预检 / 退出码2 | model、权限、预算、GPU费用上界及媒体保护未就绪 | 补实际信息并完成校准/实现，不能自动fixture代替real |
 | BudgetDenied（内部） | 缺批准、额度不足、币种/载荷冲突、撤销或非法状态 | 不dispatch；重新核对有效批准与同请求身份 |
 | unknown attempt（内部） | dispatch前后结果不确定 | 保留预算，禁止自动重新dispatch；供应商验证复取或明确新尝试尚待接入 |
+| worker_start_failed（503） | 本机无法启动后台线程 | 素材预检、索引、补查或本机/云端视觉查询未能启动；检查系统资源后可显式重试。补查和查询使用新请求 ID，原 ID 保留失败结果以保证幂等 |
 
-当前model adapter不存在，以上不会发出付费请求。配置错误不输出输入值、密钥或路径。SQLite繁忙有1秒有限等待，异常不得绕过预算开启模型调用。
+模型适配器已实现；fixture 模式不发送模型请求，真实调用需要可信配置和有效的两级预算批准。配置错误不输出输入值、密钥或路径。SQLite 繁忙有有限等待，异常不得绕过预算开启模型调用。
 
-后续HTTP四状态与400/401/403/404/409/410/429/502/504映射、query pending/unknown恢复及UI保留草稿仍未实现；按X03/E17交付时同时验证。`/docs/errors`当前提供本地简要说明。
+最终回答使用 `ok`、`partial`、`no_result`、`error` 四种状态；查询恢复使用独立的 `pending` / `unknown` 控制信封。`pending` 可按提示读取状态；`unknown` 停止自动轮询和重发，并保留已预留的预算。取消或恢复时保留已有的已验证证据和用户草稿。具体接口和状态码见 [API 文档](api.md)，运行条件见 [工作区运行指南](WORKSPACE_RUNTIME.md)。`/docs/errors` 提供本地简要说明。
+
+后台预检发生意外异常时，任务结束并释放租约；分析或查询阶段的未预期异常保守标为 `unknown`，不能自动重发可能已经派出的调用。已有费用和证据继续受账本与原恢复规则保护。
 
 ## Token Factory（2026-10-24）
 
@@ -44,6 +47,7 @@ token 用量、响应字节数与耗时。不记录请求/响应正文、JPEG、
 - `http_status`：HTTP 失败；用 `http_status` 与上游请求 ID 区分 503 等响应。
 - `timeout` / `transport`：本地有限超时或传输失败，不推断供应商是否完成或收费。
 - `response_json_invalid`：JSON 解码失败；`stage` 区分外层响应与适配器内部解析。
+- `internal_error`：dispatch 后出现未预期的内部异常（例如结果缓存写入失败）；调用标记为 unknown，诊断不包含异常原文。
 - `tokenfactory_incomplete_response` 加 `finish_reason=length`：供应商返回截断；
   不提高 4096 输出上限，不接受残缺证据，不自动重新调用。
 - `model_output_limit`：响应超过现有 4 MiB 边界，维持拒绝行为。

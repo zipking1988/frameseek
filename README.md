@@ -24,9 +24,10 @@ sampled VideoKnowledge index after upload and reuses it for evidence-backed
 questions and bounded local follow-up checks. A separate local browser test
 indexed the complete basketball source and checked original-time evidence;
 the default runtime and hosted service have not switched to this route. The
-new Token Factory base-index adapter is mock-tested but is not connected to the
-job runner, and its live calibration and the 20-case human-reviewed quality
-gate remain open. See [the real and synthetic test record](docs/qa/KNOWLEDGE_REFACTOR_20261029.md).
+new Token Factory base-index adapter is connected to the job runner behind
+explicit trusted configuration and is mock-tested. Its live calibration and
+the 20-case human-reviewed quality gate remain open; it is disabled on the
+deployed service. See [the real and synthetic test record](docs/qa/KNOWLEDGE_REFACTOR_20261029.md).
 
 2026-10-28 event evaluation: offline event/replay scoring and reviewed-score delta
 proposals are available as separate evaluation tools. They do not turn citations
@@ -109,7 +110,8 @@ Useful local endpoints:
 
 | Endpoint | Purpose |
 | --- | --- |
-| `/` | Investigation workspace |
+| `/` | Sports video landing page |
+| `/workspace` | Investigation workspace |
 | `/health` | Effective settings, local tools, readiness blockers and recorded model calls |
 | `/docs` | Interactive API reference |
 | `/openapi.json` | Implemented operations and answer/control schemas |
@@ -126,7 +128,9 @@ Useful local endpoints:
 
 Each investigation stores up to100 questions without silent eviction, up to 8 findings, notes, layout, path metadata, viewport, draft and player position in local SQLite. Default retention is 24 hours. Ownership follows the browser's session cookie; clearing it does not transfer access to an old investigation. There is no account-based cross-device sync.
 
-Uploads are limited to 500 MiB per file, 10 sources/1 GiB per owner and 4 GiB across the service. Preflight checks duration, dimensions, audio and scene/window boundaries, then decodes timestamped previews. Failed or cancelled preflight can be explicitly retried. Analysis and questions for uploaded sources require configured models and approved budgets.
+Uploads are limited to 500 MiB per file, 10 sources/1 GiB per owner and 4 GiB across the service. Preflight checks duration, dimensions, audio and scene/window boundaries, then decodes timestamped previews. Failed or cancelled preflight can be explicitly retried. Uploaded-source analysis requires an explicitly configured route. Paid model routes
+also require approved budgets; the opt-in on-device route uses locally installed
+weights without paid API calls.
 
 The product currently targets desktop browsers. A phone UI is outside this version's scope.
 
